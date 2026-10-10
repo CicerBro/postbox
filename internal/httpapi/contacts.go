@@ -10,6 +10,8 @@ import (
 )
 
 func (a *API) registerContacts(m *http.ServeMux) {
+	a.route(m, "GET /api/v1/lists/{id}/settings", a.listSettings)
+	a.route(m, "PATCH /api/v1/lists/{id}/settings", a.listSettings)
 	for _, p := range []string{"GET /api/v1/lists", "POST /api/v1/lists", "GET /api/v1/lists/{id}", "PATCH /api/v1/lists/{id}", "DELETE /api/v1/lists/{id}"} {
 		a.route(m, p, a.lists)
 	}

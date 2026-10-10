@@ -415,7 +415,7 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		}
 		n, _ := res.RowsAffected()
 		if n > 0 {
-			if e = s.goodbyeEmail(r.Context(), conn, brand, u); e != nil {
+			if e = s.goodbyeEmail(r.Context(), conn, brand, u, id); e != nil {
 				return e
 			}
 		}
@@ -428,8 +428,15 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsubscribe could not be saved", 503)
 		return
 	}
-	w.WriteHeader(200)
-	fmt.Fprint(w, "You have been unsubscribed.")
+	var brand int64
+	_ = s.db.Reader.QueryRowContext(r.Context(), "SELECT brand_id FROM subscribers WHERE id=?", u).Scan(&brand)
+	body, _ := contacts.NotificationSetting(r.Context(), s.db.Reader, brand, id, "goodbye_html")
+	if body == "" {
+		body = "You have been unsubscribed."
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; base-uri 'none'; form-action 'none'")
+	fmt.Fprint(w, body)
 }
 func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
 	_, u, e := s.identity(r)
@@ -498,9 +505,8 @@ func stringFields(raw string) (map[string]string, error) {
 	return out, nil
 }
 
-func (s *Service) goodbyeEmail(ctx context.Context, c *sql.Conn, brand, subscriber int64) error {
-	var raw string
-	e := c.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, fmt.Sprintf("brand.%d.goodbye_email", brand)).Scan(&raw)
+func (s *Service) goodbyeEmail(ctx context.Context, c *sql.Conn, brand, subscriber, listID int64) error {
+	raw, e := contacts.NotificationSetting(ctx, c, brand, listID, "goodbye_email")
 	if e == sql.ErrNoRows || raw == "" {
 		return nil
 	}

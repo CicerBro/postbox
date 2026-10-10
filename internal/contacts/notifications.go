@@ -12,6 +12,16 @@ import (
 	"time"
 )
 
+// NotificationSetting resolves a list override before its brand default.
+// Callers must validate that listID belongs to brandID before using it.
+func NotificationSetting(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, brandID, listID int64, name string) (string, error) {
+	var value string
+	e := q.QueryRowContext(ctx, "SELECT value FROM settings WHERE key IN (?,?) ORDER BY CASE WHEN key=? THEN 0 ELSE 1 END LIMIT 1", fmt.Sprintf("list.%d.%s", listID, name), fmt.Sprintf("brand.%d.%s", brandID, name), fmt.Sprintf("list.%d.%s", listID, name)).Scan(&value)
+	return value, e
+}
+
 // CreateConfirmationTx replaces earlier tokens so only the newest link is usable.
 func CreateConfirmationTx(ctx context.Context, c *sql.Conn, listID, subscriberID int64) (string, error) {
 	token := randomToken()
@@ -33,8 +43,7 @@ func EnqueueConfirmationTx(ctx context.Context, c *sql.Conn, brandID, listID, su
 	subject := "Confirm your subscription"
 	body := "<p>Please <a href=\"" + html.EscapeString(url) + "\">confirm your subscription</a>.</p>"
 	text := "Confirm your subscription: " + url
-	var raw string
-	if e := c.QueryRowContext(ctx, "SELECT value FROM settings WHERE key=?", fmt.Sprintf("brand.%d.confirmation_email", brandID)).Scan(&raw); e == nil {
+	if raw, e := NotificationSetting(ctx, c, brandID, listID, "confirmation_email"); e == nil {
 		var defaults struct {
 			Subject string `json:"subject"`
 			HTML    string `json:"html"`
@@ -77,8 +86,7 @@ func EnqueueConfirmationTx(ctx context.Context, c *sql.Conn, brandID, listID, su
 
 // EnqueueThankyouTx records a welcome message only with a subscribed transition.
 func EnqueueThankyouTx(ctx context.Context, c *sql.Conn, brandID, listID, subscriberID int64) error {
-	var raw string
-	e := c.QueryRowContext(ctx, "SELECT value FROM settings WHERE key=?", fmt.Sprintf("brand.%d.thankyou_email", brandID)).Scan(&raw)
+	raw, e := NotificationSetting(ctx, c, brandID, listID, "thankyou_email")
 	if e == sql.ErrNoRows || (e == nil && raw == "") {
 		return nil
 	}

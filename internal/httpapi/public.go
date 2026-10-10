@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"html/template"
 	"io"
 	"net"
@@ -87,7 +86,7 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 		status = "confirmation_pending"
 	}
 	if wantsHostedHTML(r) {
-		a.thankyou(w, r, list.BrandID, status)
+		a.thankyou(w, r, list.BrandID, list.ID, status)
 		return
 	}
 	respond(w, 200, map[string]string{"status": status})
@@ -120,9 +119,9 @@ func (a *API) confirm(w http.ResponseWriter, r *http.Request) {
 		fail(w, 429, errors.New("too many confirmation requests"))
 		return
 	}
-	var brand int64
+	var brand, listID int64
 	hash := sha256.Sum256([]byte(r.PathValue("token")))
-	e := a.db.Reader.QueryRowContext(r.Context(), "SELECT l.brand_id FROM subscription_confirmations sc JOIN lists l ON l.id=sc.list_id WHERE sc.token_hash=? AND sc.expires_at>?", hash[:], time.Now().UnixMilli()).Scan(&brand)
+	e := a.db.Reader.QueryRowContext(r.Context(), "SELECT l.brand_id,l.id FROM subscription_confirmations sc JOIN lists l ON l.id=sc.list_id WHERE sc.token_hash=? AND sc.expires_at>?", hash[:], time.Now().UnixMilli()).Scan(&brand, &listID)
 	if errors.Is(e, sql.ErrNoRows) {
 		e = errors.New("confirmation token invalid or expired")
 	}
@@ -134,7 +133,7 @@ func (a *API) confirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if wantsHostedHTML(r) {
-		a.thankyou(w, r, brand, "confirmed")
+		a.thankyou(w, r, brand, listID, "confirmed")
 		return
 	}
 	result(w, map[string]bool{"confirmed": true}, nil)
@@ -143,8 +142,15 @@ func (a *API) confirm(w http.ResponseWriter, r *http.Request) {
 func wantsHostedHTML(r *http.Request) bool {
 	return strings.Contains(r.Header.Get("Accept"), "text/html") && !strings.Contains(r.Header.Get("Accept"), "application/json")
 }
-func (a *API) thankyou(w http.ResponseWriter, r *http.Request, brand int64, status string) {
-	body, e := a.db.Setting(r.Context(), fmt.Sprintf("brand.%d.thankyou_html", brand))
+func (a *API) thankyou(w http.ResponseWriter, r *http.Request, brand, listID int64, status string) {
+	name := "thankyou_html"
+	if status == "confirmation_pending" {
+		name = "confirmation_page_html"
+	}
+	body, e := contacts.NotificationSetting(r.Context(), a.db.Reader, brand, listID, name)
+	if name == "confirmation_page_html" && errors.Is(e, sql.ErrNoRows) {
+		body, e = contacts.NotificationSetting(r.Context(), a.db.Reader, brand, listID, "thankyou_html")
+	}
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		result(w, nil, e)
 		return

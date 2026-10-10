@@ -66,6 +66,7 @@ func (a *API) documentRoute(pattern string) {
 	if strings.HasPrefix(path, "/subscribe/") && method == "POST" {
 		op["requestBody"] = map[string]any{"required": true, "content": map[string]any{"application/x-www-form-urlencoded": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"email", "consent"}, "properties": map[string]any{"email": map[string]any{"type": "string", "format": "email"}, "name": map[string]any{"type": "string"}, "website": map[string]any{"type": "string", "description": "Honeypot, leave empty"}, "consent": map[string]any{"type": "string"}, "cf-turnstile-response": map[string]any{"type": "string"}}}}}}
 	}
+	documentListSettings(method, path, op)
 	methods[strings.ToLower(method)] = op
 }
 func requestSchema(path string) map[string]any {
