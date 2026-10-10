@@ -13,12 +13,15 @@ import (
 	"postbox/internal/jobs"
 	"postbox/internal/store"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type Config struct {
 	TopicARN, QueueURL string
+	BrandID            int64
+	ResolveTopic       func(context.Context, string) (int64, error)
 	SoftBounceLimit    int
 	HTTPClient         *http.Client
 }
@@ -26,6 +29,7 @@ type Service struct {
 	db         *store.DB
 	cfg        Config
 	Verifier   *Verifier
+	verifiers  sync.Map
 	processed  atomic.Uint64
 	duplicates atomic.Uint64
 	failures   atomic.Uint64
@@ -49,17 +53,24 @@ func (s *Service) SNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m, e := DecodeSNS(b)
+	brandID := s.cfg.BrandID
+	verifier := s.Verifier
+	if e == nil && s.cfg.ResolveTopic != nil {
+		brandID, e = s.cfg.ResolveTopic(r.Context(), m.TopicARN)
+		v, _ := s.verifiers.LoadOrStore(m.TopicARN, &Verifier{TopicARN: m.TopicARN, Client: s.cfg.HTTPClient})
+		verifier = v.(*Verifier)
+	}
 	if e == nil {
-		e = s.Verifier.Verify(r.Context(), m)
+		e = verifier.Verify(r.Context(), m)
 	}
 	if e != nil {
 		http.Error(w, "invalid SNS signature", 403)
 		return
 	}
 	if m.Type == "SubscriptionConfirmation" {
-		e = s.Verifier.Confirm(r.Context(), m)
+		e = verifier.Confirm(r.Context(), m)
 	} else if m.Type == "Notification" {
-		e = s.Process(r.Context(), m.MessageID, []byte(m.Message))
+		e = s.process(r.Context(), brandID, m.MessageID, []byte(m.Message))
 	} else {
 		e = errors.New("unsupported event")
 	}
@@ -94,6 +105,10 @@ type sesEvent struct {
 }
 
 func (s *Service) Process(ctx context.Context, id string, payload []byte) error {
+	return s.process(ctx, 0, id, payload)
+}
+
+func (s *Service) process(ctx context.Context, brandID int64, id string, payload []byte) error {
 	var ev sesEvent
 	if e := json.Unmarshal(payload, &ev); e != nil {
 		return e
@@ -104,6 +119,9 @@ func (s *Service) Process(ctx context.Context, id string, payload []byte) error 
 	}
 	if id == "" || ev.Mail.MessageID == "" || typ == "" {
 		return errors.New("missing SES event identifiers")
+	}
+	if brandID != 0 && firstTag(ev.Mail.Tags, "brand_id") != fmt.Sprint(brandID) {
+		return errors.New("SES event brand tag does not match SNS topic")
 	}
 	recipients := ev.Mail.Destination
 	timestamp := ""
@@ -142,7 +160,7 @@ func (s *Service) Process(ctx context.Context, id string, payload []byte) error 
 		for _, email := range recipients {
 			email = strings.ToLower(strings.TrimSpace(email))
 			var campaign, subscriber int64
-			e = c.QueryRowContext(ctx, `SELECT campaign_id,subscriber_id FROM campaign_recipients WHERE message_id=?`, ev.Mail.MessageID).Scan(&campaign, &subscriber)
+			e = c.QueryRowContext(ctx, `SELECT cr.campaign_id,cr.subscriber_id FROM campaign_recipients cr JOIN campaigns ca ON ca.id=cr.campaign_id WHERE cr.message_id=? AND (?=0 OR ca.brand_id=?)`, ev.Mail.MessageID, brandID, brandID).Scan(&campaign, &subscriber)
 			if errors.Is(e, sql.ErrNoRows) {
 				campaignTag := firstTag(ev.Mail.Tags, "campaign_id", "campaign")
 				brandTag := firstTag(ev.Mail.Tags, "brand_id", "brand")
@@ -344,26 +362,30 @@ type SQSClient interface {
 }
 
 func (s *Service) Poll(ctx context.Context, client SQSClient) error {
-	if s.cfg.QueueURL == "" {
+	return s.PollBrand(ctx, client, s.cfg.BrandID, s.cfg.TopicARN, s.cfg.QueueURL)
+}
+
+func (s *Service) PollBrand(ctx context.Context, client SQSClient, brandID int64, topicARN, queueURL string) error {
+	if queueURL == "" || topicARN == "" {
 		return errors.New("SQS queue URL required")
 	}
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		out, e := client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{QueueUrl: aws.String(s.cfg.QueueURL), MaxNumberOfMessages: 10, WaitTimeSeconds: 20, VisibilityTimeout: 120})
+		out, e := client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{QueueUrl: aws.String(queueURL), MaxNumberOfMessages: 10, WaitTimeSeconds: 20, VisibilityTimeout: 120})
 		if e != nil {
 			return fmt.Errorf("SQS receive: %w", e)
 		}
 		for _, m := range out.Messages {
 			envelope, e := DecodeSNS([]byte(aws.ToString(m.Body)))
-			if e != nil || envelope.Type != "Notification" || envelope.TopicARN != s.cfg.TopicARN {
+			if e != nil || envelope.Type != "Notification" || envelope.TopicARN != topicARN {
 				continue
 			}
-			if e = s.Process(ctx, envelope.MessageID, []byte(envelope.Message)); e != nil {
+			if e = s.process(ctx, brandID, envelope.MessageID, []byte(envelope.Message)); e != nil {
 				continue
 			}
-			if _, e = client.DeleteMessage(ctx, &sqs.DeleteMessageInput{QueueUrl: aws.String(s.cfg.QueueURL), ReceiptHandle: m.ReceiptHandle}); e != nil {
+			if _, e = client.DeleteMessage(ctx, &sqs.DeleteMessageInput{QueueUrl: aws.String(queueURL), ReceiptHandle: m.ReceiptHandle}); e != nil {
 				return fmt.Errorf("SQS delete committed event: %w", e)
 			}
 		}

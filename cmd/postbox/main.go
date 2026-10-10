@@ -17,8 +17,6 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"postbox/internal/awsbrand"
 	"postbox/internal/config"
 	"postbox/internal/events"
@@ -39,16 +37,16 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: postbox <serve|init|admin|setup-ses|migrate-sendy|backup> [flags]")
+		return errors.New("usage: postbox <serve|init|admin|migrate-sendy|backup> [flags]")
 	}
 	command := args[0]
 	args = args[1:]
 	if command == "help" || command == "--help" {
-		fmt.Println("postbox <serve|init|admin|setup-ses|migrate-sendy|backup> [--db path] [--base-url https://mail.example.com]\nAdmin: POSTBOX_ADMIN_EMAIL, POSTBOX_ADMIN_PASSWORD, POSTBOX_ADMIN_TOTP\nMigration: POSTBOX_SENDY_DUMP or POSTBOX_SENDY_DSN\nAWS setup: POSTBOX_SES_CONFIGURATION_SET, POSTBOX_SNS_TOPIC_ARN\nBackup: POSTBOX_BACKUP_FILE")
+		fmt.Println("postbox <serve|init|admin|migrate-sendy|backup> [--db path] [--base-url https://mail.example.com]\nAdmin: POSTBOX_ADMIN_EMAIL, POSTBOX_ADMIN_PASSWORD, POSTBOX_ADMIN_TOTP\nMigration: POSTBOX_SENDY_DUMP or POSTBOX_SENDY_DSN\nBackup: POSTBOX_BACKUP_FILE")
 		return nil
 	}
 	switch command {
-	case "serve", "init", "admin", "setup-ses", "migrate-sendy", "backup":
+	case "serve", "init", "admin", "migrate-sendy", "backup":
 	default:
 		return fmt.Errorf("unknown command %q", command)
 	}
@@ -58,9 +56,6 @@ func run(args []string) error {
 	}
 	if err != nil {
 		return err
-	}
-	if command == "setup-ses" {
-		return setupSES(context.Background(), c)
 	}
 	if command == "serve" {
 		if err = c.ValidateServe(); err != nil {
@@ -121,9 +116,6 @@ func bootstrapSending(ctx context.Context, db *store.DB) error {
 	})
 }
 func serve(db *store.DB, c config.Config) error {
-	if c.QueueURL != "" && c.TopicARN == "" {
-		return errors.New("SQS ingestion requires sns-topic-arn")
-	}
 	secret, err := config.TokenSecret(c.SecretFile)
 	if err != nil {
 		return err
@@ -152,10 +144,6 @@ func serve(db *store.DB, c config.Config) error {
 	if err = runner.RegisterMaintenance(jobs.MaintenanceConfig{RawRetention: time.Duration(c.RetentionDays) * 24 * time.Hour, UnconfirmedRetention: 30 * 24 * time.Hour, BackupDirectory: c.BackupDir}); err != nil {
 		return err
 	}
-	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(c.Region), awsconfig.WithHTTPClient(&http.Client{Timeout: 30 * time.Second}))
-	if err != nil {
-		return err
-	}
 	if err = registerBrandSuppressionSyncChecked(ctx, db, runner, func(ctx context.Context, brandID int64) (events.SESAdmin, func(*sql.Conn) error, error) {
 		client, fingerprint, err := awsProvider.SESClientSnapshot(ctx, brandID)
 		return client, func(conn *sql.Conn) error { return awsProvider.CheckSnapshot(ctx, conn, brandID, fingerprint) }, err
@@ -166,7 +154,7 @@ func serve(db *store.DB, c config.Config) error {
 		return err
 	}
 	tracker := tracking.New(db, &tracking.Config{TokenSecret: secret, BaseURL: c.BaseURL, GeoIPPath: c.GeoIP})
-	eventService := events.New(db, &events.Config{TopicARN: c.TopicARN, QueueURL: c.QueueURL, SoftBounceLimit: c.SoftBounceLimit})
+	eventService := events.New(db, &events.Config{ResolveTopic: awsProvider.EventBrand, SoftBounceLimit: c.SoftBounceLimit})
 	mux := http.NewServeMux()
 	httpapi.New(db, engine, httpapi.Config{AWSProvider: awsProvider, SecureCookies: c.SecureCookies, SessionTTL: c.SessionTTL, BaseURL: c.BaseURL, TurnstileSecret: c.TurnstileSecret, TurnstileSiteKey: c.TurnstileSiteKey}).Register(mux)
 	tracker.Register(mux)
@@ -211,26 +199,8 @@ func serve(db *store.DB, c config.Config) error {
 	}
 	start("sending engine", func() error { return engine.Start(ctx) })
 	start("jobs", func() error { return runner.Run(ctx) })
-	if c.QueueURL != "" {
-		if c.TopicARN == "" {
-			return errors.New("SQS ingestion requires sns-topic-arn")
-		}
-		workers++
-		start("SQS polling", func() error {
-			client := sqs.NewFromConfig(awsCfg)
-			for ctx.Err() == nil {
-				if err := eventService.Poll(ctx, client); err != nil && ctx.Err() == nil {
-					slog.Error("SQS polling failed", "error", err)
-					select {
-					case <-ctx.Done():
-						return nil
-					case <-time.After(5 * time.Second):
-					}
-				}
-			}
-			return nil
-		})
-	}
+	workers++
+	start("SQS polling", func() error { return runBrandPollers(ctx, awsProvider, eventService) })
 	start("HTTP server", server.ListenAndServe)
 	slog.Info("postbox listening", "address", c.Listen, "base_url", c.BaseURL)
 	<-ctx.Done()

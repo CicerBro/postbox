@@ -36,7 +36,7 @@ Sending starts disabled when a database is first opened through the Postbox CLI,
 
 Account passwords require at least 8 characters, including the initial administrator password supplied to `postbox admin` and passwords created or changed in Settings.
 
-Configuration uses `POSTBOX_` environment variables and flags. Run `postbox serve --help` for all flags. Relevant defaults: `--db ./data/postbox.db`, `--listen 127.0.0.1:8080`, `--secure-cookies=true`, `--max-workers=512`, `--retention-days=90`, `--recovery-policy=unknown`, `--shutdown-timeout=60s`. Configure AWS for each brand in **Settings > Amazon SES**. Choose an AWS region and either enter that brand's IAM access keys or select the server AWS credential chain (instance/task roles, environment variables, or shared AWS profiles). Access keys and optional session tokens are encrypted in SQLite with a key derived from the server secret; the API never returns credential values. Brands without explicit settings retain their existing server connection.
+Configuration uses `POSTBOX_` environment variables and flags. Run `postbox serve --help` for all flags. Relevant defaults: `--db ./data/postbox.db`, `--listen 127.0.0.1:8080`, `--secure-cookies=true`, `--max-workers=512`, `--retention-days=90`, `--recovery-policy=unknown`, `--shutdown-timeout=60s`. Configure AWS access keys and an SES region for each brand in **Settings > Amazon SES**. Access keys and optional session tokens are encrypted in SQLite with a key derived from the server secret; the API never returns credential values. Brands without saved keys cannot send or check their SES connection.
 
 The public base URL is required for service startup. Production requires HTTPS and secure cookies. Put a TLS reverse proxy in front of the loopback HTTP listener, preserve the original Host, and expose tracking paths, subscribe forms and `/events/sns`. Streaming campaign reports need proxy buffering disabled and generous idle timeouts. The server chooses cookie security from configuration, not untrusted forwarding headers. Local development can use `--development --base-url http://localhost:8080 --secure-cookies=false`.
 
@@ -46,22 +46,22 @@ The tracking HMAC key is generated once using cryptographic randomness at `DB.se
 
 ## AWS setup
 
-Open **Settings > Amazon SES** for the selected brand. Select **Static access keys**, enter its access key ID and secret access key, choose its SES region, and save. Use **Test connection** to read the AWS account ID, production/sandbox status, sending status, maximum messages per second, 24-hour sending quota, and rolling 24-hour usage. Temporary credentials also require a session token; renew them before expiry. Saved secrets stay blank in the form, and blank fields preserve their values.
+Open **Settings > Amazon SES** for the selected brand. Enter its IAM access key ID and secret access key, choose its SES region, and save. Use **Test connection** to read the AWS account ID, production/sandbox status, sending status, maximum messages per second, 24-hour sending quota, and rolling 24-hour usage. Temporary credentials also require a session token; renew them before expiry. Saved secrets stay blank in the form, and blank fields preserve their values.
 
-Alternatively select **Server AWS credentials (IAM role)** and choose a region. This uses the standard AWS SDK credential chain; no keys need to be entered in the UI. Only administrator sessions can change AWS settings. Brand members can check their brand's account status. IAM access keys are different from SES SMTP credentials.
+Only administrator sessions can change AWS settings. Brand members can check their brand's account status. IAM access keys are different from SES SMTP credentials. Upgrading clears any legacy server-credential brand settings; enter keys for those brands before sending. The old server-wide SNS topic and SQS queue environment variables are no longer read; enter event resources for each brand.
 
-SES is regional, so the picker selects a region rather than an availability zone. Credentials determine the AWS account. Send pacing is shared across brands using the same account and region, and quota refreshes use the selected connection. Campaigns, tests, and automated emails use the matching brand connection; a configured connection never silently falls back to another account. Changing a connection clears only SES-imported suppressions and schedules a refresh; manual suppressions and subscriber bounce/complaint states remain.
+SES is regional, so the picker selects a region rather than an availability zone. Credentials determine the AWS account. Send pacing is shared across brands using the same account and region, and quota refreshes use the selected connection. Campaigns, tests, and automated emails use the matching brand connection. Changing a connection clears only SES-imported suppressions and schedules a refresh; manual suppressions and subscriber bounce/complaint states remain.
 
 Verify sending identities in the selected SES account and region with SES Easy DKIM, configure SPF/DMARC and request production access when the account is in the sandbox. SES quotas are fetched from `GetAccount` at runtime. The app sends raw MIME through SES v2 `SendEmail`, including explicit recipient destinations, configuration set and brand/campaign tags. It does not use SMTP or SES templates.
 
-Replace `REGION`, `ACCOUNT` and `example.com` in [runtime IAM policy](deploy/iam-runtime.json) for each brand account. Connection checks need `ses:GetAccount` and `ses:ListEmailIdentities`; account suppression import needs `ses:ListSuppressedDestinations`. AWS STS `GetCallerIdentity` identifies the account for shared rate limiting and does not require an additional IAM allow statement. Restrict the SQS ARN to the event queue. The policy includes `ses:SendRawEmail` permission for compatibility, although the implemented sender calls `ses:SendEmail`. Attach [setup IAM policy](deploy/iam-setup.json) only to the operator performing configuration set setup. Creating SNS/SQS infrastructure is a separate deployment responsibility.
+Replace `REGION`, `ACCOUNT` and `example.com` in [runtime IAM policy](deploy/iam-runtime.json) for each brand account. Connection checks need `ses:GetAccount` and `ses:ListEmailIdentities`; account suppression import needs `ses:ListSuppressedDestinations`. AWS STS `GetCallerIdentity` identifies the account for shared rate limiting and does not require an additional IAM allow statement. Restrict the SQS ARN to the brand's event queue. The policy includes `ses:SendRawEmail` permission for compatibility, although the implemented sender calls `ses:SendEmail`. The **Configure SES event destination** action uses the brand keys, which need the permissions in [setup IAM policy](deploy/iam-setup.json). Creating SNS/SQS infrastructure is a separate deployment responsibility.
 
-Event ingestion is still configured at server level. Keep its SNS topic and SQS queue in the same AWS region, and configure each sending account's SES event destination to publish to that expected topic using the appropriate cross-account topic policy. The SQS consumer uses server AWS credentials, independently of brand sending keys. `postbox setup-ses` also uses the server credential chain and default region.
+Event ingestion is configured for each brand in **Settings > Amazon SES**. Enter the SNS topic ARN and, for queue delivery, the SQS queue URL. Postbox uses that brand's saved AWS keys to poll its queue. Changes take effect without restarting the server. Keep each topic and queue in the brand's SES region.
 
-1. Create an SNS topic `postbox-events` and an SQS queue `postbox-events` with a dead-letter queue. Configure a sensible redrive maximum (for example 5 receives), message retention and alarms for the dead-letter queue.
+1. Create an SNS topic and an SQS queue for the brand, with a dead-letter queue. Configure a sensible redrive maximum (for example 5 receives), message retention and alarms for the dead-letter queue.
 2. Allow SES to publish to SNS, scoped to your account and SES configuration set. Allow only that SNS topic to send to SQS, using the queue resource policy below.
 3. Subscribe the queue ARN to the topic. Keep raw message delivery disabled so the queue contains SNS envelopes. SQS ingestion validates the configured topic and deletes a message only after its database transaction commits.
-4. Set `POSTBOX_SNS_TOPIC_ARN`, `POSTBOX_SQS_QUEUE_URL` and `POSTBOX_SES_CONFIGURATION_SET=postbox`, then run `postbox setup-ses`. This creates or updates the named configuration set's `postbox` SNS event destination. Set each brand's configuration set to the same name.
+4. Enter the topic ARN and queue URL in that brand's Amazon SES settings. Set its SES configuration set in **Brand identity**, then select **Configure SES event destination** in the brand's Amazon SES settings. The brand key needs the permissions in [setup IAM policy](deploy/iam-setup.json) for this action.
 5. Alternatively subscribe `https://mail.example.com/events/sns` as an HTTPS topic endpoint. The service verifies SNS signatures, the expected topic, and signing certificate URL/chain before processing or confirming a subscription. Permit outbound HTTPS access to AWS SNS signing certificates. Do not disable signature verification.
 
 Queue resource policy example:
@@ -111,7 +111,7 @@ Prepare runtime configuration and build the image:
 cp .env.example .env
 chmod 600 .env
 # Edit .env: set POSTBOX_BASE_URL. Brand AWS keys are configured in the WebUI.
-# POSTBOX_AWS_REGION is an optional default for inherited/server AWS connections.
+# POSTBOX_AWS_REGION is the default shown when configuring a new brand.
 docker compose build --pull
 docker compose run --rm postbox init
 ```
@@ -130,12 +130,11 @@ curl --fail http://127.0.0.1:8080/healthz
 
 Configure a host TLS reverse proxy to forward your public origin to `127.0.0.1:8080` (or `POSTBOX_PORT`). Preserve Host, disable buffering for streaming reports, and restrict `/metrics`. A proxy running in another container should share the Compose network and connect to `postbox:8080`; loopback inside that proxy container refers to the proxy itself. Secure cookies and HTTPS validation are enforced by Compose. Monitor `/healthz` externally; the scratch image contains no shell or HTTP probe utility.
 
-The image uses the AWS SDK credential chain. Instance/task roles must be reachable from the container. Static credentials can be placed in the protected `.env`; shared credential profiles or web identity token files require explicit read-only mounts and their corresponding AWS environment variables. They are never included in the build context. Keep administrator bootstrap secrets out of `.env` so they are not passed to the long-running service.
+Brand sending and SQS polling use the keys configured for each brand in the WebUI. Server AWS credentials are not needed. Keep administrator bootstrap secrets out of `.env` so they are not passed to the long-running service.
 
 One-off CLI commands share the same data volume. For example:
 
 ```sh
-docker compose run --rm postbox setup-ses
 docker compose run --rm \
   -e POSTBOX_BACKUP_FILE=/var/lib/postbox/backups/manual-2026-10-10.sqlite \
   postbox backup

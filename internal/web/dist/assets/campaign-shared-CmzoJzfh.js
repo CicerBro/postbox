@@ -1,4 +1,4 @@
-import{j as a,q as l}from"./index-CUNHk-t4.js";import{B as o}from"./badge-Ft4eDrZn.js";const p=`<!DOCTYPE html>
+import{j as a,q as l}from"./index-Dh9TUxzd.js";import{B as o}from"./badge-C1oNuP3x.js";const p=`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">

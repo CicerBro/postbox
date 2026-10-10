@@ -35,6 +35,75 @@ func TestStatusWithDevelopmentAWSService(t *testing.T) {
 	}
 }
 
+func TestBrandEventRoutesUseSavedSettings(t *testing.T) {
+	p, _ := testProvider(t, "")
+	ctx := context.Background()
+	topic := "arn:aws:sns:eu-west-1:123456789012:brand-one"
+	queue := "https://sqs.eu-west-1.amazonaws.com/123456789012/brand-one"
+	if e := p.Save(ctx, 1, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "key", SecretAccessKey: "secret", TopicARN: &topic, QueueURL: &queue}); e != nil {
+		t.Fatal(e)
+	}
+	routes, e := p.EventRoutes(ctx)
+	if e != nil || len(routes) != 1 || routes[0].BrandID != 1 || routes[0].TopicARN != topic || routes[0].QueueURL != queue {
+		t.Fatalf("unexpected routes: %+v %v", routes, e)
+	}
+	if id, e := p.EventBrand(ctx, topic); e != nil || id != 1 {
+		t.Fatalf("topic resolved to %d: %v", id, e)
+	}
+	if _, e := p.SQSClient(ctx, 1); e != nil {
+		t.Fatal(e)
+	}
+	if e := p.Save(ctx, 2, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "other", SecretAccessKey: "other", TopicARN: &topic}); e == nil {
+		t.Fatal("SNS topic assigned to two brands")
+	}
+	blank := ""
+	if e := p.Save(ctx, 1, Update{Mode: "static", Region: "eu-west-1", TopicARN: &blank, QueueURL: &blank}); e != nil {
+		t.Fatal(e)
+	}
+	if routes, e = p.EventRoutes(ctx); e != nil || len(routes) != 0 {
+		t.Fatalf("cleared topic still routed: %+v %v", routes, e)
+	}
+}
+
+func TestSetupEventsUsesBrandKeys(t *testing.T) {
+	var created bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Authorization"), "Credential=brand-event-key/") {
+			t.Error("event setup did not use brand keys")
+		}
+		if r.URL.Path == "/" {
+			w.Header().Set("Content-Type", "text/xml")
+			fmt.Fprint(w, `<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/"><GetCallerIdentityResult><Account>123456789012</Account></GetCallerIdentityResult></GetCallerIdentityResponse>`)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/event-destinations") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"EventDestinations":[]}`)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/event-destinations") && r.Method == http.MethodPost {
+			created = true
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{}`)
+			return
+		}
+		t.Errorf("unexpected AWS request: %s %s", r.Method, r.URL.Path)
+		http.Error(w, "unexpected request", 404)
+	}))
+	defer server.Close()
+	p, db := testProvider(t, server.URL)
+	if _, err := db.Writer.Exec("UPDATE brands SET configuration_set='postbox' WHERE id=1"); err != nil {
+		t.Fatal(err)
+	}
+	topic := "arn:aws:sns:eu-west-1:123456789012:brand-one"
+	if err := p.Save(context.Background(), 1, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "brand-event-key", SecretAccessKey: "secret", TopicARN: &topic}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetupEvents(context.Background(), 1); err != nil || !created {
+		t.Fatalf("event destination was not created: %v", err)
+	}
+}
+
 func testProvider(t *testing.T, endpoint string) (*Provider, *store.DB) {
 	t.Helper()
 	db, e := store.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -103,19 +172,8 @@ func TestEncryptedCredentialsAndMetadata(t *testing.T) {
 	if e = p.Save(ctx, 1, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "NEW_ACCESS"}); e == nil {
 		t.Fatal("access key rotated without matching secret")
 	}
-	if e = p.Save(ctx, 1, Update{Mode: "instance_role", Region: "eu-west-1"}); e != nil {
-		t.Fatal(e)
-	}
-	r, e = read(ctx, db.Reader, 1)
-	if e != nil {
-		t.Fatal(e)
-	}
-	m, e = p.open(1, r.encrypted)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if m != (material{}) {
-		t.Fatal("role mode retained credentials")
+	if e = p.Save(ctx, 1, Update{Mode: "instance_role", Region: "eu-west-1"}); e == nil {
+		t.Fatal("server credentials mode accepted")
 	}
 }
 func TestClientCacheBrandIsolationRotationAndQuotaScope(t *testing.T) {
@@ -188,10 +246,15 @@ func TestClientCacheBrandIsolationRotationAndQuotaScope(t *testing.T) {
 func TestInvalidConfigurationNeverResolvesToFallback(t *testing.T) {
 	p, db := testProvider(t, "")
 	ctx := context.Background()
+	t.Setenv("AWS_ACCESS_KEY_ID", "server-key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "server-secret")
+	if _, e := p.ResolveBrand(ctx, 1); e == nil || e.Error() != "brand AWS access keys are not configured" {
+		t.Fatalf("unconfigured brand used server credentials: %v", e)
+	}
 	if e := p.Save(ctx, 1, Update{Mode: "static", Region: "us-east-1"}); e == nil {
 		t.Fatal("missing static credentials accepted")
 	}
-	if e := p.Save(ctx, 1, Update{Mode: "instance_role"}); e == nil {
+	if e := p.Save(ctx, 1, Update{Mode: "static"}); e == nil {
 		t.Fatal("missing region accepted")
 	}
 	_, e := db.Writer.Exec(`INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'static','us-east-1',x'00',1)`)
@@ -200,6 +263,42 @@ func TestInvalidConfigurationNeverResolvesToFallback(t *testing.T) {
 	}
 	if _, e = p.ResolveBrand(ctx, 1); e == nil || strings.Contains(e.Error(), "00") {
 		t.Fatal("corrupt static credentials must fail safely")
+	}
+}
+
+func TestMigrationRemovesServerCredentialConnections(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upgrade.db")
+	db, e := store.Open(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = db.Writer.Exec(`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'One','One','one@example.test',1),(2,'Two','Two','two@example.test',1);
+		DROP TABLE brand_aws_settings;
+		CREATE TABLE brand_aws_settings (brand_id INTEGER PRIMARY KEY REFERENCES brands(id) ON DELETE CASCADE, mode TEXT NOT NULL CHECK(mode IN ('static','instance_role')), region TEXT NOT NULL, credentials BLOB NOT NULL, revision INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL) STRICT;
+		INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'instance_role','us-east-1',x'00',1),(2,'static','eu-west-1',x'01',1);
+		INSERT INTO suppressions(brand_id,kind,value,reason,created_at) VALUES(1,'email','old@example.test','ses_sync',1),(2,'email','keep@example.test','ses_sync',1);
+		DELETE FROM schema_migrations WHERE name IN ('012_brand_keys_only.sql','013_brand_ses_events.sql')`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	db.Close()
+	db, e = store.Open(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	var count int
+	if e = db.Reader.QueryRow("SELECT count(*) FROM brand_aws_settings WHERE mode='instance_role'").Scan(&count); e != nil || count != 0 {
+		t.Fatalf("legacy server connection retained: %d %v", count, e)
+	}
+	if e = db.Reader.QueryRow("SELECT count(*) FROM brand_aws_settings WHERE brand_id=2 AND mode='static'").Scan(&count); e != nil || count != 1 {
+		t.Fatalf("brand keys removed: %d %v", count, e)
+	}
+	if e = db.Reader.QueryRow("SELECT count(*) FROM suppressions WHERE brand_id=1 AND reason='ses_sync'").Scan(&count); e != nil || count != 0 {
+		t.Fatalf("legacy imported suppression retained: %d %v", count, e)
+	}
+	if _, e = db.Writer.Exec("INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'instance_role','us-east-1',x'00',1)"); e == nil {
+		t.Fatal("schema still accepts server credential mode")
 	}
 }
 
@@ -297,7 +396,7 @@ func TestConnectionChangesResetOnlyImportedSuppressions(t *testing.T) {
 	if count != 1 {
 		t.Fatal("same credential values cleared imports")
 	}
-	for _, change := range []Update{{Mode: "static", Region: "us-east-1", SecretAccessKey: "new-secret"}, {Mode: "static", Region: "eu-west-1"}, {Mode: "static", Region: "eu-west-1", ClearSessionToken: true}, {Mode: "instance_role", Region: "eu-west-1"}} {
+	for _, change := range []Update{{Mode: "static", Region: "us-east-1", SecretAccessKey: "new-secret"}, {Mode: "static", Region: "eu-west-1"}, {Mode: "static", Region: "eu-west-1", ClearSessionToken: true}} {
 		seed()
 		if e := p.Save(ctx, 1, change); e != nil {
 			t.Fatal(e)
@@ -309,7 +408,7 @@ func TestConnectionChangesResetOnlyImportedSuppressions(t *testing.T) {
 		t.Fatal(e)
 	}
 	assertReset()
-	// A new static override clears imports inherited from server credentials.
+	// Reconfiguring a deleted brand clears old imported suppressions.
 	seed()
 	if e := p.Save(ctx, 1, u); e != nil {
 		t.Fatal(e)
@@ -418,20 +517,6 @@ func TestSnapshotGuardRejectsRotationAndDeleteRecreate(t *testing.T) {
 	}
 	if recreated == rotated || check(rotated) == nil {
 		t.Fatal("delete/recreate reused previous credential fingerprint")
-	}
-	// Legacy fallback snapshots use the default server region and mode.
-	if e = p.Delete(ctx, 1); e != nil {
-		t.Fatal(e)
-	}
-	legacy := fingerprint(record{Settings: Settings{Mode: "server", Region: "us-east-1"}})
-	if e = check(legacy); e != nil {
-		t.Fatal(e)
-	}
-	if e = p.Save(ctx, 1, Update{Mode: "instance_role", Region: "us-east-1"}); e != nil {
-		t.Fatal(e)
-	}
-	if e = check(legacy); e == nil {
-		t.Fatal("legacy snapshot accepted following explicit override")
 	}
 }
 

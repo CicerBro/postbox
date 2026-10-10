@@ -17,6 +17,7 @@ func (a *API) registerAWSSettings(m *http.ServeMux) {
 		a.route(m, method+" /api/v1/aws-settings", a.awsSettings)
 	}
 	a.route(m, "POST /api/v1/aws-settings/check", a.awsCheck)
+	a.route(m, "POST /api/v1/aws-settings/setup-events", a.awsSetupEvents)
 }
 
 func (a *API) awsScope(w http.ResponseWriter, r *http.Request, admin bool) (int64, bool) {
@@ -70,6 +71,10 @@ func (a *API) awsSettings(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, errors.New("AWS settings exceed the maximum field length"))
 			return
 		}
+		if in.TopicARN != nil && len(*in.TopicARN) > 512 || in.QueueURL != nil && len(*in.QueueURL) > 1024 {
+			fail(w, 400, errors.New("AWS settings exceed the maximum field length"))
+			return
+		}
 		saved, err := p.Settings(ctx, id)
 		if err != nil {
 			fail(w, 500, errors.New("AWS settings could not be loaded"))
@@ -102,7 +107,7 @@ func (a *API) awsSettings(w http.ResponseWriter, r *http.Request) {
 
 func safeAWSSettingsError(err error) error {
 	switch err.Error() {
-	case "AWS mode must be static or instance_role", "an explicit AWS region is required", "a new access key requires its secret access key", "access key ID and secret access key are required":
+	case "AWS mode must be static", "an explicit AWS region is required", "a new access key requires its secret access key", "access key ID and secret access key are required", "an SNS topic ARN is required for SQS ingestion", "SNS topic ARN must match the brand AWS region", "SQS queue URL must match the brand AWS region":
 		return err
 	default:
 		return errors.New("AWS settings could not be saved")
@@ -137,4 +142,27 @@ func (a *API) awsCheck(w http.ResponseWriter, r *http.Request) {
 		awsbrand.Status
 		CheckedAt int64 `json:"checked_at"`
 	}{out, time.Now().UnixMilli()})
+}
+
+func (a *API) awsSetupEvents(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.awsScope(w, r, true)
+	if !ok {
+		return
+	}
+	i := r.Context().Value(identityKey{}).(*identity)
+	if !a.allow(fmt.Sprintf("aws-events-setup:%d:%d", i.UserID, id), 3) {
+		fail(w, 429, errors.New("event setup rate limit exceeded"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	if err := a.cfg.AWSProvider.SetupEvents(ctx, id); err != nil {
+		if err.Error() == "brand keys, SNS topic and SES configuration set are required" {
+			fail(w, 400, err)
+		} else {
+			fail(w, 502, errors.New("SES event destination could not be configured. Check the brand keys, configuration set, topic policy and SES permissions."))
+		}
+		return
+	}
+	respond(w, 200, map[string]bool{"configured": true})
 }

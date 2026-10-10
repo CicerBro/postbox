@@ -26,7 +26,7 @@ func TestAWSSettingsSecretsAndAuthorization(t *testing.T) {
 		}
 	}
 	path := "/api/v1/aws-settings?brand_id=1"
-	body := `{"mode":"static","region":"eu-west-1","access_key_id":"AKIATESTSECRETID","secret_access_key":"secret-value-never-returned","session_token":"token-value-never-returned"}`
+	body := `{"mode":"static","region":"eu-west-1","access_key_id":"AKIATESTSECRETID","secret_access_key":"secret-value-never-returned","session_token":"token-value-never-returned","sns_topic_arn":"arn:aws:sns:eu-west-1:123456789012:brand-one","sqs_queue_url":"https://sqs.eu-west-1.amazonaws.com/123456789012/brand-one"}`
 	if w := request(m, "PATCH", path, body, &c, ""); w.Code != 403 {
 		t.Fatal("missing CSRF accepted", w.Code)
 	}
@@ -40,10 +40,14 @@ func TestAWSSettingsSecretsAndAuthorization(t *testing.T) {
 		}
 	}
 	var saved awsbrand.Settings
-	if err = json.Unmarshal(w.Body.Bytes(), &saved); err != nil || !saved.HasCredentials || !saved.HasSessionToken {
+	if err = json.Unmarshal(w.Body.Bytes(), &saved); err != nil || !saved.HasCredentials || !saved.HasSessionToken || saved.TopicARN != "arn:aws:sns:eu-west-1:123456789012:brand-one" || saved.QueueURL != "https://sqs.eu-west-1.amazonaws.com/123456789012/brand-one" {
 		t.Fatal(saved, err)
 	}
-	w = request(m, "PATCH", path, `{"region":"eu-central-1","secret_access_key":"","session_token":""}`, &c, csrf)
+	w = request(m, "PATCH", path, `{"sns_topic_arn":"arn:aws:sns:us-east-1:123456789012:wrong"}`, &c, csrf)
+	if w.Code != 400 {
+		t.Fatal("cross-region SNS topic accepted", w.Code, w.Body.String())
+	}
+	w = request(m, "PATCH", path, `{"region":"eu-central-1","secret_access_key":"","session_token":"","sns_topic_arn":"","sqs_queue_url":""}`, &c, csrf)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -88,6 +92,9 @@ func TestAWSSettingsSecretsAndAuthorization(t *testing.T) {
 			t.Fatal("API key elevated", method, w.Code)
 		}
 	}
+	if w = bearer("POST", "/api/v1/aws-settings/setup-events?brand_id=1", ""); w.Code != 403 {
+		t.Fatal("API key configured SES event destination", w.Code)
+	}
 	w = request(m, "POST", "/api/v1/users", `{"email":"member@example.org","password":"member-password"}`, &c, csrf)
 	var user struct{ ID int64 }
 	json.Unmarshal(w.Body.Bytes(), &user)
@@ -110,14 +117,17 @@ func TestAWSSettingsSecretsAndAuthorization(t *testing.T) {
 	if w = request(m, "PATCH", path, body, member, sess.CSRF); w.Code != 403 {
 		t.Fatal("member credential write", w.Code)
 	}
+	if w = request(m, "POST", "/api/v1/aws-settings/setup-events?brand_id=1", "", member, sess.CSRF); w.Code != 403 {
+		t.Fatal("member configured SES event destination", w.Code)
+	}
 
 	w = request(m, "DELETE", path, "", &c, csrf)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	json.Unmarshal(w.Body.Bytes(), &saved)
-	if saved.Mode != "server" || saved.Configured || saved.HasCredentials {
-		t.Fatal("override not removed", saved)
+	if saved.Mode != "static" || saved.Configured || saved.HasCredentials {
+		t.Fatal("brand keys not removed", saved)
 	}
 	if w = request(m, "GET", "/api/v1/aws-settings?brand_id=999", "", &c, ""); w.Code != 404 {
 		t.Fatal("missing brand", w.Code)

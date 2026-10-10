@@ -11,12 +11,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"io"
 	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"postbox/internal/store"
 	"strings"
@@ -54,6 +56,25 @@ func TestSNSVerification(t *testing.T) {
 	}
 	if e = v.Verify(context.Background(), m); e != nil || requests != 1 {
 		t.Fatalf("certificate cache requests=%d err=%v", requests, e)
+	}
+	service := New(eventDB(t), &Config{ResolveTopic: func(_ context.Context, arn string) (int64, error) {
+		if arn != v.TopicARN {
+			return 0, fmt.Errorf("unknown topic")
+		}
+		return 1, nil
+	}})
+	service.verifiers.Store(v.TopicARN, v)
+	m.MessageID = "routed"
+	m.Message = `{"eventType":"Delivery","mail":{"messageId":"ses-id","tags":{"brand_id":["1"]}},"delivery":{"recipients":["user@example.com"]}}`
+	b, _ = canonical(m)
+	h = sha256.Sum256(b)
+	sig, _ = rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, h[:])
+	m.Signature = base64.StdEncoding.EncodeToString(sig)
+	body, _ := json.Marshal(m)
+	w := httptest.NewRecorder()
+	service.SNS(w, httptest.NewRequest(http.MethodPost, "/events/sns", strings.NewReader(string(body))))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("brand SNS route returned %d: %s", w.Code, w.Body.String())
 	}
 	m.Message = "forged"
 	if v.Verify(context.Background(), m) == nil {
@@ -129,6 +150,19 @@ func TestComplaintDedupGlobalSuppression(t *testing.T) {
 	db.Reader.QueryRow(`SELECT status FROM campaign_recipients WHERE campaign_id=2`).Scan(&status)
 	if status != "skipped" {
 		t.Fatalf("pending status %s", status)
+	}
+}
+
+func TestBrandTopicRejectsAnotherBrandsEvent(t *testing.T) {
+	db := eventDB(t)
+	s := New(db, &Config{})
+	payload := []byte(`{"eventType":"Complaint","mail":{"messageId":"ses-id","tags":{"brand_id":["2"]}},"complaint":{"complainedRecipients":[{"emailAddress":"user@example.com"}]}}`)
+	if e := s.process(context.Background(), 1, "wrong-brand", payload); e == nil {
+		t.Fatal("accepted an event tagged for another brand")
+	}
+	var count int
+	if e := db.Reader.QueryRow("SELECT count(*) FROM ses_events").Scan(&count); e != nil || count != 0 {
+		t.Fatalf("rejected event was persisted: %d %v", count, e)
 	}
 }
 func TestBounceThreshold(t *testing.T) {
