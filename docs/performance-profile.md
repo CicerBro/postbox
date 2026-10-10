@@ -102,11 +102,9 @@ the full ledger-enabled 350,000-recipient runs are the acceptance proof.
 | 1,000/s | Isolated | 989.62/s | 997.63/s | 353.670s | 127/152ms | 62ms | 387.5MB | 808.8MB | 1,048.0s (296.3%) | 350,000 / 350,000 | 0 / 0 / 0 | 1,232 |
 | 175/s | Overlapped UI builds, CLI cross-builds, and full test runs | 173.18/s | 173.42/s | 2,021.036s | 128/170ms | 56ms | 204.0MB | 422.9MB | 1,618.1s (80.1%) | 350,000 / 350,000 | 0 / 0 / 0 | 191 |
 
-Both full campaigns completed within the 2% rate tolerance with the durable dispatch ledger enabled. Resource figures include both the client and in-process fake SES fixture. The 175/s resource and throughput figures also reflect concurrent machine load. Raw run artifacts: [1,000/s isolated](performance/1000-isolated-350000.json) and [175/s overlapped](performance/175-350000.json).
+Both full campaigns completed within the 2% rate tolerance with the durable dispatch ledger enabled. Resource figures include both the client and in-process fake SES fixture. The 175/s resource and throughput figures also reflect concurrent machine load.
 
-The isolated 1,000/s run is recorded in
-[`performance/1000-isolated-350000.json`](performance/1000-isolated-350000.json).
-It completed all 350,000 recipients in 353.670 seconds, or 989.62/s across the
+The isolated 1,000/s run completed all 350,000 recipients in 353.670 seconds, or 989.62/s across the
 complete campaign, within the 2% acceptance tolerance. The request span achieved
 997.63/s. All 350,000 sends were accepted and sent; failed, unknown, and duplicate
 counts were zero. Request p50/p99 were 127/152ms and writer p99 was 62ms.
@@ -126,8 +124,7 @@ The run proves this isolated 350,000-recipient case at 1,000/s with the durable
 dispatch ledger enabled. It does not establish an unconditional production
 throughput or memory bound. The full contended 1,000/s run achieved 978.80/s, 2.12% below target and just
 outside the 2% complete-campaign tolerance. The isolated pass does not prove
-that contention was its only cause. The full 175/s run is recorded in
-[`performance/175-350000.json`](performance/175-350000.json). It completed in
+that contention was its only cause. The full 175/s run completed in
 2,021.036 seconds at 173.18/s over the full campaign, within the 2% tolerance;
 the request span achieved 173.42/s. Accepted and sent counts were 350,000, with
 zero duplicates, failures, or unknown outcomes. Request p50/p99 were 128/170ms
@@ -208,16 +205,11 @@ rate includes fixed setup and final persistence. FULL without fullfsync also
 cleared 250/s on this Mac. The much slower earlier FULL-only run below shows
 substantial run-to-run variation, so the table is evidence for this fixture,
 not a guarantee of a Linux ZFS deployment. Measure that host before capacity
-planning. Current NORMAL reports: [300/s](performance/normal-300-10000.json)
-and [1,000/s](performance/normal-1000-10000.json). Comparison reports:
-[FULL without fullfsync at 300/s](performance/full-no-fullfsync-300-10000.json),
-[FULL without fullfsync at 1,000/s](performance/full-no-fullfsync-1000-10000.json),
-[FULL with fullfsync at 175/s](performance/fullfsync-175-2000.json) and
-[FULL with fullfsync at 1,000/s](performance/fullfsync-1000-2000.json).
+planning. The table retains the results; raw synthetic run files are not kept
+in the repository.
 
 An earlier FULL-only 10,000-recipient run, before enabling fullfsync,
 achieved 159.72/s at configured 1,000/s in 62.608s. Its writer p99 was 7,407ms,
 background commits 59, and all 10,000 were accepted/sent with zero duplicates,
 failures or unknowns. The difference from the later FULL-only run was not
 isolated, so these results should not be attributed solely to the sync pragma.
-[Intermediate report](performance/full-without-fullfsync-1000-10000.json).
