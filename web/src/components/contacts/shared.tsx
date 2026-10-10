@@ -35,7 +35,7 @@ export type Subscriber = {
 export const selectClass =
   "h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs w-full";
 export const tableClass =
-  "w-full text-sm [&_th]:text-left [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:py-3 [&_th]:py-3 [&_tr]:border-b [&_td]:px-3 [&_th]:px-3";
+  "w-full text-sm [&_th]:text-left [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:py-3 [&_th]:h-10 [&_th]:py-2 [&_tr]:border-b [&_tbody_tr]:hover:bg-muted/50 [&_tbody_tr:last-child]:border-0 [&_td]:px-3 [&_th]:px-3";
 export function ContactStatusBadge({ status }: { status: string }) {
   return (
     <Badge variant="outline" className={`status-badge status-${status}`}>

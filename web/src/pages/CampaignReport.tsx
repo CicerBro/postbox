@@ -162,7 +162,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           >
             <ArrowLeft size={14} /> Back to campaign
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold">
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">
             {campaign.data?.[0]?.subject ?? "Campaign report"}
           </h1>
           {campaign.data?.[0] && (

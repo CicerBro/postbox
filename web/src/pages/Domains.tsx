@@ -6,8 +6,7 @@ export function DomainsPage({ brandId }: { brandId: number }) {
     <div className="space-y-6">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Deliverability</p>
-          <h1>Domains</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Domains</h1>
           <p className="page-subtitle">
             Configure your sending identity and branded tracking links.
           </p>
@@ -25,7 +24,7 @@ export function DomainsPage({ brandId }: { brandId: number }) {
             title="DNS and Amazon SES setup"
             description="Complete these steps in your AWS console and DNS provider before sending."
           >
-            <ol className="list-decimal space-y-4 pl-5 text-sm marker:font-semibold marker:text-indigo-600">
+            <ol className="list-decimal space-y-4 pl-5 text-sm marker:font-semibold marker:text-foreground">
               <li>
                 In Amazon SES, create and verify the sender domain in the region
                 used by Postbox. Publish the exact Easy DKIM records supplied by

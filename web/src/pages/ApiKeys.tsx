@@ -64,8 +64,7 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
     <div className="space-y-6">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Developer tools</p>
-          <h1>API keys</h1>
+          <h1 className="text-2xl font-bold tracking-tight">API keys</h1>
           <p className="page-subtitle">
             Connect your tools with secure access to this brand.
           </p>

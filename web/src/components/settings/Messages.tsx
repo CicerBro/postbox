@@ -84,7 +84,7 @@ export function Messages({ brandId }: { brandId: number }) {
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input
                     type="checkbox"
-                    className="accent-indigo-600"
+                    className="accent-primary"
                     checked={active}
                     disabled={q.data?.[k] !== undefined}
                     onChange={(e) => {

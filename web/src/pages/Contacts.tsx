@@ -1357,9 +1357,9 @@ function ContactsWorkspace({ brandId }: { brandId: number }) {
   };
   return (
     <div className="space-y-6">
-      <div className="page-header flex justify-between items-start">
+      <div className="page-header flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-bold tracking-tight">
             Contacts & lists
           </h1>
           <p className="page-subtitle text-sm text-muted-foreground mt-1">
@@ -1371,11 +1371,7 @@ function ContactsWorkspace({ brandId }: { brandId: number }) {
           New contact
         </Button>
       </div>
-      <div
-        className="page-tabs flex flex-wrap gap-2 border-b pb-3"
-        role="tablist"
-        aria-label="Contact tools"
-      >
+      <div className="page-tabs" role="tablist" aria-label="Contact tools">
         {[
           ["contacts", "Contacts"],
           ["lists", "Lists"],

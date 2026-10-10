@@ -45,8 +45,14 @@ test database and a loopback fake SES endpoint. Browser checks covered:
 - System, Light and Dark icon controls select the theme. Bootstrap tests cover
   first paint and saved preferences; System subscribes to OS appearance changes.
 - Settings, account security and the API-key page load without browser errors.
-- The refreshed admin UI has grouped navigation, a persisted collapse rail,
-  semantic status badges, Radix action menus and slate/indigo light/dark themes.
+- The admin UI directly adapts shadcn-admin's inset layout, compact sidebar,
+  locally bundled Inter font and neutral OKLCH light/dark themes. The original
+  slate/indigo styling has been replaced.
+- Reference comparison at 1762 by 1194 verifies the 256px sidebar, workspace
+  button at (16,16) sized 224 by 48, first navigation row at (16,112) sized
+  224 by 32, and main inset starting at x=256 with width 1498.
+- The brand dropdown selects the current brand; page search filters routes
+  and opens a result on Enter. Control K opens the search dialog; Escape closes it.
 - Contact email-prefix filtering returns real backend results; list and campaign
   menus support keyboard dismissal, and campaign reports retain connected SSE.
 - At 390px mobile width, account navigation closes the focus-trapped sheet.
@@ -54,6 +60,6 @@ test database and a loopback fake SES endpoint. Browser checks covered:
   Temporary viewport overrides were reset after these checks.
 
 Physical passkey enrollment and live AWS infrastructure were not exercised.
-The preview stays configured for fake SES with global sending disabled.
+The preview stays configured for loopback fake SES.
 
-![Refreshed overview with the three theme controls](screenshots/overview.jpg)
+![Reference-style sidebar and settings](screenshots/reference-settings.jpg)

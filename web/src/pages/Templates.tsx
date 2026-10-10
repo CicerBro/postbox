@@ -108,9 +108,9 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
   }
   return (
     <div className="space-y-6">
-      <div className="page-header flex flex-wrap items-center justify-between gap-4">
+      <div className="page-header flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">Templates</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Templates</h1>
           <p className="page-subtitle text-sm text-muted-foreground">
             Reusable full HTML documents for this brand.
           </p>

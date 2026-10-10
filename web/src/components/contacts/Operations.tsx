@@ -85,7 +85,7 @@ export function CSVImport({
     }
   };
   return (
-    <section className="table-card rounded-lg border p-6 space-y-4">
+    <section className="rounded-xl border bg-card p-6 shadow-sm space-y-4">
       <div>
         <h2 className="section-heading text-lg font-semibold">Import CSV</h2>
         <p className="text-sm text-muted-foreground">
@@ -307,7 +307,7 @@ export function ExportContacts({
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
   return (
-    <section className="table-card rounded-lg border p-6 space-y-4">
+    <section className="rounded-xl border bg-card p-6 shadow-sm space-y-4">
       <h2 className="section-heading text-lg font-semibold">Export contacts</h2>
       <p className="text-sm text-muted-foreground">
         Download emails, names, statuses, custom fields and consent dates. A
@@ -399,7 +399,7 @@ export function MassOperations({
     setEmails(values);
   };
   return (
-    <section className="table-card rounded-lg border p-6 space-y-4">
+    <section className="rounded-xl border bg-card p-6 shadow-sm space-y-4">
       <h2 className="section-heading text-lg font-semibold">
         Mass unsubscribe or GDPR erase
       </h2>
@@ -618,7 +618,7 @@ export function Housekeeping({ brandId }: { brandId: number }) {
     setConfirm(false);
   }, [days]);
   return (
-    <section className="table-card rounded-lg border p-6 space-y-4">
+    <section className="rounded-xl border bg-card p-6 shadow-sm space-y-4">
       <h2 className="section-heading text-lg font-semibold">Housekeeping</h2>
       <Field label="Remove unconfirmed memberships older than (days)">
         <Input

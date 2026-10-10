@@ -401,9 +401,9 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
   }, [searchParams, setSearchParams]);
   return (
     <div className="space-y-6">
-      <div className="page-header flex justify-between items-start">
+      <div className="page-header flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Segments</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Segments</h1>
           <p className="page-subtitle text-sm text-muted-foreground mt-1">
             Build audiences from list memberships, engagement and indexed custom
             fields.
@@ -422,7 +422,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
           <div className="relative w-full max-w-sm">
             <Search
               size={16}
-              className="absolute left-3 top-3 text-muted-foreground"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
             <Input
               aria-label="Search segments"

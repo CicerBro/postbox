@@ -10,6 +10,7 @@ import {
 } from "react-router-dom";
 import {
   Mail,
+  Search,
   LayoutDashboard,
   Send,
   Users,
@@ -26,7 +27,6 @@ import {
   LogOut,
   Menu,
   PanelLeft,
-  ChevronRight,
   ChevronsUpDown,
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -97,6 +97,27 @@ export default function App() {
   );
   const location = useLocation();
   const [mobile, setMobile] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [pageSearch, setPageSearch] = useState("");
+  const searchResults = navigation.filter(([, label]) =>
+    label.toLowerCase().includes(pageSearch.trim().toLowerCase()),
+  );
+  useEffect(() => {
+    function shortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen((open) => !open);
+      }
+    }
+    document.addEventListener("keydown", shortcut);
+    return () => document.removeEventListener("keydown", shortcut);
+  }, []);
+  function goToPage(path: string) {
+    navigate(path);
+    setSearchOpen(false);
+    setPageSearch("");
+    setMobile(false);
+  }
   const [theme, setTheme] = useThemePreference();
   const session = useQuery({
     queryKey: ["session"],
@@ -209,36 +230,74 @@ export default function App() {
       </Link>
     </div>
   );
-  const currentPage =
-    navigation.find(([path]) =>
-      path === "/"
-        ? location.pathname === "/" || location.pathname === "/overview"
-        : location.pathname.startsWith(path),
-    )?.[1] ?? "Overview";
+  // Adapted from shadcn-admin's TeamSwitcher: one compact workspace switcher.
   const sidebarContent = (
     <>
-      <Link className="brand-logo" to="/" onClick={() => setMobile(false)}>
-        <span className="brand-mark">
-          <Mail size={21} />
-        </span>
-        <span className="sidebar-label">
-          postbox<small>Newsletter workspace</small>
-        </span>
-      </Link>
-      <div className="workspace-identity">
-        <span className="workspace-avatar">
-          {brand?.name?.slice(0, 1).toUpperCase() ?? "P"}
-        </span>
-        <span className="sidebar-label">
-          <strong>{brand?.name ?? "Your workspace"}</strong>
-          <small>Brand workspace</small>
-        </span>
+      <div className="sidebar-header">
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button className="team-switcher" aria-label="Switch brand">
+              <span className="brand-mark">
+                <Mail size={16} />
+              </span>
+              <span className="sidebar-label team-copy">
+                <strong>Postbox</strong>
+                <small>{brand?.name ?? "Newsletter workspace"}</small>
+              </span>
+              <ChevronsUpDown size={16} className="sidebar-label" />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              className="dropdown-content brand-menu"
+              side="right"
+              align="start"
+              sideOffset={4}
+            >
+              <DropdownMenu.Label className="dropdown-label">
+                Brands
+              </DropdownMenu.Label>
+              {brands.data?.map((b) => (
+                <DropdownMenu.Item
+                  key={b.id}
+                  onSelect={() => {
+                    setSelected(b.id);
+                    setMobile(false);
+                  }}
+                >
+                  <span className="brand-menu-avatar">
+                    {b.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="brand-menu-name">{b.name}</span>
+                  {b.id === brandId && (
+                    <span className="brand-selected">Selected</span>
+                  )}
+                </DropdownMenu.Item>
+              ))}
+              {session.data.admin && (
+                <>
+                  <DropdownMenu.Separator className="dropdown-separator" />
+                  <DropdownMenu.Item
+                    onSelect={() => {
+                      setMobile(false);
+                      setNewBrand(true);
+                    }}
+                  >
+                    <span className="brand-menu-avatar">
+                      <Plus size={16} />
+                    </span>{" "}
+                    Add brand
+                  </DropdownMenu.Item>
+                </>
+              )}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       </div>
       <nav aria-label="Main navigation">
         {[
-          ["Workspace", navigation.slice(0, 1)],
-          ["Manage", navigation.slice(1, 5)],
-          ["Configuration", navigation.slice(5)],
+          ["General", navigation.slice(0, 5)],
+          ["Other", navigation.slice(5)],
         ].map(([heading, items]) => (
           <div className="nav-group" key={heading as string}>
             <p className="nav-group-label sidebar-label">{heading as string}</p>
@@ -251,10 +310,10 @@ export default function App() {
                   title={label}
                   onClick={() => setMobile(false)}
                   className={({ isActive }) =>
-                    `nav-item ${isActive ? "active" : ""}`
+                    `nav-item ${isActive || (path === "/" && location.pathname === "/overview") ? "active" : ""}`
                   }
                 >
-                  <Icon size={18} />
+                  <Icon size={16} />
                   <span className="sidebar-label">{label}</span>
                 </NavLink>
               ),
@@ -296,29 +355,6 @@ export default function App() {
             Sending managed by administrator
           </span>
         )}
-        <div className="sidebar-tools">
-          <div className="theme-control" role="group" aria-label="Theme">
-            {(
-              [
-                ["system", "System theme", Monitor],
-                ["light", "Light theme", Sun],
-                ["dark", "Dark theme", Moon],
-              ] as const
-            ).map(([preference, label, Icon]) => (
-              <button
-                key={preference}
-                type="button"
-                className="theme-option"
-                aria-label={label}
-                title={label}
-                aria-pressed={theme === preference}
-                onClick={() => setTheme(preference)}
-              >
-                <Icon size={16} aria-hidden="true" />
-              </button>
-            ))}
-          </div>
-        </div>
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
             <button className="account-trigger" aria-label="Account menu">
@@ -378,6 +414,46 @@ export default function App() {
             <div className="sidebar mobile-sidebar">{sidebarContent}</div>
           </DialogContent>
         </Dialog>
+        <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Find a page</DialogTitle>
+              <DialogDescription>
+                Search workspace navigation. Select a page to open it.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              aria-label="Search pages"
+              placeholder="Type a page name…"
+              value={pageSearch}
+              onChange={(event) => setPageSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && searchResults[0]) {
+                  event.preventDefault();
+                  goToPage(searchResults[0][0]);
+                }
+              }}
+            />
+            <div className="page-search-results">
+              {searchResults.map(([path, label, Icon]) => (
+                <Button
+                  key={path}
+                  variant="ghost"
+                  className="page-search-result"
+                  onClick={() => goToPage(path)}
+                >
+                  <Icon size={16} />
+                  {label}
+                </Button>
+              ))}
+              {searchResults.length === 0 && (
+                <p className="muted" role="status">
+                  No matching pages.
+                </p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
         <div className="app-workspace">
           <header className="topbar">
             <div className="topbar-leading">
@@ -406,14 +482,67 @@ export default function App() {
                 <Menu size={19} />
               </Button>
               <div className="topbar-divider" />
-              <nav className="breadcrumbs" aria-label="Breadcrumb">
-                <span>Workspace</span>
-                <ChevronRight size={14} />
-                <strong>{currentPage}</strong>
+              <nav
+                className="header-navigation"
+                aria-label="Workspace navigation"
+              >
+                {[
+                  ["/", "Overview"],
+                  ["/campaigns", "Campaigns"],
+                  ["/contacts", "Contacts"],
+                  ["/settings", "Settings"],
+                ].map(([path, label]) => (
+                  <NavLink
+                    key={path}
+                    to={path}
+                    end={path === "/"}
+                    className={({ isActive }) =>
+                      isActive ||
+                      (path === "/" && location.pathname === "/overview")
+                        ? "active"
+                        : ""
+                    }
+                  >
+                    {label}
+                  </NavLink>
+                ))}
               </nav>
             </div>
             <div className="topbar-actions">
-              <span className="workspace-tag">Self-hosted</span>
+              <Button
+                variant="outline"
+                className="page-search"
+                onClick={() => {
+                  setPageSearch("");
+                  setSearchOpen(true);
+                }}
+                aria-label="Find a page"
+              >
+                <Search size={16} />
+                <span className="page-search-label">Search</span>
+                <kbd>⌘ K</kbd>
+              </Button>
+              <div className="theme-control" role="group" aria-label="Theme">
+                {(
+                  [
+                    ["system", "System theme", Monitor],
+                    ["light", "Light theme", Sun],
+                    ["dark", "Dark theme", Moon],
+                  ] as const
+                ).map(([preference, label, Icon]) => (
+                  <button
+                    key={preference}
+                    type="button"
+                    className="theme-option"
+                    aria-label={label}
+                    title={label}
+                    aria-pressed={theme === preference}
+                    onClick={() => setTheme(preference)}
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger asChild>
                   <Button aria-label="Create new">
@@ -460,30 +589,6 @@ export default function App() {
               </DropdownMenu.Root>
             </div>
           </header>
-          <div className="brand-bar">
-            <div className="brand-tabs" aria-label="Brands">
-              {brands.data?.map((b) => (
-                <button
-                  key={b.id}
-                  className={b.id === brandId ? "selected" : ""}
-                  onClick={() => setSelected(b.id)}
-                >
-                  <span className="brand-tab-dot" />
-                  {b.name}
-                </button>
-              ))}
-              {session.data.admin && (
-                <button
-                  className="add-brand"
-                  aria-label="Create brand"
-                  title="Create brand"
-                  onClick={() => setNewBrand(true)}
-                >
-                  <Plus size={15} />
-                </button>
-              )}
-            </div>
-          </div>
           <main className="page-content">
             {brands.isPending ? (
               <p role="status">Loading brands…</p>

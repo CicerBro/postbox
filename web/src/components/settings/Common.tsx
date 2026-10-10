@@ -2,7 +2,6 @@ import { useState, type ReactNode } from "react";
 import { CheckCircle2, CircleAlert, Copy, KeyRound } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 export function Section({
   title,
   description,
@@ -13,13 +12,15 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <Card className="settings-section">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {description && <p className="text-muted-foreground">{description}</p>}
-      </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
-    </Card>
+    <section className="space-y-4">
+      <div className="space-y-1 border-b pb-4">
+        <h3 className="text-lg font-medium">{title}</h3>
+        {description && (
+          <p className="text-sm text-muted-foreground">{description}</p>
+        )}
+      </div>
+      <div className="space-y-4">{children}</div>
+    </section>
   );
 }
 export function Field({
@@ -141,7 +142,7 @@ export function Checks({
         >
           <input
             type="checkbox"
-            className="accent-indigo-600"
+            className="accent-primary"
             checked={selected.includes(v)}
             onChange={(e) =>
               onChange(

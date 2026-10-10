@@ -89,9 +89,9 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
   });
   return (
     <div className="space-y-6">
-      <div className="page-header flex flex-wrap items-center justify-between gap-4">
+      <div className="page-header flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">Campaigns</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Campaigns</h1>
           <p className="page-subtitle text-sm text-muted-foreground">
             Create newsletters and follow each delivery.
           </p>
@@ -467,7 +467,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
           <Link to="/campaigns" className="text-sm underline">
             Campaigns
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold">
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">
             {routeID ? subject || "Campaign" : "New campaign"}
           </h1>
           <div className="mt-2 flex items-center gap-3">

@@ -58,38 +58,53 @@ export function SettingsPage({ brandId }: { brandId: number }) {
   ];
   const selected = tabs.some(([id]) => id === tab) ? tab : "security";
   return (
-    <div className="space-y-6">
-      <div className="page-heading">
+    <div>
+      <div className="space-y-0.5">
         <div>
-          <p className="eyebrow">Workspace</p>
-          <h1>Settings</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
           <p className="page-subtitle">
             Manage your account, brand preferences and integrations.
           </p>
         </div>
       </div>
-      <div className="settings-layout">
-        <nav aria-label="Settings sections" className="settings-nav">
+      <div role="separator" className="my-4 border-t lg:my-6" />
+      <div className="flex flex-col gap-2 lg:flex-row lg:gap-12">
+        <nav
+          aria-label="Settings sections"
+          className="flex w-full shrink-0 gap-2 overflow-x-auto px-1 py-2 lg:w-1/5 lg:flex-col lg:gap-1"
+        >
           {tabs.map(([id, label]) => {
             const Icon = icons[id];
             return (
               <Button
                 key={id}
                 variant="ghost"
-                className={selected === id ? "active justify-start" : "justify-start"}
-                size="sm"
+                className={
+                  selected === id
+                    ? "justify-start bg-muted hover:bg-accent"
+                    : "justify-start hover:underline"
+                }
+                size="default"
                 aria-current={selected === id ? "page" : undefined}
                 onClick={() => setTab(id)}
               >
-                <Icon size={17} aria-hidden="true" />
+                <Icon size={18} aria-hidden="true" />
                 {label}
               </Button>
             );
           })}
         </nav>
-        <div className="settings-content space-y-5">
-          <div className="space-y-1">
-            <h2>{tabs.find(([id]) => id === selected)?.[1]}</h2>
+        <div
+          className={`min-w-0 flex-1 space-y-6 p-1 [&_form]:max-w-xl ${
+            selected === "security" || selected === "brand"
+              ? "[&>section]:max-w-xl"
+              : ""
+          }`}
+        >
+          <div className="space-y-1 border-b pb-4">
+            <h2 className="text-lg font-medium">
+              {tabs.find(([id]) => id === selected)?.[1]}
+            </h2>
             <p className="page-subtitle">{descriptions[selected]}</p>
           </div>
           {selected === "security" && <Security />}
