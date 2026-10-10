@@ -36,19 +36,27 @@ Sending starts disabled when a database is first opened through the Postbox CLI,
 
 Account passwords require at least 8 characters, including the initial administrator password supplied to `postbox admin` and passwords created or changed in Settings.
 
-Configuration uses `POSTBOX_` environment variables and flags. Run `postbox serve --help` for all flags. Relevant defaults: `--db ./data/postbox.db`, `--listen 127.0.0.1:8080`, `--secure-cookies=true`, `--max-workers=512`, `--retention-days=90`, `--recovery-policy=unknown`, `--shutdown-timeout=60s`. AWS credentials use the SDK standard chain, including instance/task roles, environment variables, and shared AWS profiles. Do not put credentials into SQLite.
+Configuration uses `POSTBOX_` environment variables and flags. Run `postbox serve --help` for all flags. Relevant defaults: `--db ./data/postbox.db`, `--listen 127.0.0.1:8080`, `--secure-cookies=true`, `--max-workers=512`, `--retention-days=90`, `--recovery-policy=unknown`, `--shutdown-timeout=60s`. Configure AWS for each brand in **Settings > Amazon SES**. Choose an AWS region and either enter that brand's IAM access keys or select the server AWS credential chain (instance/task roles, environment variables, or shared AWS profiles). Access keys and optional session tokens are encrypted in SQLite with a key derived from the server secret; the API never returns credential values. Brands without explicit settings retain their existing server connection.
 
 The public base URL is required for service startup. Production requires HTTPS and secure cookies. Put a TLS reverse proxy in front of the loopback HTTP listener, preserve the original Host, and expose tracking paths, subscribe forms and `/events/sns`. Streaming campaign reports need proxy buffering disabled and generous idle timeouts. The server chooses cookie security from configuration, not untrusted forwarding headers. Local development can use `--development --base-url http://localhost:8080 --secure-cookies=false`.
 
 The configured base URL is also the trust anchor for passkeys. Set `POSTBOX_BASE_URL` or `--base-url` to the exact browser origin, such as `https://mail.example.com` or `https://mail.example.com:8443`, with no path, query or fragment. Postbox derives the WebAuthn relying-party domain from that configured origin and checks browser request origins against it. It never derives either value from the request Host header. Passkeys require HTTPS, except that HTTP on `localhost` is allowed for development. IP addresses are not supported as relying-party domains. For local passkey testing, serve the embedded Go application at its configured localhost origin so the browser origin matches exactly.
 
-The tracking HMAC key is generated once using cryptographic randomness at `DB.secret`, or `--secret-file`. Its permissions must be 0600. Back it up with the database. Changing or losing it invalidates links in already delivered messages. Preserve it across redeployments and restores.
+The tracking HMAC key is generated once using cryptographic randomness at `DB.secret`, or `--secret-file`. Its permissions must be 0600. Back it up with the database. Changing or losing it invalidates links in already delivered messages and prevents decryption of saved brand AWS credentials. Preserve it across redeployments and restores.
 
 ## AWS setup
 
-Choose one AWS region for SES, SNS and SQS. Verify sending identities with SES Easy DKIM, configure SPF/DMARC and request production access when the account is in the sandbox. SES quotas are fetched from `GetAccount` at runtime. The app sends raw MIME through SES v2 `SendEmail`, including explicit recipient destinations, configuration set and brand/campaign tags. It does not use SMTP or SES templates.
+Open **Settings > Amazon SES** for the selected brand. Select **Static access keys**, enter its access key ID and secret access key, choose its SES region, and save. Use **Test connection** to read the AWS account ID, production/sandbox status, sending status, maximum messages per second, 24-hour sending quota, and rolling 24-hour usage. Temporary credentials also require a session token; renew them before expiry. Saved secrets stay blank in the form, and blank fields preserve their values.
 
-Replace `REGION`, `ACCOUNT` and `example.com` in [runtime IAM policy](deploy/iam-runtime.json). Restrict the SQS ARN to the event queue. The policy includes `ses:SendRawEmail` permission for compatibility, although the implemented sender calls `ses:SendEmail`. Attach [setup IAM policy](deploy/iam-setup.json) only to the operator performing configuration set setup. Creating SNS/SQS infrastructure is a separate deployment responsibility.
+Alternatively select **Server AWS credentials (IAM role)** and choose a region. This uses the standard AWS SDK credential chain; no keys need to be entered in the UI. Only administrator sessions can change AWS settings. Brand members can check their brand's account status. IAM access keys are different from SES SMTP credentials.
+
+SES is regional, so the picker selects a region rather than an availability zone. Credentials determine the AWS account. Send pacing is shared across brands using the same account and region, and quota refreshes use the selected connection. Campaigns, tests, and automated emails use the matching brand connection; a configured connection never silently falls back to another account. Changing a connection clears only SES-imported suppressions and schedules a refresh; manual suppressions and subscriber bounce/complaint states remain.
+
+Verify sending identities in the selected SES account and region with SES Easy DKIM, configure SPF/DMARC and request production access when the account is in the sandbox. SES quotas are fetched from `GetAccount` at runtime. The app sends raw MIME through SES v2 `SendEmail`, including explicit recipient destinations, configuration set and brand/campaign tags. It does not use SMTP or SES templates.
+
+Replace `REGION`, `ACCOUNT` and `example.com` in [runtime IAM policy](deploy/iam-runtime.json) for each brand account. Connection checks need `ses:GetAccount` and `ses:ListEmailIdentities`; account suppression import needs `ses:ListSuppressedDestinations`. AWS STS `GetCallerIdentity` identifies the account for shared rate limiting and does not require an additional IAM allow statement. Restrict the SQS ARN to the event queue. The policy includes `ses:SendRawEmail` permission for compatibility, although the implemented sender calls `ses:SendEmail`. Attach [setup IAM policy](deploy/iam-setup.json) only to the operator performing configuration set setup. Creating SNS/SQS infrastructure is a separate deployment responsibility.
+
+Event ingestion is still configured at server level. Keep its SNS topic and SQS queue in the same AWS region, and configure each sending account's SES event destination to publish to that expected topic using the appropriate cross-account topic policy. The SQS consumer uses server AWS credentials, independently of brand sending keys. `postbox setup-ses` also uses the server credential chain and default region.
 
 1. Create an SNS topic `postbox-events` and an SQS queue `postbox-events` with a dead-letter queue. Configure a sensible redrive maximum (for example 5 receives), message retention and alarms for the dead-letter queue.
 2. Allow SES to publish to SNS, scoped to your account and SES configuration set. Allow only that SNS topic to send to SQS, using the queue resource policy below.
@@ -95,14 +103,15 @@ The SQS client uses 20-second long polling with a longer HTTP timeout. Poison me
 
 ### Docker Compose
 
-The [Dockerfile](Dockerfile) builds the frontend with Bun and a static Go binary, then packages it in [`scratch`](https://docs.docker.com/build/building/base-images/#create-a-minimal-base-image-using-scratch) with CA certificates and embedded timezone data. The image runs as UID/GID `65532:65532`. The [Compose configuration](compose.yml) uses a read-only root filesystem, drops all capabilities, and persists SQLite, its WAL files, the tracking secret, CSV jobs and backups in the `postbox-data` named volume.
+The [Dockerfile](Dockerfile) builds the frontend with Bun and a static Go binary, then packages it in [`scratch`](https://docs.docker.com/build/building/base-images/#create-a-minimal-base-image-using-scratch) with CA certificates and embedded timezone data. The image runs as UID/GID `65532:65532`. The [Compose configuration](compose.yml) uses a read-only root filesystem, drops all capabilities, and persists SQLite, its WAL files, the tracking/credential-encryption secret, CSV jobs and backups in the `postbox-data` named volume.
 
 Prepare runtime configuration and build the image:
 
 ```sh
 cp .env.example .env
 chmod 600 .env
-# Edit .env: set POSTBOX_BASE_URL and POSTBOX_AWS_REGION, plus AWS credentials if needed.
+# Edit .env: set POSTBOX_BASE_URL. Brand AWS keys are configured in the WebUI.
+# POSTBOX_AWS_REGION is an optional default for inherited/server AWS connections.
 docker compose build --pull
 docker compose run --rm postbox init
 ```

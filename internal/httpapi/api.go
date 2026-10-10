@@ -18,11 +18,13 @@ import (
 
 	"github.com/go-webauthn/webauthn/webauthn"
 
+	"postbox/internal/awsbrand"
 	"postbox/internal/send"
 	"postbox/internal/store"
 )
 
 type Config struct {
+	AWSProvider                                *awsbrand.Provider
 	SecureCookies                              bool
 	SessionTTL                                 time.Duration
 	BaseURL, TurnstileSecret, TurnstileSiteKey string
@@ -80,6 +82,7 @@ func (a *API) Register(m *http.ServeMux) {
 	a.registerCampaigns(m)
 	a.registerSubscribers(m)
 	a.registerOperations(m)
+	a.registerAWSSettings(m)
 	a.registerWebhooks(m)
 	a.registerPublic(m)
 }

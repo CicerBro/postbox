@@ -9,8 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sesv2"
+	"github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 	"github.com/aws/smithy-go"
 	"postbox/internal/config"
+	"postbox/internal/events"
 	"postbox/internal/jobs"
 	"postbox/internal/send"
 	"postbox/internal/store"
@@ -95,4 +99,51 @@ func TestPartialNotificationDeliveryNeverRetriesAcceptedRecipient(t *testing.T) 
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("partially accepted notification did not terminate")
+}
+
+// A failed account must not prevent another account from importing its list,
+// and the recurring synchronization must remain scheduled.
+type jobSuppressionClient struct{ events.SESAdmin }
+
+func (jobSuppressionClient) ListSuppressedDestinations(context.Context, *sesv2.ListSuppressedDestinationsInput, ...func(*sesv2.Options)) (*sesv2.ListSuppressedDestinationsOutput, error) {
+	return &sesv2.ListSuppressedDestinationsOutput{SuppressedDestinationSummaries: []types.SuppressedDestinationSummary{{EmailAddress: aws.String("reader@example.org")}}}, nil
+}
+func TestBrandSuppressionJobContinuesAfterAccountFailure(t *testing.T) {
+	db := mailFixture(t)
+	if _, err := db.Writer.Exec(`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(2,'Other','Other','sender@other.org',1)`); err != nil {
+		t.Fatal(err)
+	}
+	runner := jobs.New(db, jobs.Config{Workers: 1, MaxAttempts: 1, PollInterval: time.Millisecond})
+	if err := registerBrandSuppressionSync(context.Background(), db, runner, func(_ context.Context, id int64) (events.SESAdmin, error) {
+		if id == 1 {
+			return nil, errors.New("unavailable credentials")
+		}
+		return jobSuppressionClient{}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		var completed, next int
+		if err := db.Reader.QueryRow(`SELECT count(*) FROM jobs WHERE queue='ses_suppressions' AND status='failed'`).Scan(&completed); err != nil {
+			t.Fatal(err)
+		}
+		if completed == 0 {
+			time.Sleep(time.Millisecond)
+			continue
+		}
+		if err := db.Reader.QueryRow(`SELECT count(*) FROM jobs WHERE queue='ses_suppressions' AND status='pending' AND run_at>?`, time.Now().Add(23*time.Hour).UnixMilli()).Scan(&next); err != nil || next != 1 {
+			t.Fatalf("next jobs %d: %v", next, err)
+		}
+		var id int64
+		if err := db.Reader.QueryRow(`SELECT brand_id FROM suppressions WHERE value='reader@example.org'`).Scan(&id); err != nil || id != 2 {
+			t.Fatalf("scoped import brand %d: %v", id, err)
+		}
+		return
+	}
+	t.Fatal("suppression job did not complete")
 }

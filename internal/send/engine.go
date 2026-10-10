@@ -20,6 +20,7 @@ import (
 )
 
 type Config struct {
+	BrandSenderProvider                 BrandSenderProvider
 	EventHook                           func(context.Context, *sql.Conn, int64, string, any) error
 	MaxWorkers, ClaimBatch, ResultBatch int
 	FlushInterval, QuotaRefresh         time.Duration
@@ -59,6 +60,7 @@ type Engine struct {
 	firstRequestAt, lastRequestAt                                                 atomic.Int64
 	metricsOrigin                                                                 time.Time
 	db                                                                            *store.DB
+	scopes                                                                        map[string]*accountPacer
 	sender                                                                        Sender
 	cfg                                                                           Config
 	mu                                                                            sync.Mutex
@@ -94,7 +96,7 @@ func New(db *store.DB, sender Sender, cfg Config) *Engine {
 	if cfg.RecoveryPolicy == "" {
 		cfg.RecoveryPolicy = "unknown"
 	}
-	e := &Engine{db: db, sender: sender, cfg: cfg, running: map[int64]context.CancelFunc{}, limiter: rate.NewLimiter(1, 1), errorCounts: map[string]int64{}, metricsOrigin: time.Now()}
+	e := &Engine{scopes: map[string]*accountPacer{}, db: db, sender: sender, cfg: cfg, running: map[int64]context.CancelFunc{}, limiter: rate.NewLimiter(1, 1), errorCounts: map[string]int64{}, metricsOrigin: time.Now()}
 	e.enabled.Store(true)
 	return e
 }
@@ -338,6 +340,7 @@ func (e *Engine) SetEnabled(ctx context.Context, on bool) error {
 }
 
 type campaign struct {
+	delivery                                                                          *brandDelivery
 	audience                                                                          string
 	audienceArgs                                                                      []any
 	id, brand                                                                         int64
@@ -554,11 +557,15 @@ func (e *Engine) Estimate(ctx context.Context, id int64) (Estimate, error) {
 	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) `+qsql, args...).Scan(&n); err != nil {
 		return Estimate{}, err
 	}
-	q, err := e.sender.GetAccount(ctx)
+	delivery, err := e.resolveBrand(ctx, c.brand)
 	if err != nil {
 		return Estimate{}, err
 	}
-	if q.MaxSendRate <= 0 {
+	q, err := delivery.sender.GetAccount(ctx)
+	if err != nil {
+		return Estimate{}, err
+	}
+	if q.MaxSendRate <= 0 || math.IsNaN(q.MaxSendRate) || math.IsInf(q.MaxSendRate, 0) {
 		return Estimate{}, errors.New("invalid SES sending quota")
 	}
 	raw, err := e.render(c, recipient{ID: 1, Email: "recipient@example.org", Name: "Recipient", Fields: "{}"})

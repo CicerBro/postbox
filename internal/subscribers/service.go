@@ -364,6 +364,12 @@ func unsubscribe(ctx context.Context, c *sql.Conn, brandID, id, listID int64) er
 	return e
 }
 func (s *Service) AddSuppression(ctx context.Context, v Suppression) error {
+	return s.AddSuppressionChecked(ctx, v, nil)
+}
+
+// AddSuppressionChecked validates a caller's snapshot within the same write
+// transaction that imports the suppression and skips pending recipients.
+func (s *Service) AddSuppressionChecked(ctx context.Context, v Suppression, check func(*sql.Conn) error) error {
 	var e error
 	v, e = normalizeSuppression(v)
 	if e != nil {
@@ -373,6 +379,12 @@ func (s *Service) AddSuppression(ctx context.Context, v Suppression) error {
 		v.Reason = "manual"
 	}
 	return s.db.Immediate(ctx, func(c *sql.Conn) error {
+		if check != nil {
+			if err := check(c); err != nil {
+				return err
+			}
+		}
+
 		if _, e := c.ExecContext(ctx, "INSERT OR IGNORE INTO suppressions(brand_id,kind,value,reason,created_at) VALUES(?,?,?,?,?)", v.BrandID, v.Kind, v.Value, v.Reason, nowMS()); e != nil {
 			return e
 		}

@@ -82,6 +82,18 @@ func (a *API) documentRoute(pattern string) {
 
 	}
 	documentListSettings(method, path, op)
+	if path == "/api/v1/email-preview" {
+		op["description"] = "Render current, unsaved email HTML, subject and text using the sending renderer. subscriber_id selects a real subscriber within the scoped brand; omit it or use zero for sample data. Empty custom fields use their fallback or an empty value. Action URLs are absolute sample URLs with invalid preview tokens. Does not create campaigns, tracking links, or send messages."
+		op["responses"].(map[string]any)["200"] = map[string]any{
+			"description": "Rendered sample HTML",
+			"content": map[string]any{
+				"application/json": map[string]any{
+					"schema": map[string]any{"type": "object", "properties": map[string]any{"html": map[string]any{"type": "string"}, "subject": map[string]any{"type": "string"}, "text": map[string]any{"type": "string"}}},
+				},
+			},
+		}
+	}
+	documentAWSSettings(method, path, op)
 	methods[strings.ToLower(method)] = op
 }
 func requestSchema(path string) map[string]any {
@@ -89,6 +101,13 @@ func requestSchema(path string) map[string]any {
 	required := []string{}
 	add := func(name, typ string) { props[name] = map[string]any{"type": typ} }
 	switch {
+	case path == "/api/v1/email-preview":
+		add("html", "string")
+		add("subject", "string")
+		add("text", "string")
+		props["subscriber_id"] = map[string]any{"type": "integer", "minimum": 0}
+		add("inline_css", "boolean")
+		required = []string{"html"}
 	case strings.HasSuffix(path, "/memberships"):
 		return map[string]any{"type": "array", "items": map[string]any{"type": "object", "required": []string{"list_id", "status"}, "properties": map[string]any{"list_id": map[string]any{"type": "integer"}, "status": map[string]any{"type": "string", "enum": []string{"subscribed", "unsubscribed"}}}}}
 	case strings.HasSuffix(path, "/settings"):

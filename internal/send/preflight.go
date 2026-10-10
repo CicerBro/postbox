@@ -138,7 +138,11 @@ func (e *Engine) Checklist(ctx context.Context, id int64, opts PreflightOptions)
 	if out.Recipients == 0 {
 		addError("empty_audience", "No eligible recipients in the selected audience")
 	}
-	q, err := e.sender.GetAccount(ctx)
+	delivery, err := e.resolveBrand(ctx, c.brand)
+	var q Quota
+	if err == nil {
+		q, err = delivery.sender.GetAccount(ctx)
+	}
 	if err != nil {
 		addError("account_quota", err.Error())
 	} else {

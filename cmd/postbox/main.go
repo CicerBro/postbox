@@ -18,8 +18,8 @@ import (
 	_ "time/tzdata"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"postbox/internal/awsbrand"
 	"postbox/internal/config"
 	"postbox/internal/events"
 	"postbox/internal/httpapi"
@@ -130,12 +130,12 @@ func serve(db *store.DB, c config.Config) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
-	sender, err := send.NewAWS(ctx, c.Region, "", c.MaxWorkers)
+	awsProvider, err := awsbrand.New(db, secret, c.Region, "", c.MaxWorkers)
 	if err != nil {
 		return err
 	}
 	runner := jobs.New(db, jobs.Config{Logger: slog.Default()})
-	engine := send.New(db, sender, send.Config{EventHook: runner.EmitTx, MaxWorkers: c.MaxWorkers, RecoveryPolicy: c.RecoveryPolicy, BaseURL: strings.TrimRight(c.BaseURL, "/"), TokenSecret: secret, SoftBounceLimit: c.SoftBounceLimit})
+	engine := send.New(db, nil, send.Config{BrandSenderProvider: awsProvider, EventHook: runner.EmitTx, MaxWorkers: c.MaxWorkers, RecoveryPolicy: c.RecoveryPolicy, BaseURL: strings.TrimRight(c.BaseURL, "/"), TokenSecret: secret, SoftBounceLimit: c.SoftBounceLimit})
 	if err = engine.Recover(ctx); err != nil {
 		return err
 	}
@@ -156,8 +156,10 @@ func serve(db *store.DB, c config.Config) error {
 	if err != nil {
 		return err
 	}
-	sesClient := sesv2.NewFromConfig(awsCfg)
-	if err = registerSuppressionSync(ctx, db, runner, sesClient); err != nil {
+	if err = registerBrandSuppressionSyncChecked(ctx, db, runner, func(ctx context.Context, brandID int64) (events.SESAdmin, func(*sql.Conn) error, error) {
+		client, fingerprint, err := awsProvider.SESClientSnapshot(ctx, brandID)
+		return client, func(conn *sql.Conn) error { return awsProvider.CheckSnapshot(ctx, conn, brandID, fingerprint) }, err
+	}); err != nil {
 		return err
 	}
 	if err = runner.ScheduleMaintenance(ctx); err != nil {
@@ -166,7 +168,7 @@ func serve(db *store.DB, c config.Config) error {
 	tracker := tracking.New(db, &tracking.Config{TokenSecret: secret, BaseURL: c.BaseURL, GeoIPPath: c.GeoIP})
 	eventService := events.New(db, &events.Config{TopicARN: c.TopicARN, QueueURL: c.QueueURL, SoftBounceLimit: c.SoftBounceLimit})
 	mux := http.NewServeMux()
-	httpapi.New(db, engine, httpapi.Config{SecureCookies: c.SecureCookies, SessionTTL: c.SessionTTL, BaseURL: c.BaseURL, TurnstileSecret: c.TurnstileSecret, TurnstileSiteKey: c.TurnstileSiteKey}).Register(mux)
+	httpapi.New(db, engine, httpapi.Config{AWSProvider: awsProvider, SecureCookies: c.SecureCookies, SessionTTL: c.SessionTTL, BaseURL: c.BaseURL, TurnstileSecret: c.TurnstileSecret, TurnstileSiteKey: c.TurnstileSiteKey}).Register(mux)
 	tracker.Register(mux)
 	eventService.Register(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {

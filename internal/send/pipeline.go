@@ -180,7 +180,7 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out
 	from := (&mail.Address{Name: c.fromName, Address: c.fromEmail}).String()
 	for try := 0; try < 6; try++ {
 		attempt := r.Attempts + try + 1
-		if err = e.waitToken(claimCtx); err != nil || claimCtx.Err() != nil || !e.enabled.Load() {
+		if err = c.delivery.wait(claimCtx); err != nil || claimCtx.Err() != nil || !e.enabled.Load() {
 			out.status = "pending"
 			return out
 		}
@@ -219,7 +219,7 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out
 		start := time.Now()
 		requestCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		e.markRequest()
-		messageID, sendErr := e.sender.Send(requestCtx, Request{From: from, To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: c.id})
+		messageID, sendErr := c.delivery.sender.Send(requestCtx, Request{From: from, To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: c.id})
 		cancel()
 		e.inflight.Add(-1)
 		e.requests.Add(1)
@@ -259,7 +259,9 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out
 			_ = e.Pause(context.Background(), c.id)
 			return out
 		case Throttled:
+			c.delivery.adjust(true)
 			e.adjust(true)
+			c.delivery.syncCampaignRate()
 		}
 		if err = e.finishAttempt(context.Background(), c.id, r.ID, attempt, "retry", "", out.err); err != nil {
 			out.status = "unknown"
@@ -382,13 +384,18 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	q, err := e.sender.GetAccount(ctx)
+	c.delivery, err = e.resolveBrand(ctx, c.brand)
 	if err != nil {
 		return err
 	}
-	if err = e.setQuota(q); err != nil {
+	q, err := c.delivery.sender.GetAccount(ctx)
+	if err != nil {
 		return err
 	}
+	if err = c.delivery.setQuota(q); err != nil {
+		return err
+	}
+	c.delivery.syncCampaignRate()
 	var remaining int64
 	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) FROM campaign_recipients WHERE campaign_id=? AND status='pending'`, id).Scan(&remaining); err != nil {
 		return err
@@ -529,9 +536,11 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 			case <-claimCtx.Done():
 				return
 			case <-increase.C:
+				c.delivery.adjust(false)
 				e.adjust(false)
+				c.delivery.syncCampaignRate()
 			case <-refresh.C:
-				q, err := e.sender.GetAccount(claimCtx)
+				q, err := c.delivery.sender.GetAccount(claimCtx)
 				if err != nil {
 					if claimCtx.Err() == nil {
 						_ = e.Pause(context.Background(), id)
@@ -543,7 +552,10 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 					_ = e.Pause(context.Background(), id)
 					return
 				}
-				if err = e.setQuota(q); err != nil {
+				if err = c.delivery.setQuota(q); err == nil {
+					c.delivery.syncCampaignRate()
+				}
+				if err != nil {
 					_ = e.Pause(context.Background(), id)
 					return
 				}

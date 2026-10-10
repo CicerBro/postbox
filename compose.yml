@@ -8,7 +8,7 @@ services:
       - .env
     environment:
       POSTBOX_BASE_URL: ${POSTBOX_BASE_URL:?Set POSTBOX_BASE_URL to the public HTTPS origin in .env}
-      POSTBOX_AWS_REGION: ${POSTBOX_AWS_REGION:?Set POSTBOX_AWS_REGION in .env}
+      POSTBOX_AWS_REGION: ${POSTBOX_AWS_REGION:-eu-west-1}
       POSTBOX_DB: /var/lib/postbox/postbox.db
       POSTBOX_SECRET_FILE: /var/lib/postbox/tracking.secret
       POSTBOX_BACKUP_DIR: /var/lib/postbox/backups

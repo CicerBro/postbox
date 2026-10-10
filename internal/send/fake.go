@@ -101,6 +101,23 @@ func (f *Fake) Send(ctx context.Context, r Request) (string, error) {
 }
 func (f *Fake) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+		if err := r.ParseForm(); err != nil || r.Form.Get("Action") != "GetCallerIdentity" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/xml")
+		_, _ = w.Write([]byte(`<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/"><GetCallerIdentityResult><Arn>arn:aws:iam::123456789012:user/postbox-fake</Arn><UserId>POSTBOXFAKE</UserId><Account>123456789012</Account></GetCallerIdentityResult><ResponseMetadata><RequestId>postbox-fake</RequestId></ResponseMetadata></GetCallerIdentityResponse>`))
+	})
+	mux.HandleFunc("POST /v2/email/list-identities", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"EmailIdentities":[]}`))
+	})
+	mux.HandleFunc("GET /v2/email/suppression/addresses", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"SuppressedDestinationSummaries":[]}`))
+	})
 	mux.HandleFunc("GET /v2/email/account", func(w http.ResponseWriter, r *http.Request) {
 		q, err := f.GetAccount(r.Context())
 		if err != nil {

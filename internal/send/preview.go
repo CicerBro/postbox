@@ -62,11 +62,15 @@ func (e *Engine) TestCampaign(ctx context.Context, id int64, addresses []string,
 	if err != nil {
 		return err
 	}
-	q, err := e.sender.GetAccount(ctx)
+	delivery, err := e.resolveBrand(ctx, c.brand)
 	if err != nil {
 		return err
 	}
-	if err = e.setQuota(q); err != nil {
+	q, err := delivery.sender.GetAccount(ctx)
+	if err != nil {
+		return err
+	}
+	if err = delivery.setQuota(q); err != nil {
 		return err
 	}
 	r := recipient{ID: subscriberID, Name: "Test recipient", Fields: "{}"}
@@ -85,7 +89,7 @@ func (e *Engine) TestCampaign(ctx context.Context, id int64, addresses []string,
 		if err != nil {
 			return err
 		}
-		if err = e.waitToken(ctx); err != nil {
+		if err = delivery.wait(ctx); err != nil {
 			return err
 		}
 		if !e.enabled.Load() {
@@ -93,7 +97,7 @@ func (e *Engine) TestCampaign(ctx context.Context, id int64, addresses []string,
 		}
 		t := time.Now()
 		e.markRequest()
-		_, err = e.sender.Send(ctx, Request{From: (&mail.Address{Name: c.fromName, Address: c.fromEmail}).String(), To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: id})
+		_, err = delivery.sender.Send(ctx, Request{From: (&mail.Address{Name: c.fromName, Address: c.fromEmail}).String(), To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: id})
 		e.observe(time.Since(t), false)
 		e.requests.Add(1)
 		if err != nil {
@@ -119,14 +123,18 @@ func (e *Engine) SendNotificationChecked(ctx context.Context, r Request, check f
 	if !e.enabled.Load() {
 		return "", &NotificationNotSentError{fmt.Errorf("global sending is disabled")}
 	}
-	q, err := e.sender.GetAccount(ctx)
+	delivery, err := e.resolveBrand(ctx, r.BrandID)
 	if err != nil {
 		return "", &NotificationNotSentError{err}
 	}
-	if err = e.setQuota(q); err != nil {
+	q, err := delivery.sender.GetAccount(ctx)
+	if err != nil {
 		return "", &NotificationNotSentError{err}
 	}
-	if err = e.waitToken(ctx); err != nil {
+	if err = delivery.setQuota(q); err != nil {
+		return "", &NotificationNotSentError{err}
+	}
+	if err = delivery.wait(ctx); err != nil {
 		return "", &NotificationNotSentError{err}
 	}
 	if !e.enabled.Load() {
@@ -139,7 +147,7 @@ func (e *Engine) SendNotificationChecked(ctx context.Context, r Request, check f
 	}
 	start := time.Now()
 	e.markRequest()
-	id, err := e.sender.Send(ctx, r)
+	id, err := delivery.sender.Send(ctx, r)
 	e.observe(time.Since(start), false)
 	e.requests.Add(1)
 	return id, err

@@ -7,6 +7,7 @@ import {
   Ban,
   UsersRound,
   ListRestart,
+  Cloud,
   type LucideIcon,
 } from "lucide-react";
 import { useApp } from "../lib/app-context";
@@ -18,6 +19,7 @@ import { Webhooks } from "../components/settings/Webhooks";
 import { Suppressions } from "../components/settings/Suppressions";
 import { Users } from "../components/settings/Users";
 import { Jobs } from "../components/settings/Jobs";
+import { AmazonSES } from "../components/settings/AmazonSES";
 export function SettingsPage({ brandId }: { brandId: number }) {
   const { session } = useApp();
   const [tab, setTab] = useState("security");
@@ -29,6 +31,7 @@ export function SettingsPage({ brandId }: { brandId: number }) {
     suppressions: Ban,
     users: UsersRound,
     jobs: ListRestart,
+    ses: Cloud,
   };
   const descriptions: Record<string, string> = {
     security: "Protect your account and manage your sign-in methods.",
@@ -38,12 +41,14 @@ export function SettingsPage({ brandId }: { brandId: number }) {
     suppressions: "Manage addresses and domains excluded from sending.",
     users: "Manage teammates, roles and access to brands.",
     jobs: "Review jobs that exhausted their automatic retries.",
+    ses: "Connect this brand to Amazon SES and inspect its current sending quota.",
   };
   const tabs = [
     ["security", "Account security"],
     ...(brandId
       ? [
           ["brand", "Brand"],
+          ["ses", "Amazon SES"],
           ["messages", "Messages"],
           ["webhooks", "Webhooks"],
           ["suppressions", "Suppressions"],
@@ -114,6 +119,7 @@ export function SettingsPage({ brandId }: { brandId: number }) {
           {selected === "messages" && (
             <Messages key={brandId} brandId={brandId} />
           )}
+          {selected === "ses" && <AmazonSES key={brandId} brandId={brandId} />}
           {selected === "webhooks" && (
             <Webhooks key={brandId} brandId={brandId} />
           )}
