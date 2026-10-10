@@ -1,0 +1,56 @@
+// Package token implements authenticated, compact recipient identifiers.
+package token
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/binary"
+	"errors"
+)
+
+// Encode returns an authenticated token. IDs must be positive and the key nonempty.
+func Encode(secret []byte, campaignID, subscriberID int64) string {
+	if len(secret) == 0 || campaignID <= 0 || subscriberID <= 0 {
+		return ""
+	}
+	var b [37]byte
+	b[0] = 1
+	n := 1 + binary.PutUvarint(b[1:], uint64(campaignID))
+	n += binary.PutUvarint(b[n:], uint64(subscriberID))
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(b[:n])
+	sum := mac.Sum(nil)
+	copy(b[n:], sum[:16])
+	return base64.RawURLEncoding.EncodeToString(b[:n+16])
+}
+
+func Decode(secret []byte, value string) (campaignID, subscriberID int64, err error) {
+	invalid := errors.New("invalid tracking token")
+	if len(secret) == 0 || len(value) > 50 {
+		return 0, 0, invalid
+	}
+	b, e := base64.RawURLEncoding.DecodeString(value)
+	if e != nil || len(b) < 19 || b[0] != 1 {
+		return 0, 0, invalid
+	}
+	payload := b[:len(b)-16]
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(payload)
+	if !hmac.Equal(mac.Sum(nil)[:16], b[len(b)-16:]) {
+		return 0, 0, invalid
+	}
+	c, n := binary.Uvarint(payload[1:])
+	if n <= 0 {
+		return 0, 0, invalid
+	}
+	s, m := binary.Uvarint(payload[1+n:])
+	if m <= 0 || 1+n+m != len(payload) || c == 0 || s == 0 || c > 1<<63-1 || s > 1<<63-1 {
+		return 0, 0, invalid
+	}
+	// Canonical encoding prevents multiple token strings for the same recipient.
+	if Encode(secret, int64(c), int64(s)) != value {
+		return 0, 0, invalid
+	}
+	return int64(c), int64(s), nil
+}
