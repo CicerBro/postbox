@@ -1,3 +1,4 @@
+import { Plus, Search, FileCode2, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +20,8 @@ import {
 } from "../components/ui/card";
 import { EmailEditor } from "../components/EmailEditor";
 import {
+  contentExcerpt,
+  bytes,
   ErrorMessage,
   initialHTML,
   tableClass,
@@ -38,7 +41,8 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
     [deleting, setDeleting] = useState<Template | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(null),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [search, setSearch] = useState("");
   useEffect(() => {
     if (params.get("new") === "1") {
       setEditing(null);
@@ -104,14 +108,16 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
   }
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-header flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Templates</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="page-subtitle text-sm text-muted-foreground">
             Reusable full HTML documents for this brand.
           </p>
         </div>
-        <Button onClick={() => edit(null)}>New template</Button>
+        <Button onClick={() => edit(null)}>
+          <Plus size={16} /> New template
+        </Button>
       </div>
       <ErrorMessage error={query.error ?? error} />
       {notice && (
@@ -148,54 +154,111 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
       {query.isPending ? (
         <p role="status">Loading templates…</p>
       ) : (
-        <div className="overflow-auto rounded-lg border">
-          <table className={tableClass}>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Updated</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {query.data?.map((t) => (
-                <tr key={t.id}>
-                  <td className="font-medium">{t.name}</td>
-                  <td>{new Date(t.updated_at).toLocaleString()}</td>
-                  <td>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => edit(t)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setError(null);
-                          setDeleting(t);
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
+        <div className="table-card">
+          <div className="table-toolbar">
+            <div>
+              <h2 className="section-heading">Template library</h2>
+              <p className="row-subtitle">
+                {query.data?.length ?? 0} designs on this page
+              </p>
+            </div>
+            <div className="toolbar-search">
+              <Search size={16} />
+              <Input
+                aria-label="Search templates on this page"
+                placeholder="Search this page…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="overflow-auto">
+            <table className={tableClass}>
+              <thead>
+                <tr>
+                  <th>Template</th>
+                  <th>HTML size</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {!query.data?.length && (
-            <p className="p-6 text-sm text-muted-foreground">
-              No templates on this page. Create one or paste an existing full
-              HTML document.
-            </p>
-          )}
+              </thead>
+              <tbody>
+                {query.data
+                  ?.filter((t) =>
+                    t.name.toLowerCase().includes(search.toLowerCase()),
+                  )
+                  .map((t) => (
+                    <tr key={t.id}>
+                      <td>
+                        <div className="flex items-center gap-3">
+                          <span className="avatar">
+                            <FileCode2 size={18} />
+                          </span>
+                          <div>
+                            <button
+                              type="button"
+                              className="row-title text-left"
+                              onClick={() => edit(t)}
+                            >
+                              {t.name}
+                            </button>
+                            <p className="row-subtitle max-w-sm truncate">
+                              {contentExcerpt(t.html) || "HTML email template"}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="text-muted-foreground">
+                        {bytes(new TextEncoder().encode(t.html).length)}
+                      </td>
+                      <td>{new Date(t.updated_at).toLocaleString()}</td>
+                      <td>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => edit(t)}
+                          >
+                            <Pencil size={14} /> Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setError(null);
+                              setDeleting(t);
+                            }}
+                          >
+                            <Trash2 size={14} /> Delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            {!query.data?.filter((t) =>
+              t.name.toLowerCase().includes(search.toLowerCase()),
+            ).length && (
+              <div className="empty-panel">
+                <FileCode2 size={28} />
+                <h3>
+                  {search
+                    ? "No matching templates"
+                    : "Your next campaign starts here"}
+                </h3>
+                <p>
+                  {search
+                    ? "Try another search on this page."
+                    : "Create a reusable design or paste your existing HTML document."}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
-      <div className="flex gap-2">
+      <div className="table-footer flex gap-2">
+        <span className="row-subtitle mr-auto">Page {history.length + 1}</span>
         <Button
           variant="outline"
           disabled={!history.length}

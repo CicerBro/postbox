@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Webhook, Plus } from "lucide-react";
+import { Badge } from "../ui/badge";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { Button } from "../ui/button";
@@ -73,12 +75,16 @@ export function Webhooks({ brandId }: { brandId: number }) {
       >
         <Field
           label="Destination URL"
+          placeholder="https://your-app.com/webhooks/postbox"
           type="url"
           required
           value={url}
           onChange={(e) => setUrl(e.target.value)}
         />
-        <Checks values={events} selected={selected} onChange={setSelected} />
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Events to send</p>
+          <Checks values={events} selected={selected} onChange={setSelected} />
+        </div>
         <label className="flex gap-2 text-sm">
           <input
             type="checkbox"
@@ -89,6 +95,7 @@ export function Webhooks({ brandId }: { brandId: number }) {
         </label>
         <div className="flex gap-2">
           <Button disabled={a.busy || !selected.length}>
+            <Plus size={16} aria-hidden="true" />
             {edit ? "Save webhook" : "Create webhook"}
           </Button>
           {edit && (
@@ -108,14 +115,27 @@ export function Webhooks({ brandId }: { brandId: number }) {
           Retry
         </Button>
       ) : !q.data?.pages.flat().length ? (
-        <p className="text-sm">No webhooks configured.</p>
+        <div className="empty-panel">
+          <Webhook size={26} aria-hidden="true" />
+          <h3>No webhooks configured</h3>
+          <p className="page-subtitle">
+            Create a receiver above to send brand events to your tools.
+          </p>
+        </div>
       ) : (
         <ul className="space-y-3">
           {q.data.pages.flat().map((h) => (
-            <li key={h.id} className="rounded-lg border p-4 space-y-3">
-              <p className="break-all text-sm font-medium">{h.url}</p>
+            <li key={h.id} className="rounded-xl border p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="row-title break-all">{h.url}</p>
+                <Badge variant={h.is_active ? "success" : "secondary"}>
+                  {h.is_active ? "Active" : "Paused"}
+                </Badge>
+              </div>
               <p className="text-xs text-muted-foreground">
-                {h.is_active ? "Active" : "Paused"} · {h.events.join(", ")}
+                {h.events
+                  .map((event) => event.replaceAll("_", " "))
+                  .join(" · ")}
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button

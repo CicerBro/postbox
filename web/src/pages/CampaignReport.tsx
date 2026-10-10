@@ -3,7 +3,17 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, download } from "../lib/api";
 import { Button } from "../components/ui/button";
-import { Badge } from "../components/ui/badge";
+import {
+  Download,
+  Users,
+  Send,
+  CheckCircle2,
+  Eye,
+  MousePointerClick,
+  CircleAlert,
+  ArrowLeft,
+  Activity,
+} from "lucide-react";
 import {
   Card,
   CardContent,
@@ -11,6 +21,7 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import {
+  StatusBadge,
   Campaign,
   ErrorMessage,
   number,
@@ -145,20 +156,28 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link className="text-sm underline" to={`/campaigns/${id}`}>
-            Campaign
+          <Link
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground"
+            to={`/campaigns/${id}`}
+          >
+            <ArrowLeft size={14} /> Back to campaign
           </Link>
           <h1 className="mt-2 text-2xl font-semibold">
             {campaign.data?.[0]?.subject ?? "Campaign report"}
           </h1>
           {campaign.data?.[0] && (
-            <Badge variant="outline">{campaign.data[0].status}</Badge>
+            <StatusBadge status={campaign.data[0].status} />
           )}
-          <p role="status" className="mt-2 text-sm text-muted-foreground">
+          <p
+            role="status"
+            className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"
+          >
+            <Activity size={14} aria-hidden="true" />
             {stream}
           </p>
         </div>
         <Button variant="outline" disabled={exporting} onClick={exportCSV}>
+          <Download size={16} />{" "}
           {exporting ? "Exporting…" : "Export recipients CSV"}
         </Button>
       </div>
@@ -171,38 +190,108 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           prepared.
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          {metrics.map(([key, label]) => (
-            <Card key={key}>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="mt-2 text-xl font-semibold">
-                  {stats[key] === undefined
-                    ? "Unavailable"
-                    : number(stats[key])}
-                </p>
-                {[
-                  "delivered",
-                  "opens_human_unique",
-                  "clicks_human_unique",
-                  "complaints",
-                  "unsubscribes",
-                ].includes(key) &&
-                  stats[key] !== undefined && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {stats.sent > 0
-                        ? `${((stats[key] / stats.sent) * 100).toFixed(2)}% of sent`
-                        : "No sent denominator"}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
+          {metrics
+            .filter(([key]) =>
+              [
+                "recipients",
+                "sent",
+                "delivered",
+                "opens_human_unique",
+                "clicks_human_unique",
+                "failed",
+              ].includes(key),
+            )
+            .map(([key, label]) => (
+              <Card key={key} className="metric-card">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {label}
                     </p>
-                  )}
-              </CardContent>
-            </Card>
-          ))}
+                    <span className="metric-icon">
+                      {key === "recipients" ? (
+                        <Users size={16} />
+                      ) : key === "sent" ? (
+                        <Send size={16} />
+                      ) : key === "delivered" ? (
+                        <CheckCircle2 size={16} />
+                      ) : key === "opens_human_unique" ? (
+                        <Eye size={16} />
+                      ) : key === "clicks_human_unique" ? (
+                        <MousePointerClick size={16} />
+                      ) : (
+                        <CircleAlert size={16} />
+                      )}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xl font-semibold">
+                    {stats[key] === undefined
+                      ? "Unavailable"
+                      : number(stats[key])}
+                  </p>
+                  {[
+                    "delivered",
+                    "opens_human_unique",
+                    "clicks_human_unique",
+                    "complaints",
+                    "unsubscribes",
+                  ].includes(key) &&
+                    stats[key] !== undefined && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {stats.sent > 0
+                          ? `${((stats[key] / stats.sent) * 100).toFixed(2)}% of sent`
+                          : "No sent denominator"}
+                      </p>
+                    )}
+                </CardContent>
+              </Card>
+            ))}
         </div>
+      )}
+      {stats && (
+        <Card>
+          <CardContent className="pt-5">
+            <details>
+              <summary className="cursor-pointer text-sm font-medium">
+                View all engagement and delivery counters
+              </summary>
+              <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-5 md:grid-cols-4 xl:grid-cols-6">
+                {metrics.map(([key, label]) => (
+                  <div key={key}>
+                    <dt className="row-subtitle">{label}</dt>
+                    <dd className="mt-1 text-lg font-semibold">
+                      {stats[key] === undefined
+                        ? "Unavailable"
+                        : number(stats[key])}
+                    </dd>
+                    {[
+                      "delivered",
+                      "opens_human_unique",
+                      "clicks_human_unique",
+                      "complaints",
+                      "unsubscribes",
+                    ].includes(key) &&
+                      stats[key] !== undefined && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {stats.sent > 0
+                            ? `${((stats[key] / stats.sent) * 100).toFixed(2)}% of sent`
+                            : "No sent denominator"}
+                        </p>
+                      )}
+                  </div>
+                ))}
+              </dl>
+            </details>
+          </CardContent>
+        </Card>
       )}
       <Card>
         <CardHeader>
           <CardTitle>Activity over time</CardTitle>
+          <p className="row-subtitle">
+            Deliveries, opens, and clicks across the campaign timeline.
+          </p>
         </CardHeader>
         <CardContent>
           <ActivityChart rows={report.data?.hourly ?? []} />
@@ -327,9 +416,9 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
                 <tbody>
                   {recipients.data?.map((r) => (
                     <tr key={r.id}>
-                      <td>{r.email}</td>
+                      <td className="row-title">{r.email}</td>
                       <td>
-                        <Badge variant="outline">{r.status}</Badge>
+                        <StatusBadge status={r.status} />
                       </td>
                       <td className="break-all">{r.message_id ?? "None"}</td>
                       <td>
@@ -349,7 +438,10 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
               )}
             </div>
           )}
-          <div className="flex gap-2">
+          <div className="table-footer flex gap-2">
+            <span className="row-subtitle mr-auto">
+              Page {history.length + 1}
+            </span>
             <Button
               variant="outline"
               disabled={!history.length}
@@ -401,6 +493,17 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
           role="img"
           aria-label="Hourly opens, clicks and deliveries. Full data is available below."
         >
+          {[30, 80, 130, 180].map((y) => (
+            <line
+              key={y}
+              x1="50"
+              y1={y}
+              x2="800"
+              y2={y}
+              stroke="currentColor"
+              opacity=".06"
+            />
+          ))}
           <line
             x1="50"
             y1="230"
@@ -420,8 +523,8 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
               <polyline
                 points={points(key)}
                 fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+                stroke={["#4f46e5", "#10b981", "#f59e0b"][i]}
+                strokeWidth="2.5"
                 strokeDasharray={i === 1 ? "6 3" : i === 2 ? "2 3" : undefined}
                 opacity={1 - i * 0.2}
               />
@@ -430,7 +533,7 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
                   cx="425"
                   cy={230 - (rows[0][key] / max) * 200}
                   r="3"
-                  fill="currentColor"
+                  fill={["#4f46e5", "#10b981", "#f59e0b"][i]}
                 />
               )}
             </g>
@@ -449,10 +552,18 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
           </text>
         </svg>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Solid: deliveries · Dashed: opens · Dotted: clicks. Times use your
-        browser timezone.
-      </p>
+      <div className="chart-legend flex flex-wrap items-center gap-5 text-xs text-muted-foreground">
+        {(["Deliveries", "Opens", "Clicks"] as const).map((label, i) => (
+          <span key={label} className="flex items-center gap-2">
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ background: ["#4f46e5", "#10b981", "#f59e0b"][i] }}
+            />
+            {label}
+          </span>
+        ))}
+        <span className="ml-auto">Times use your browser timezone.</span>
+      </div>
       <details>
         <summary className="cursor-pointer text-sm">View hourly data</summary>
         <div className="max-h-72 overflow-auto">

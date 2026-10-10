@@ -67,13 +67,24 @@ export function Messages({ brandId }: { brandId: number }) {
               "goodbye_email",
             ] as const
           ).map((k) => {
+            const labels = {
+              thankyou_html: "Subscription thank-you page",
+              goodbye_html: "Unsubscribe confirmation page",
+              confirmation_email: "Double opt-in email",
+              thankyou_email: "Welcome email",
+              goodbye_email: "Goodbye email",
+            };
             const active = enabled.includes(k);
             const value = form[k];
             return (
-              <div key={k} className="rounded-lg border p-4 space-y-3">
+              <div
+                key={k}
+                className="rounded-xl border bg-muted/20 p-5 space-y-3"
+              >
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input
                     type="checkbox"
+                    className="accent-indigo-600"
                     checked={active}
                     disabled={q.data?.[k] !== undefined}
                     onChange={(e) => {
@@ -89,7 +100,7 @@ export function Messages({ brandId }: { brandId: number }) {
                         });
                     }}
                   />
-                  {k.replaceAll("_", " ")}
+                  {labels[k]}
                 </label>
                 {active &&
                   (k.endsWith("_html") ? (

@@ -1,6 +1,13 @@
 import { useEffect, useState, lazy, Suspense, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Routes, Route, NavLink, Link, useNavigate } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  NavLink,
+  Link,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import {
   Mail,
   LayoutDashboard,
@@ -18,8 +25,11 @@ import {
   Sun,
   LogOut,
   Menu,
-  X,
+  PanelLeft,
+  ChevronRight,
+  ChevronsUpDown,
 } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { api, ApiError, setCsrfToken } from "./lib/api";
 import { AppContext, type Brand, type Session } from "./lib/app-context";
 import { useThemePreference } from "./lib/theme";
@@ -82,7 +92,10 @@ export default function App() {
   );
   const [newBrand, setNewBrand] = useState(false);
   const [brandError, setBrandError] = useState("");
-  const [menu, setMenu] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem("postbox-sidebar") === "collapsed",
+  );
+  const location = useLocation();
   const [mobile, setMobile] = useState(false);
   const [theme, setTheme] = useThemePreference();
   const session = useQuery({
@@ -196,6 +209,154 @@ export default function App() {
       </Link>
     </div>
   );
+  const currentPage =
+    navigation.find(([path]) =>
+      path === "/"
+        ? location.pathname === "/" || location.pathname === "/overview"
+        : location.pathname.startsWith(path),
+    )?.[1] ?? "Overview";
+  const sidebarContent = (
+    <>
+      <Link className="brand-logo" to="/" onClick={() => setMobile(false)}>
+        <span className="brand-mark">
+          <Mail size={21} />
+        </span>
+        <span className="sidebar-label">
+          postbox<small>Newsletter workspace</small>
+        </span>
+      </Link>
+      <div className="workspace-identity">
+        <span className="workspace-avatar">
+          {brand?.name?.slice(0, 1).toUpperCase() ?? "P"}
+        </span>
+        <span className="sidebar-label">
+          <strong>{brand?.name ?? "Your workspace"}</strong>
+          <small>Brand workspace</small>
+        </span>
+      </div>
+      <nav aria-label="Main navigation">
+        {[
+          ["Workspace", navigation.slice(0, 1)],
+          ["Manage", navigation.slice(1, 5)],
+          ["Configuration", navigation.slice(5)],
+        ].map(([heading, items]) => (
+          <div className="nav-group" key={heading as string}>
+            <p className="nav-group-label sidebar-label">{heading as string}</p>
+            {(items as (typeof navigation)[number][]).map(
+              ([path, label, Icon]) => (
+                <NavLink
+                  key={path}
+                  to={path}
+                  end={path === "/"}
+                  title={label}
+                  onClick={() => setMobile(false)}
+                  className={({ isActive }) =>
+                    `nav-item ${isActive ? "active" : ""}`
+                  }
+                >
+                  <Icon size={18} />
+                  <span className="sidebar-label">{label}</span>
+                </NavLink>
+              ),
+            )}
+          </div>
+        ))}
+      </nav>
+      <div className="sidebar-bottom">
+        {session.data.admin ? (
+          <>
+            <button
+              className={`sending-pill ${sending.data?.enabled ? "sending-on" : ""}`}
+              disabled={changeSending.isPending || !sending.data}
+              onClick={() => changeSending.mutate(!sending.data?.enabled)}
+              aria-label={
+                sending.data?.enabled ? "Pause all sending" : "Enable sending"
+              }
+              title={
+                sending.data?.enabled ? "Pause all sending" : "Enable sending"
+              }
+            >
+              <span className="status-dot" />
+              <span className="sidebar-label">
+                {sending.data
+                  ? sending.data.enabled
+                    ? "Sending enabled"
+                    : "Sending paused"
+                  : "Status unavailable"}
+              </span>
+            </button>
+            {(sending.error || changeSending.error) && (
+              <p role="alert" className="error text-xs">
+                {(changeSending.error ?? sending.error)?.message}
+              </p>
+            )}
+          </>
+        ) : (
+          <span className="muted text-xs sidebar-label">
+            Sending managed by administrator
+          </span>
+        )}
+        <div className="sidebar-tools">
+          <div className="theme-control" role="group" aria-label="Theme">
+            {(
+              [
+                ["system", "System theme", Monitor],
+                ["light", "Light theme", Sun],
+                ["dark", "Dark theme", Moon],
+              ] as const
+            ).map(([preference, label, Icon]) => (
+              <button
+                key={preference}
+                type="button"
+                className="theme-option"
+                aria-label={label}
+                title={label}
+                aria-pressed={theme === preference}
+                onClick={() => setTheme(preference)}
+              >
+                <Icon size={16} aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </div>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button className="account-trigger" aria-label="Account menu">
+              <span className="avatar">{session.data.admin ? "AD" : "US"}</span>
+              <span className="sidebar-label account-copy">
+                <strong>
+                  {session.data.admin ? "Administrator" : "Team member"}
+                </strong>
+                <small>Account #{session.data.user_id}</small>
+              </span>
+              <ChevronsUpDown size={15} className="sidebar-label" />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              className="dropdown-content"
+              side="top"
+              align="start"
+              sideOffset={8}
+            >
+              <DropdownMenu.Label className="dropdown-label">
+                My account
+              </DropdownMenu.Label>
+              <DropdownMenu.Item asChild>
+                <Link to="/settings" onClick={() => setMobile(false)}>
+                  <Settings size={15} /> Account & security
+                </Link>
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator className="dropdown-separator" />
+              <DropdownMenu.Item onSelect={logout}>
+                <LogOut size={15} /> Sign out
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      </div>
+    </>
+  );
   return (
     <AppContext.Provider
       value={{
@@ -206,181 +367,123 @@ export default function App() {
         logout,
       }}
     >
-      <div className="app-shell">
-        <aside className={`sidebar ${mobile ? "sidebar-open" : ""}`}>
-          <Link className="brand-logo" to="/">
-            <Mail size={25} />
-            <span>postbox</span>
-          </Link>
-          <button
-            className="mobile-close"
-            aria-label="Close navigation"
-            onClick={() => setMobile(false)}
+      <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+        <aside className="sidebar desktop-sidebar">{sidebarContent}</aside>
+        <Dialog open={mobile} onOpenChange={setMobile}>
+          <DialogContent
+            className="navigation-sheet"
+            aria-describedby={undefined}
           >
-            <X />
-          </button>
-          <nav aria-label="Main navigation">
-            {navigation.map(([path, label, Icon]) => (
-              <NavLink
-                key={path}
-                to={path}
-                end={path === "/"}
-                onClick={() => setMobile(false)}
-                className={({ isActive }) =>
-                  `nav-item ${isActive ? "active" : ""}`
-                }
-              >
-                <Icon size={18} />
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="sidebar-bottom">
-            {session.data.admin ? (
-              <>
-                <button
-                  className={`sending-pill ${sending.data?.enabled ? "sending-on" : ""}`}
-                  disabled={changeSending.isPending || !sending.data}
-                  onClick={() => changeSending.mutate(!sending.data?.enabled)}
-                  aria-label={
-                    sending.data?.enabled
-                      ? "Pause all sending"
-                      : "Enable sending"
-                  }
-                >
-                  <span />
-                  {sending.data
-                    ? sending.data.enabled
-                      ? "Sending on"
-                      : "Sending off"
-                    : "Sending status unavailable"}
-                </button>
-                {(sending.error || changeSending.error) && (
-                  <p role="alert" className="error text-xs">
-                    {(changeSending.error ?? sending.error)?.message}
-                  </p>
-                )}
-              </>
-            ) : (
-              <span className="muted text-xs">
-                Sending controlled by administrator
-              </span>
-            )}
-            <div className="sidebar-tools">
-              <div className="theme-control" role="group" aria-label="Theme">
-                {(
-                  [
-                    ["system", "System theme", Monitor],
-                    ["light", "Light theme", Sun],
-                    ["dark", "Dark theme", Moon],
-                  ] as const
-                ).map(([preference, label, Icon]) => (
-                  <button
-                    key={preference}
-                    type="button"
-                    className="theme-option"
-                    aria-label={label}
-                    title={label}
-                    aria-pressed={theme === preference}
-                    onClick={() => setTheme(preference)}
-                  >
-                    <Icon size={16} aria-hidden="true" />
-                  </button>
-                ))}
-              </div>
-              <Button variant="ghost" onClick={logout}>
-                <LogOut size={16} /> Sign out
-              </Button>
-            </div>
-            <small className="muted">Self-hosted newsletter platform</small>
-          </div>
-        </aside>
-        {mobile && (
-          <button
-            className="mobile-shade"
-            aria-label="Close navigation"
-            onClick={() => setMobile(false)}
-          />
-        )}
+            <DialogTitle className="sr-only">Navigation</DialogTitle>
+            <div className="sidebar mobile-sidebar">{sidebarContent}</div>
+          </DialogContent>
+        </Dialog>
         <div className="app-workspace">
           <header className="topbar">
-            <Button
-              className="mobile-menu"
-              size="icon"
-              variant="ghost"
-              aria-label="Open navigation"
-              onClick={() => setMobile(true)}
-            >
-              <Menu />
-            </Button>
+            <div className="topbar-leading">
+              <Button
+                className="desktop-toggle"
+                size="icon"
+                variant="ghost"
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                onClick={() => {
+                  setCollapsed(!collapsed);
+                  localStorage.setItem(
+                    "postbox-sidebar",
+                    !collapsed ? "collapsed" : "expanded",
+                  );
+                }}
+              >
+                <PanelLeft size={18} />
+              </Button>
+              <Button
+                className="mobile-menu"
+                size="icon"
+                variant="ghost"
+                aria-label="Open navigation"
+                onClick={() => setMobile(true)}
+              >
+                <Menu size={19} />
+              </Button>
+              <div className="topbar-divider" />
+              <nav className="breadcrumbs" aria-label="Breadcrumb">
+                <span>Workspace</span>
+                <ChevronRight size={14} />
+                <strong>{currentPage}</strong>
+              </nav>
+            </div>
+            <div className="topbar-actions">
+              <span className="workspace-tag">Self-hosted</span>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <Button aria-label="Create new">
+                    <Plus size={16} /> New <ChevronDown size={14} />
+                  </Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    className="dropdown-content"
+                    align="end"
+                    sideOffset={8}
+                  >
+                    <DropdownMenu.Label className="dropdown-label">
+                      Create in {brand?.name ?? "Postbox"}
+                    </DropdownMenu.Label>
+                    {brandId > 0 &&
+                      [
+                        ["/campaigns/new", "Campaign", Send],
+                        ["/contacts?new=list", "List", Users],
+                        ["/contacts?new=contact", "Contact", Users],
+                        ["/templates?new=1", "Template", FileCode],
+                        ["/segments?new=1", "Segment", Filter],
+                      ].map(([path, label, Icon]) => {
+                        const ItemIcon = Icon as typeof Send;
+                        return (
+                          <DropdownMenu.Item asChild key={path as string}>
+                            <Link to={path as string}>
+                              <ItemIcon size={15} />
+                              {label as string}
+                            </Link>
+                          </DropdownMenu.Item>
+                        );
+                      })}
+                    {session.data.admin && (
+                      <>
+                        <DropdownMenu.Separator className="dropdown-separator" />
+                        <DropdownMenu.Item onSelect={() => setNewBrand(true)}>
+                          <Plus size={15} /> Brand
+                        </DropdownMenu.Item>
+                      </>
+                    )}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            </div>
+          </header>
+          <div className="brand-bar">
             <div className="brand-tabs" aria-label="Brands">
               {brands.data?.map((b) => (
                 <button
                   key={b.id}
                   className={b.id === brandId ? "selected" : ""}
-                  onClick={() => {
-                    setSelected(b.id);
-                    setMenu(false);
-                  }}
+                  onClick={() => setSelected(b.id)}
                 >
+                  <span className="brand-tab-dot" />
                   {b.name}
                 </button>
               ))}
               {session.data.admin && (
                 <button
+                  className="add-brand"
                   aria-label="Create brand"
                   title="Create brand"
                   onClick={() => setNewBrand(true)}
                 >
-                  <Plus size={16} />
+                  <Plus size={15} />
                 </button>
               )}
             </div>
-            <div className="new-menu">
-              <Button onClick={() => setMenu(!menu)} aria-expanded={menu}>
-                <Plus size={16} /> New <ChevronDown size={14} />
-              </Button>
-              {menu && (
-                <>
-                  <button
-                    className="menu-dismiss"
-                    aria-label="Close new menu"
-                    onClick={() => setMenu(false)}
-                  />
-                  <div className="dropdown" role="menu">
-                    {brandId > 0 &&
-                      [
-                        ["/campaigns/new", "Campaign"],
-                        ["/contacts?new=list", "List"],
-                        ["/contacts?new=contact", "Contact"],
-                        ["/templates?new=1", "Template"],
-                        ["/segments?new=1", "Segment"],
-                      ].map(([path, label]) => (
-                        <Link
-                          role="menuitem"
-                          key={path}
-                          to={path}
-                          onClick={() => setMenu(false)}
-                        >
-                          {label}
-                        </Link>
-                      ))}
-                    {session.data.admin && (
-                      <button
-                        role="menuitem"
-                        onClick={() => {
-                          setNewBrand(true);
-                          setMenu(false);
-                        }}
-                      >
-                        Brand
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </header>
+          </div>
           <main className="page-content">
             {brands.isPending ? (
               <p role="status">Loading brands…</p>

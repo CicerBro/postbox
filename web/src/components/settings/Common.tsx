@@ -1,18 +1,22 @@
 import { useState, type ReactNode } from "react";
+import { CheckCircle2, CircleAlert, Copy, KeyRound } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 export function Section({
   title,
+  description,
   children,
 }: {
   title: string;
+  description?: string;
   children: ReactNode;
 }) {
   return (
-    <Card>
+    <Card className="settings-section">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
+        {description && <p className="text-muted-foreground">{description}</p>}
       </CardHeader>
       <CardContent className="space-y-4">{children}</CardContent>
     </Card>
@@ -24,7 +28,7 @@ export function Field({
 }: React.ComponentProps<typeof Input> & { label: string }) {
   return (
     <label className="block space-y-2 text-sm">
-      <span>{label}</span>
+      <span className="font-medium">{label}</span>
       <Input {...props} />
     </label>
   );
@@ -37,11 +41,19 @@ export function Message({
   message?: string;
 }) {
   return error ? (
-    <p role="alert" className="text-sm text-destructive">
+    <p
+      role="alert"
+      className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+    >
+      <CircleAlert size={16} className="mt-1 shrink-0" aria-hidden="true" />
       {error instanceof Error ? error.message : String(error)}
     </p>
   ) : message ? (
-    <p role="status" className="text-sm">
+    <p
+      role="status"
+      className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+    >
+      <CheckCircle2 size={16} className="mt-1 shrink-0" aria-hidden="true" />
       {message}
     </p>
   ) : null;
@@ -74,11 +86,14 @@ export function Secret({
 }) {
   const a = useAction();
   return (
-    <div className="rounded-lg border p-4 space-y-3">
+    <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-3 dark:border-amber-900 dark:bg-amber-950/20">
       <p className="text-sm font-medium">
+        <KeyRound size={16} className="mr-2 inline" aria-hidden="true" />
         Copy this secret now. It will not be shown again.
       </p>
-      <code className="block break-all text-sm">{value}</code>
+      <code className="block rounded-md border bg-background p-3 break-all text-sm">
+        {value}
+      </code>
       <div className="flex gap-2">
         <Button
           variant="outline"
@@ -86,6 +101,7 @@ export function Secret({
             a.run(() => navigator.clipboard.writeText(value), "Copied.")
           }
         >
+          <Copy size={14} aria-hidden="true" />
           Copy
         </Button>
         <Button variant="ghost" onClick={onDismiss}>
@@ -117,11 +133,15 @@ export function Checks({
   onChange: (values: string[]) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-4">
+    <div className="flex flex-wrap gap-2">
       {values.map((v) => (
-        <label key={v} className="flex items-center gap-2 text-sm">
+        <label
+          key={v}
+          className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm"
+        >
           <input
             type="checkbox"
+            className="accent-indigo-600"
             checked={selected.includes(v)}
             onChange={(e) =>
               onChange(

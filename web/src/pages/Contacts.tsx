@@ -1,4 +1,13 @@
 import { useEffect, useState } from "react";
+import {
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Users,
+  List as ListIcon,
+  MoreHorizontal,
+} from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
@@ -15,6 +24,8 @@ import {
 } from "../components/ui/dialog";
 import {
   allPages,
+  ContactStatusBadge,
+  contactInitials,
   type ContactList,
   type CustomField,
   type Subscriber,
@@ -167,6 +178,20 @@ function ContactProfile({
               {subscriber ? "Contact profile" : "New contact"}
             </DialogTitle>
           </DialogHeader>
+          {subscriber && (
+            <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-4">
+              <span className="avatar" aria-hidden="true">
+                {contactInitials(subscriber.name, subscriber.email)}
+              </span>
+              <div className="flex-1">
+                <p className="row-title">
+                  {subscriber.name || "Unnamed contact"}
+                </p>
+                <p className="row-subtitle">{subscriber.email}</p>
+              </div>
+              <ContactStatusBadge status={subscriber.status} />
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Email">
               <Input
@@ -320,7 +345,9 @@ function ContactProfile({
           </div>
           {subscriber && (
             <section className="border-t pt-4 space-y-4">
-              <h3 className="font-semibold">List memberships</h3>
+              <h3 className="section-heading font-semibold">
+                List memberships
+              </h3>
               <ErrorMessage
                 error={memberships.error || membershipAction.error}
               />
@@ -347,7 +374,7 @@ function ContactProfile({
                             `List ${m.list_id}`}
                         </td>
                         <td>
-                          <Badge variant="outline">{m.status}</Badge>
+                          <ContactStatusBadge status={m.status} />
                         </td>
                         <td>
                           {m.status !== "unsubscribed" && (
@@ -448,7 +475,9 @@ function ContactProfile({
           )}
           {subscriber && (
             <section className="border-t pt-4 space-y-3">
-              <h3 className="font-semibold">Activity timeline</h3>
+              <h3 className="section-heading font-semibold">
+                Activity timeline
+              </h3>
               <ErrorMessage error={timeline.error} />
               {timeline.isPending ? (
                 <p role="status">Loading activity…</p>
@@ -645,7 +674,7 @@ function CustomFields({
           No custom fields defined.
         </p>
       ) : (
-        <div className="rounded-lg border overflow-x-auto">
+        <div className="table-card rounded-lg border overflow-x-auto">
           <table className={tableClass}>
             <thead>
               <tr>
@@ -663,7 +692,9 @@ function CustomFields({
                   <td>
                     <code>{f.key}</code>
                   </td>
-                  <td>{f.type}</td>
+                  <td>
+                    <Badge variant="outline">{f.type}</Badge>
+                  </td>
                   <td>{f.is_filterable ? "Yes" : "No"}</td>
                   <td>
                     <Button
@@ -994,6 +1025,10 @@ function Lists({
   createRequest?: boolean;
   onCreatedRequest?: () => void;
 }) {
+  const [listSearch, setListSearch] = useState("");
+  const visibleLists = lists.filter((list) =>
+    list.name.toLowerCase().includes(listSearch.trim().toLowerCase()),
+  );
   const [notifications, setNotifications] = useState<ContactList | null>(null);
   const [editing, setEditing] = useState<ContactList | null>(null);
   const [deleting, setDeleting] = useState<ContactList | null>(null);
@@ -1008,22 +1043,46 @@ function Lists({
   return (
     <section className="space-y-4">
       <div className="flex justify-between">
-        <h2 className="text-lg font-semibold">Lists</h2>
+        <div>
+          <h2 className="section-heading text-lg font-semibold">Lists</h2>
+          <p className="page-subtitle text-sm text-muted-foreground mt-1">
+            Organize audiences and manage subscription preferences.
+          </p>
+        </div>
         <Button
           onClick={() => {
             action.reset();
             setEditing({ id: 0, name: "", opt_in: "double", uuid: "" });
           }}
         >
+          <Plus size={16} />
           New list
         </Button>
+      </div>
+      <div className="toolbar flex items-center gap-3">
+        <div className="relative max-w-sm w-full">
+          <Search
+            size={16}
+            className="absolute left-3 top-3 text-muted-foreground"
+          />
+          <Input
+            aria-label="Search lists"
+            className="toolbar-search pl-9"
+            placeholder="Search lists…"
+            value={listSearch}
+            onChange={(e) => setListSearch(e.target.value)}
+          />
+        </div>
+        <span className="text-sm text-muted-foreground">
+          {visibleLists.length} {visibleLists.length === 1 ? "list" : "lists"}
+        </span>
       </div>
       {!lists.length ? (
         <p className="text-sm text-muted-foreground">
           No lists yet. Create a list before adding subscribers.
         </p>
       ) : (
-        <div className="rounded-lg border overflow-x-auto">
+        <div className="table-card rounded-lg border overflow-x-auto">
           <table className={tableClass}>
             <thead>
               <tr>
@@ -1038,52 +1097,80 @@ function Lists({
               </tr>
             </thead>
             <tbody>
-              {lists.map((l) => (
+              {!visibleLists.length && (
+                <tr>
+                  <td colSpan={8} className="empty-panel">
+                    No lists match your search.
+                  </td>
+                </tr>
+              )}
+              {visibleLists.map((l) => (
                 <tr key={l.id}>
-                  <td className="font-medium">{l.name}</td>
-                  <td>{l.opt_in}</td>
+                  <td>
+                    <div className="flex items-center gap-3">
+                      <span className="avatar">
+                        <ListIcon size={17} />
+                      </span>
+                      <span className="row-title font-medium">{l.name}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <Badge variant="outline">{l.opt_in} opt-in</Badge>
+                  </td>
                   <td>{l.active?.toLocaleString() ?? "Unavailable"}</td>
                   <td>{l.subscribed?.toLocaleString() ?? "Unavailable"}</td>
                   <td>{l.unsubscribed?.toLocaleString() ?? "Unavailable"}</td>
                   <td>{l.bounced?.toLocaleString() ?? "Unavailable"}</td>
                   <td>{l.complained?.toLocaleString() ?? "Unavailable"}</td>
                   <td>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          action.reset();
-                          setEditing({ ...l });
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setForm(l)}
-                      >
-                        Subscribe form
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setNotifications(l)}
-                      >
-                        Messages and pages
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          action.reset();
-                          setDeleting(l);
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </div>
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger asChild>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Actions for ${l.name}`}
+                        >
+                          <MoreHorizontal size={18} />
+                        </Button>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.Content
+                          className="dropdown-content"
+                          align="end"
+                          sideOffset={6}
+                        >
+                          <DropdownMenu.Label className="dropdown-label">
+                            List actions
+                          </DropdownMenu.Label>
+                          <DropdownMenu.Item
+                            onSelect={() => {
+                              action.reset();
+                              setEditing({ ...l });
+                            }}
+                          >
+                            Edit list
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item onSelect={() => setForm(l)}>
+                            Subscribe form
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            onSelect={() => setNotifications(l)}
+                          >
+                            Messages and pages
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Separator className="dropdown-separator" />
+                          <DropdownMenu.Item
+                            className="text-destructive"
+                            onSelect={() => {
+                              action.reset();
+                              setDeleting(l);
+                            }}
+                          >
+                            Delete list
+                          </DropdownMenu.Item>
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
                   </td>
                 </tr>
               ))}
@@ -1226,6 +1313,8 @@ function ContactsWorkspace({ brandId }: { brandId: number }) {
   const [profile, setProfile] = useState<Subscriber | null | undefined>(
     undefined,
   );
+  const [showCreated, setShowCreated] = useState(false);
+  const [showConsent, setShowConsent] = useState(true);
   const [lookup, setLookup] = useState("");
   const [lookupError, setLookupError] = useState<unknown>();
   const [lookupBusy, setLookupBusy] = useState(false);
@@ -1268,19 +1357,22 @@ function ContactsWorkspace({ brandId }: { brandId: number }) {
   };
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start">
+      <div className="page-header flex justify-between items-start">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Contacts & lists
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="page-subtitle text-sm text-muted-foreground mt-1">
             Manage contact profiles, consent and audience memberships.
           </p>
         </div>
-        <Button onClick={() => setProfile(null)}>New contact</Button>
+        <Button onClick={() => setProfile(null)}>
+          <Plus size={16} />
+          New contact
+        </Button>
       </div>
       <div
-        className="flex flex-wrap gap-2 border-b pb-3"
+        className="page-tabs flex flex-wrap gap-2 border-b pb-3"
         role="tablist"
         aria-label="Contact tools"
       >
@@ -1307,174 +1399,248 @@ function ContactsWorkspace({ brandId }: { brandId: number }) {
       <ErrorMessage error={lists.error || fields.error} />
       {tab === "contacts" && (
         <section className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="Email prefix">
-              <Input
-                placeholder="Email prefix"
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  resetPage();
-                }}
-              />
-            </Field>
-            <Field label="List">
-              <select
-                className={selectClass}
-                value={list}
-                onChange={(e) => {
-                  setList(Number(e.target.value));
-                  setMembershipStatus("");
-                  resetPage();
-                }}
-              >
-                <option value="0">All contacts</option>
-                {lists.data?.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Subscriber status">
-              <select
-                className={selectClass}
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  resetPage();
-                }}
-              >
-                <option value="">All statuses</option>
-                {statuses.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Membership status">
-              <select
-                className={selectClass}
-                disabled={!list}
-                value={membershipStatus}
-                onChange={(e) => {
-                  setMembershipStatus(e.target.value);
-                  resetPage();
-                }}
-              >
-                <option value="">All memberships</option>
-                {["subscribed", "unsubscribed", "unconfirmed"].map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <div className="flex gap-3 max-w-xl">
-            <Input
-              type="email"
-              aria-label="Find contact by exact email"
-              placeholder="Find exact email address"
-              value={lookup}
-              onChange={(e) => setLookup(e.target.value)}
-            />
-            <Button
-              variant="outline"
-              disabled={!lookup.trim() || lookupBusy}
-              onClick={async () => {
-                setLookupBusy(true);
-                setLookupError(undefined);
-                try {
-                  const v = await api<Subscriber>(
-                    `/subscribers/by-email?email=${encodeURIComponent(lookup.trim())}`,
-                    { brandId },
-                  );
-                  setProfile(v);
-                } catch (e) {
-                  setLookupError(e);
-                } finally {
-                  setLookupBusy(false);
-                }
-              }}
-            >
-              {lookupBusy ? "Finding…" : "Find email"}
-            </Button>
-          </div>
-          <ErrorMessage error={lookupError || subscribers.error} />
-          {subscribers.isPending ? (
-            <p role="status">Loading contacts…</p>
-          ) : !subscribers.data?.length ? (
-            <div className="rounded-lg border p-10 text-center text-muted-foreground">
-              No contacts match these filters.
-            </div>
-          ) : (
-            <div className="rounded-lg border overflow-x-auto">
-              <table className={tableClass}>
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Name</th>
-                    <th>Subscriber status</th>
-                    <th>Consent</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {subscribers.data.map((s) => (
-                    <tr key={s.id}>
-                      <td className="font-medium">{s.email}</td>
-                      <td>{s.name || "Unnamed"}</td>
-                      <td>
-                        <Badge variant="outline">{s.status}</Badge>
-                      </td>
-                      <td>
-                        {s.gdpr_consent_at
-                          ? new Date(s.gdpr_consent_at).toLocaleDateString()
-                          : "Not recorded"}
-                      </td>
-                      <td>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setProfile(s)}
-                        >
-                          View profile
-                        </Button>
-                      </td>
-                    </tr>
+          <div className="table-card">
+            <div className="table-toolbar toolbar grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="Email prefix">
+                <Input
+                  placeholder="Search by email prefix"
+                  className="toolbar-search"
+                  value={q}
+                  onChange={(e) => {
+                    setQ(e.target.value);
+                    resetPage();
+                  }}
+                />
+              </Field>
+              <Field label="List">
+                <select
+                  className={selectClass}
+                  value={list}
+                  onChange={(e) => {
+                    setList(Number(e.target.value));
+                    setMembershipStatus("");
+                    resetPage();
+                  }}
+                >
+                  <option value="0">All contacts</option>
+                  {lists.data?.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
                   ))}
-                </tbody>
-              </table>
+                </select>
+              </Field>
+              <Field label="Subscriber status">
+                <select
+                  className={selectClass}
+                  value={status}
+                  onChange={(e) => {
+                    setStatus(e.target.value);
+                    resetPage();
+                  }}
+                >
+                  <option value="">All statuses</option>
+                  {statuses.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Membership status">
+                <select
+                  className={selectClass}
+                  disabled={!list}
+                  value={membershipStatus}
+                  onChange={(e) => {
+                    setMembershipStatus(e.target.value);
+                    resetPage();
+                  }}
+                >
+                  <option value="">All memberships</option>
+                  {["subscribed", "unsubscribed", "unconfirmed"].map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
             </div>
-          )}
-          <div className="flex justify-between items-center">
-            <p className="text-xs text-muted-foreground">
-              {subscribers.data?.length || 0} contacts on this page. Status is
-              separate from list opt-outs.
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!history.length || subscribers.isFetching}
-                onClick={() => {
-                  setAfter(history[history.length - 1]);
-                  setHistory(history.slice(0, -1));
-                }}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={
-                  subscribers.data?.length !== 100 || subscribers.isFetching
-                }
-                onClick={() => {
-                  setHistory([...history, after]);
-                  setAfter(subscribers.data![99].id);
-                }}
-              >
-                Next
-              </Button>
+            <div className="table-toolbar flex flex-wrap items-center justify-between gap-3">
+              <div className="flex gap-3 w-full max-w-xl">
+                <Input
+                  type="email"
+                  aria-label="Find contact by exact email"
+                  placeholder="Find exact email address"
+                  value={lookup}
+                  onChange={(e) => setLookup(e.target.value)}
+                />
+                <Button
+                  variant="outline"
+                  disabled={!lookup.trim() || lookupBusy}
+                  onClick={async () => {
+                    setLookupBusy(true);
+                    setLookupError(undefined);
+                    try {
+                      const v = await api<Subscriber>(
+                        `/subscribers/by-email?email=${encodeURIComponent(lookup.trim())}`,
+                        { brandId },
+                      );
+                      setProfile(v);
+                    } catch (e) {
+                      setLookupError(e);
+                    } finally {
+                      setLookupBusy(false);
+                    }
+                  }}
+                >
+                  {lookupBusy ? "Finding…" : "Find email"}
+                </Button>
+              </div>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <Button variant="outline" size="sm">
+                    <SlidersHorizontal size={15} />
+                    View options
+                  </Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    className="dropdown-content"
+                    align="end"
+                    sideOffset={6}
+                  >
+                    <DropdownMenu.Label className="dropdown-label">
+                      Display columns
+                    </DropdownMenu.Label>
+                    <DropdownMenu.CheckboxItem
+                      checked={showConsent}
+                      onCheckedChange={setShowConsent}
+                      onSelect={(event) => event.preventDefault()}
+                    >
+                      <input
+                        type="checkbox"
+                        tabIndex={-1}
+                        readOnly
+                        checked={showConsent}
+                        aria-hidden="true"
+                      />
+                      Consent date
+                    </DropdownMenu.CheckboxItem>
+                    <DropdownMenu.CheckboxItem
+                      checked={showCreated}
+                      onCheckedChange={setShowCreated}
+                      onSelect={(event) => event.preventDefault()}
+                    >
+                      <input
+                        type="checkbox"
+                        tabIndex={-1}
+                        readOnly
+                        checked={showCreated}
+                        aria-hidden="true"
+                      />
+                      Created date
+                    </DropdownMenu.CheckboxItem>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            </div>
+            <ErrorMessage error={lookupError || subscribers.error} />
+            {subscribers.isPending ? (
+              <p role="status">Loading contacts…</p>
+            ) : !subscribers.data?.length ? (
+              <div className="empty-panel rounded-lg p-10 text-center text-muted-foreground">
+                <Users className="mx-auto mb-3" size={28} />
+                <p className="row-title">No contacts match these filters.</p>
+                <p className="row-subtitle mt-1">
+                  Try a different email prefix, list or status.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className={tableClass}>
+                  <thead>
+                    <tr>
+                      <th>Contact</th>
+                      <th>Subscriber status</th>
+                      {showConsent && <th>Consent</th>}
+                      {showCreated && <th>Created</th>}
+                      <th className="text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subscribers.data.map((s) => (
+                      <tr key={s.id}>
+                        <td>
+                          <div className="flex items-center gap-3">
+                            <span className="avatar" aria-hidden="true">
+                              {contactInitials(s.name, s.email)}
+                            </span>
+                            <div>
+                              <div className="row-title">
+                                {s.name || "Unnamed contact"}
+                              </div>
+                              <div className="row-subtitle">{s.email}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <ContactStatusBadge status={s.status} />
+                        </td>
+                        {showConsent && (
+                          <td className="text-muted-foreground">
+                            {s.gdpr_consent_at
+                              ? new Date(s.gdpr_consent_at).toLocaleDateString()
+                              : "Not recorded"}
+                          </td>
+                        )}
+                        {showCreated && (
+                          <td className="text-muted-foreground">
+                            {new Date(s.created_at).toLocaleDateString()}
+                          </td>
+                        )}
+                        <td>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setProfile(s)}
+                          >
+                            View profile
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="table-footer flex flex-wrap gap-3 justify-between items-center">
+              <p className="text-xs text-muted-foreground">
+                {subscribers.data?.length || 0} contacts on this page. Status is
+                separate from list opt-outs.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!history.length || subscribers.isFetching}
+                  onClick={() => {
+                    setAfter(history[history.length - 1]);
+                    setHistory(history.slice(0, -1));
+                  }}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    subscribers.data?.length !== 100 || subscribers.isFetching
+                  }
+                  onClick={() => {
+                    setHistory([...history, after]);
+                    setAfter(subscribers.data![99].id);
+                  }}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           </div>
         </section>

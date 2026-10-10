@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import type { ReactNode } from "react";
+import { Badge } from "../ui/badge";
 
 export type ContactList = {
   id: number;
@@ -35,6 +36,22 @@ export const selectClass =
   "h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs w-full";
 export const tableClass =
   "w-full text-sm [&_th]:text-left [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:py-3 [&_th]:py-3 [&_tr]:border-b [&_td]:px-3 [&_th]:px-3";
+export function ContactStatusBadge({ status }: { status: string }) {
+  return (
+    <Badge variant="outline" className={`status-badge status-${status}`}>
+      <span className="status-dot" />
+      {status}
+    </Badge>
+  );
+}
+export function contactInitials(name: string, email: string) {
+  const words = (name.trim() || email).split(/\s+/);
+  return (
+    words.length > 1
+      ? words[0][0] + words[words.length - 1][0]
+      : words[0].slice(0, 2)
+  ).toUpperCase();
+}
 export function ErrorMessage({ error }: { error: unknown }) {
   const status =
     error && typeof error === "object" && "status" in error

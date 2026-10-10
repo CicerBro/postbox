@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { ShieldCheck, Fingerprint, Smartphone, Plus } from "lucide-react";
+import { Badge } from "../ui/badge";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { api } from "../../lib/api";
@@ -36,23 +38,43 @@ export function Security() {
     await qc.invalidateQueries({ queryKey: ["passkeys"] });
   }
   return (
-    <Section title="Account security">
-      <div className="space-y-1 text-sm">
-        <p>
-          Authenticator app: {session.totp_enabled ? "Enabled" : "Not enabled"}
-        </p>
+    <Section
+      title="Sign-in protection"
+      description="Add another layer of protection to your Postbox account."
+    >
+      <div className="grid gap-3 xl:grid-cols-2">
+        <div className="flex items-center gap-3 rounded-xl border bg-muted/40 p-4">
+          <span className="avatar">
+            <Smartphone size={19} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="row-title">Authenticator app</p>
+            <p className="row-subtitle">Time-based verification codes</p>
+          </div>
+          <Badge variant={session.totp_enabled ? "success" : "warning"}>
+            {session.totp_enabled ? "Enabled" : "Not enabled"}
+          </Badge>
+        </div>
         {session.passkeys_available && (
-          <p>
-            Passkeys: {session.passkeys_enabled ? "Enabled" : "Not enabled"} (
-            {session.passkey_count} registered)
-          </p>
+          <div className="flex items-center gap-3 rounded-xl border bg-muted/40 p-4">
+            <span className="avatar">
+              <Fingerprint size={19} aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="row-title">Passkeys</p>
+              <p className="row-subtitle">{session.passkey_count} registered</p>
+            </div>
+            <Badge variant={session.passkeys_enabled ? "success" : "secondary"}>
+              {session.passkeys_enabled ? "Enabled" : "Not enabled"}
+            </Badge>
+          </div>
         )}
       </div>
       <p className="text-sm text-muted-foreground">
         Confirm your password to change sign-in factors. Removing a factor signs
         out all sessions.
       </p>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         <Field
           label="Current password"
           type="password"
@@ -91,6 +113,7 @@ export function Security() {
             }, "Scan the QR code and enter the authenticator code to finish.")
           }
         >
+          <ShieldCheck size={16} aria-hidden="true" />
           Set up authenticator
         </Button>
       )}
@@ -160,7 +183,13 @@ export function Security() {
       )}
       {session.passkeys_available && (
         <div className="space-y-4 border-t pt-4">
-          <h3 className="font-medium">Passkeys</h3>
+          <h3 className="flex items-center gap-2 font-medium">
+            <Fingerprint size={18} aria-hidden="true" />
+            Passkeys
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Use your device or a security key for a faster, secure sign-in.
+          </p>
           <Field
             label="New passkey name"
             value={name}
@@ -206,6 +235,7 @@ export function Security() {
               }, "Passkey registered.")
             }
           >
+            <Plus size={15} aria-hidden="true" />
             Add passkey
           </Button>
           <Message error={keys.error} />
@@ -216,7 +246,12 @@ export function Security() {
               Retry
             </Button>
           ) : !keys.data?.length ? (
-            <p className="text-sm">No passkeys registered.</p>
+            <div className="empty-panel">
+              <Fingerprint size={24} aria-hidden="true" />
+              <p className="page-subtitle">
+                No passkeys registered. Add your first device above.
+              </p>
+            </div>
           ) : (
             <ul className="space-y-3">
               {keys.data.map((k) => (
@@ -225,7 +260,7 @@ export function Security() {
                   className="flex flex-wrap justify-between gap-3 rounded-lg border p-3"
                 >
                   <div>
-                    <p className="text-sm font-medium">{k.name}</p>
+                    <p className="row-title">{k.name}</p>
                     <p className="text-xs text-muted-foreground">
                       Added {date(k.created_at)} · Last used{" "}
                       {date(k.last_used_at)}

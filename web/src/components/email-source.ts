@@ -1,14 +1,20 @@
 type VisualFrameModel = {
-  on(event: string, listener: (frame: { el: HTMLIFrameElement }) => void): unknown;
+  on(
+    event: string,
+    listener: (frame: { el: HTMLIFrameElement }) => void,
+  ): unknown;
 };
 
 /** Protect both the visible canvas and GrapesJS's hidden shallow-model canvas. */
-export function sandboxVisualFrames(models: VisualFrameModel[], isDisposed: () => boolean) {
+export function sandboxVisualFrames(
+  models: VisualFrameModel[],
+  isDisposed: () => boolean,
+) {
   const protect = (frame: { el: HTMLIFrameElement }) => {
-    frame.el.setAttribute('sandbox', 'allow-same-origin');
+    frame.el.setAttribute("sandbox", "allow-same-origin");
     if (isDisposed()) frame.el.remove();
   };
-  for (const model of models) model.on('frame:render', protect);
+  for (const model of models) model.on("frame:render", protect);
 }
 
 /** Filter all visual import attributes, including the body wrapper which bypasses GrapesJS parsing. */

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Plus, Search, Filter } from "lucide-react";
+import { Badge } from "../components/ui/badge";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
@@ -70,7 +72,7 @@ function RuleEditor({
     const replace = (rows: Rule[]) =>
       onChange(rows.length ? { [mode]: rows } : initialRule());
     return (
-      <div className="rounded-lg border p-4 space-y-3">
+      <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
         <div className="flex gap-3 items-center">
           <span className="text-sm">Match</span>
           <select
@@ -286,9 +288,26 @@ function RuleEditor({
   );
 }
 
+function summarizeRule(rule: Rule): string {
+  if (rule.all) return rule.all.map(summarizeRule).join(" and ");
+  if (rule.any) return `(${rule.any.map(summarizeRule).join(" or ")})`;
+  const field = (rule.field || "status")
+    .replace("fields.", "")
+    .replaceAll("_", " ");
+  const op = operations[rule.op || "eq"] || rule.op || "Equals";
+  return `${field} ${op.toLowerCase()}${["is_set", "not_set"].includes(rule.op || "") ? "" : ` ${String(rule.value ?? "")}`}`;
+}
+function segmentRuleSummary(rules: Rule | string): string {
+  try {
+    return summarizeRule(typeof rules === "string" ? JSON.parse(rules) : rules);
+  } catch {
+    return typeof rules === "string" ? rules : JSON.stringify(rules);
+  }
+}
 function SegmentsWorkspace({ brandId }: { brandId: number }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [editing, setEditing] = useState<Segment | null>(null);
+  const [search, setSearch] = useState("");
   const [name, setName] = useState("");
   const [rule, setRule] = useState<Rule>(initialRule());
   const [preview, setPreview] = useState<{
@@ -320,6 +339,9 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
     queryFn: ({ signal }) => allPages<Campaign>("/campaigns", brandId, signal),
     enabled: brandId > 0,
   });
+  const visibleSegments = (segments.data || []).filter((segment) =>
+    segment.name.toLowerCase().includes(search.trim().toLowerCase()),
+  );
   const previewKey = `${brandId}:${JSON.stringify(rule)}`;
   useEffect(() => {
     setEditing(null);
@@ -379,73 +401,128 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
   }, [searchParams, setSearchParams]);
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start">
+      <div className="page-header flex justify-between items-start">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Segments</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="page-subtitle text-sm text-muted-foreground mt-1">
             Build audiences from list memberships, engagement and indexed custom
             fields.
           </p>
         </div>
-        <Button onClick={() => edit()}>New segment</Button>
+        <Button onClick={() => edit()}>
+          <Plus size={16} />
+          New segment
+        </Button>
       </div>
       <ErrorMessage
         error={segments.error || fields.error || lists.error || campaigns.error}
       />
-      {segments.isPending ? (
-        <p role="status">Loading segments…</p>
-      ) : !segments.data?.length ? (
-        <div className="rounded-lg border p-10 text-center text-muted-foreground">
-          No segments yet. Create a rule to define your first audience.
+      <div className="table-card">
+        <div className="table-toolbar toolbar flex flex-wrap items-center justify-between gap-3">
+          <div className="relative w-full max-w-sm">
+            <Search
+              size={16}
+              className="absolute left-3 top-3 text-muted-foreground"
+            />
+            <Input
+              aria-label="Search segments"
+              className="toolbar-search pl-9"
+              placeholder="Search segments…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <Badge variant="outline">
+            {segments.data?.length || 0} saved segments
+          </Badge>
         </div>
-      ) : (
-        <div className="rounded-lg border overflow-x-auto">
-          <table className={tableClass}>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Rules</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {segments.data.map((s) => (
-                <tr key={s.id}>
-                  <td className="font-medium">{s.name}</td>
-                  <td>
-                    <code className="text-xs break-all">
-                      {typeof s.rules === "string"
-                        ? s.rules
-                        : JSON.stringify(s.rules)}
-                    </code>
-                  </td>
-                  <td>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => edit(s)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          action.reset();
-                          setDeleteRow(s);
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
+        {segments.isPending ? (
+          <p role="status">Loading segments…</p>
+        ) : !segments.data?.length ? (
+          <div className="empty-panel rounded-lg p-10 text-center text-muted-foreground">
+            <Filter size={28} className="mx-auto mb-3" />
+            <p className="row-title">Create your first segment</p>
+            <p className="row-subtitle mt-1">
+              Build rules to define an audience by membership, engagement or
+              custom fields.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className={tableClass}>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Rules</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {!visibleSegments.length && (
+                  <tr>
+                    <td colSpan={3} className="empty-panel">
+                      No segments match your search.
+                    </td>
+                  </tr>
+                )}
+                {visibleSegments.map((s) => (
+                  <tr key={s.id}>
+                    <td>
+                      <div className="flex items-center gap-3">
+                        <span className="avatar">
+                          <Filter size={16} />
+                        </span>
+                        <span className="row-title">{s.name}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <p className="text-sm max-w-xl">
+                        {segmentRuleSummary(s.rules)}
+                      </p>
+                      <details className="mt-1 text-xs text-muted-foreground">
+                        <summary className="cursor-pointer">
+                          View rule JSON
+                        </summary>
+                        <code className="block max-w-xl break-all mt-2">
+                          {typeof s.rules === "string"
+                            ? s.rules
+                            : JSON.stringify(s.rules)}
+                        </code>
+                      </details>
+                    </td>
+                    <td>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => edit(s)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            action.reset();
+                            setDeleteRow(s);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="table-footer text-xs text-muted-foreground">
+          {visibleSegments.length}{" "}
+          {visibleSegments.length === 1 ? "segment" : "segments"} shown.
+          Matching contacts are counted when you edit a segment.
         </div>
-      )}
+      </div>
       <Dialog
         open={!!editing}
         onOpenChange={(open) => !open && setEditing(null)}

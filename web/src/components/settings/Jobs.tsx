@@ -29,7 +29,7 @@ export function Jobs() {
         webhook signing secrets are not displayed. Queue filtering applies to
         loaded rows.
       </p>
-      <div className="flex items-center gap-3">
+      <div className="toolbar">
         <label className="text-sm">
           Queue{" "}
           <select
@@ -56,9 +56,14 @@ export function Jobs() {
       {q.isPending ? (
         <p role="status">Loading failed jobs…</p>
       ) : q.isError ? null : !filtered.length ? (
-        <p>No failed jobs in this view.</p>
+        <div className="empty-panel">
+          <h3>No failed jobs in this view</h3>
+          <p className="page-subtitle">
+            Jobs that exhaust their retries will appear here.
+          </p>
+        </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="table-card overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr>

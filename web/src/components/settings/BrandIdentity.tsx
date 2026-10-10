@@ -34,7 +34,10 @@ export function BrandIdentity({ brandId }: { brandId: number }) {
     if (q.data?.[0]) setForm(q.data[0]);
   }, [q.data]);
   return (
-    <Section title="Brand identity">
+    <Section
+      title="Brand identity"
+      description="Sender details, Amazon SES configuration and tracking for this brand."
+    >
       <Message error={q.error} />
       {q.isPending ? (
         <p role="status">Loading brand…</p>

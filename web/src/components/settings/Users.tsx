@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Plus } from "lucide-react";
+import { Badge } from "../ui/badge";
 import {
   useInfiniteQuery,
   useQuery,
@@ -41,6 +43,7 @@ export function Users() {
         cancels their unfinished campaigns.
       </p>
       <Button variant="outline" onClick={() => setEditing(null)}>
+        <Plus size={15} aria-hidden="true" />
         Create user
       </Button>
       <Message error={q.error} />
@@ -57,15 +60,24 @@ export function Users() {
               key={u.id}
               className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
             >
-              <div className="text-sm">
-                <p>
-                  {u.email}
-                  {u.id === session.user_id ? " (you)" : ""}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {u.role === "admin" ? "Administrator" : "Brand user"} ·
-                  Authenticator {u.totp_enabled ? "enabled" : "off"}
-                </p>
+              <div className="flex items-center gap-3 text-sm">
+                <span className="avatar">
+                  {u.email.slice(0, 2).toUpperCase()}
+                </span>
+                <div>
+                  <p className="row-title">
+                    {u.email}
+                    {u.id === session.user_id ? " (you)" : ""}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    <Badge variant={u.role === "admin" ? "info" : "secondary"}>
+                      {u.role === "admin" ? "Administrator" : "Brand user"}
+                    </Badge>{" "}
+                    <span className="ml-2">
+                      Authenticator {u.totp_enabled ? "enabled" : "off"}
+                    </span>
+                  </p>
+                </div>
               </div>
               <div className="flex gap-2">
                 <Button
@@ -134,7 +146,7 @@ function UserEditor({
   const [role, setRole] = useState(user?.role ?? "brand_user");
   const [adminPassword, setAdminPassword] = useState("");
   return (
-    <div className="rounded-lg border p-4 space-y-5">
+    <div className="rounded-xl border bg-muted/20 p-5 space-y-5">
       <h3 className="font-medium">{user ? "Edit user" : "Create user"}</h3>
       <form
         className="space-y-4"

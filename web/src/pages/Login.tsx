@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Mail, KeyRound } from "lucide-react";
+import { Mail, KeyRound, ShieldCheck, ArrowRight } from "lucide-react";
 import { api } from "../lib/api";
 import { requestOptions, credentialJSON } from "../lib/webauthn";
 import { Input } from "../components/ui/input";
@@ -56,19 +56,22 @@ export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
   return (
     <main className="login">
       <div className="login-brand">
-        <Mail size={28} />
+        <span className="brand-mark">
+          <Mail size={21} />
+        </span>
         <span>postbox</span>
       </div>
       <div className="login-card">
-        <p className="eyebrow">Welcome back</p>
+        <p className="eyebrow">Your newsletter workspace</p>
         <h1>Sign in to Postbox</h1>
-        <p className="muted">Your newsletters, under your control.</p>
+        <p className="muted">Welcome back. Enter your details to continue.</p>
         <form onSubmit={login} className="space-y-5 mt-8">
           <label>
             Email
             <Input
               type="email"
               name="email"
+              placeholder="you@example.com"
               autoComplete="username"
               required
               autoFocus
@@ -79,6 +82,7 @@ export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
             <Input
               type="password"
               name="password"
+              placeholder="Enter your password"
               autoComplete="current-password"
               required
             />
@@ -110,22 +114,34 @@ export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
             </p>
           )}
           <Button className="w-full" disabled={busy}>
-            {busy ? "Signing in…" : "Sign in"}
+            {busy ? (
+              "Signing in…"
+            ) : (
+              <>
+                Sign in <ArrowRight size={14} />
+              </>
+            )}
           </Button>
         </form>
         {window.isSecureContext &&
           typeof PublicKeyCredential !== "undefined" && (
-            <Button
-              variant="outline"
-              className="w-full mt-3"
-              disabled={busy}
-              onClick={passkey}
-            >
-              <KeyRound size={16} /> Sign in with a passkey
-            </Button>
+            <>
+              <div className="login-divider">Or continue securely</div>
+              <Button
+                variant="outline"
+                className="w-full"
+                disabled={busy}
+                onClick={passkey}
+              >
+                <KeyRound size={16} /> Sign in with a passkey
+              </Button>
+            </>
           )}
       </div>
-      <p className="muted text-sm">Self-hosted. Made for sending.</p>
+      <p className="login-footer">
+        <ShieldCheck size={13} /> Self-hosted. Your audience, under your
+        control.
+      </p>
     </main>
   );
 }

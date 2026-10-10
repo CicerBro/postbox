@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { KeyRound, Plus, ShieldCheck } from "lucide-react";
+import { Badge } from "../components/ui/badge";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useApp } from "../lib/app-context";
@@ -38,17 +40,45 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
     queryFn: () => api<Key[]>("/api-keys", { brandId }),
     enabled: brandId > 0 && session.admin,
   });
-  if (!brandId) return <p>Select a brand to manage API keys.</p>;
+  if (!brandId)
+    return (
+      <div className="empty-panel">
+        <KeyRound size={28} aria-hidden="true" />
+        <h2>Select a brand</h2>
+        <p className="page-subtitle">
+          Choose a brand to manage its integration keys.
+        </p>
+      </div>
+    );
   if (!session.admin)
-    return <p>API key management requires an administrator session.</p>;
+    return (
+      <div className="empty-panel">
+        <ShieldCheck size={28} aria-hidden="true" />
+        <h2>Administrator access required</h2>
+        <p className="page-subtitle">
+          API key management requires an administrator session.
+        </p>
+      </div>
+    );
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">API keys</h1>
-      <p className="text-sm text-muted-foreground">
-        Keys are limited to the selected brand. Store secrets securely in your
-        integration.
-      </p>
-      <Section title="Create API key">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">Developer tools</p>
+          <h1>API keys</h1>
+          <p className="page-subtitle">
+            Connect your tools with secure access to this brand.
+          </p>
+        </div>
+        <Badge>
+          <KeyRound size={13} aria-hidden="true" />
+          Brand scoped
+        </Badge>
+      </div>
+      <Section
+        title="Create API key"
+        description="Give each integration its own key and choose the access it needs."
+      >
         <form
           className="space-y-4"
           onSubmit={(e) => {
@@ -66,22 +96,35 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
           }}
         >
           <Field
-            label="Name"
+            label="Key name"
+            placeholder="e.g. Website integration"
             value={name}
             required
             onChange={(e) => setName(e.target.value)}
           />
-          <Checks
-            values={["read", "write"]}
-            selected={scopes}
-            onChange={setScopes}
-          />
-          <Button disabled={a.busy || !scopes.length}>Create key</Button>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Permissions</p>
+            <Checks
+              values={["read", "write"]}
+              selected={scopes}
+              onChange={setScopes}
+            />
+            <p className="text-xs text-muted-foreground">
+              Read retrieves brand data. Write allows changes.
+            </p>
+          </div>
+          <Button disabled={a.busy || !scopes.length}>
+            <Plus size={16} aria-hidden="true" />
+            Create key
+          </Button>
         </form>
         <Message {...a} />
         {secret && <Secret value={secret} onDismiss={() => setSecret("")} />}
       </Section>
-      <Section title="Brand API keys">
+      <Section
+        title="Brand API keys"
+        description="Store secrets securely in your integration. Revoking a key takes effect immediately."
+      >
         <Message error={q.error} />
         {q.isPending ? (
           <p role="status">Loading keys…</p>
@@ -90,9 +133,15 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
             Retry
           </Button>
         ) : !q.data?.length ? (
-          <p>No API keys yet.</p>
+          <div className="empty-panel">
+            <KeyRound size={26} aria-hidden="true" />
+            <h3>No API keys yet</h3>
+            <p className="page-subtitle">
+              Create a key above to connect your first integration.
+            </p>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-card overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr>
@@ -100,19 +149,32 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
                   <th>Scopes</th>
                   <th>Last used</th>
                   <th>Status</th>
-                  <th />
+                  <th>
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {q.data.map((k) => (
                   <tr className="border-t" key={k.id}>
                     <td className="p-3">
-                      {k.name}
-                      <code className="block text-xs">{k.prefix}</code>
+                      <span className="row-title">{k.name}</span>
+                      <code className="row-subtitle">{k.prefix}</code>
                     </td>
-                    <td>{strings(k.scopes).join(", ")}</td>
+                    <td>
+                      <div className="flex flex-wrap gap-1">
+                        {strings(k.scopes).map((scope) => (
+                          <Badge key={scope}>{scope}</Badge>
+                        ))}
+                      </div>
+                    </td>
                     <td>{date(k.last_used_at)}</td>
-                    <td>{k.revoked_at ? "Revoked" : "Active"}</td>
+                    <td>
+                      <Badge variant={k.revoked_at ? "secondary" : "success"}>
+                        <span className="status-dot" />
+                        {k.revoked_at ? "Revoked" : "Active"}
+                      </Badge>
+                    </td>
                     <td>
                       {!k.revoked_at && (
                         <Button

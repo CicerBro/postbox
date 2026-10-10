@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Badge } from "../ui/badge";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
@@ -107,9 +108,14 @@ export function Suppressions({ brandId }: { brandId: number }) {
           Retry
         </Button>
       ) : !q.data?.pages.flat().length ? (
-        <p>No suppressions in this scope.</p>
+        <div className="empty-panel">
+          <h3>No suppressions in this scope</h3>
+          <p className="page-subtitle">
+            Suppressed addresses and domains will appear here.
+          </p>
+        </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="table-card overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr>
@@ -117,15 +123,25 @@ export function Suppressions({ brandId }: { brandId: number }) {
                 <th>Kind</th>
                 <th>Scope</th>
                 <th>Reason</th>
-                <th />
+                <th>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {q.data.pages.flat().map((s) => (
                 <tr key={s.id} className="border-t">
-                  <td className="p-3">{s.value}</td>
-                  <td>{s.kind}</td>
-                  <td>{s.brand_id === null ? "Global" : "Brand"}</td>
+                  <td className="p-3">
+                    <span className="row-title">{s.value}</span>
+                  </td>
+                  <td>
+                    <Badge>{s.kind}</Badge>
+                  </td>
+                  <td>
+                    <Badge variant={s.brand_id === null ? "info" : "secondary"}>
+                      {s.brand_id === null ? "Global" : "Brand"}
+                    </Badge>
+                  </td>
                   <td>{s.reason}</td>
                   <td>
                     {(s.brand_id !== null || session.admin) && (

@@ -45,8 +45,15 @@ test database and a loopback fake SES endpoint. Browser checks covered:
 - System, Light and Dark icon controls select the theme. Bootstrap tests cover
   first paint and saved preferences; System subscribes to OS appearance changes.
 - Settings, account security and the API-key page load without browser errors.
+- The refreshed admin UI has grouped navigation, a persisted collapse rail,
+  semantic status badges, Radix action menus and slate/indigo light/dark themes.
+- Contact email-prefix filtering returns real backend results; list and campaign
+  menus support keyboard dismissal, and campaign reports retain connected SSE.
+- At 390px mobile width, account navigation closes the focus-trapped sheet.
+  At 640px by 360px, the sidebar scrolls to expose its account/theme controls.
+  Temporary viewport overrides were reset after these checks.
 
 Physical passkey enrollment and live AWS infrastructure were not exercised.
 The preview stays configured for fake SES with global sending disabled.
 
-![Overview with the three theme controls](screenshots/overview.jpg)
+![Refreshed overview with the three theme controls](screenshots/overview.jpg)

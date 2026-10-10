@@ -1,14 +1,31 @@
+import { Globe2, ExternalLink } from "lucide-react";
 import { BrandIdentity } from "../components/settings/BrandIdentity";
 import { Section } from "../components/settings/Common";
 export function DomainsPage({ brandId }: { brandId: number }) {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Domains</h1>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">Deliverability</p>
+          <h1>Domains</h1>
+          <p className="page-subtitle">
+            Configure your sending identity and branded tracking links.
+          </p>
+        </div>
+        <Globe2
+          size={24}
+          className="text-muted-foreground"
+          aria-hidden="true"
+        />
+      </div>
       {brandId ? (
         <>
           <BrandIdentity key={brandId} brandId={brandId} />
-          <Section title="DNS and Amazon SES setup">
-            <ol className="list-decimal space-y-3 pl-5 text-sm">
+          <Section
+            title="DNS and Amazon SES setup"
+            description="Complete these steps in your AWS console and DNS provider before sending."
+          >
+            <ol className="list-decimal space-y-4 pl-5 text-sm marker:font-semibold marker:text-indigo-600">
               <li>
                 In Amazon SES, create and verify the sender domain in the region
                 used by Postbox. Publish the exact Easy DKIM records supplied by
@@ -30,7 +47,16 @@ export function DomainsPage({ brandId }: { brandId: number }) {
                 for public links and passkeys.
               </li>
             </ol>
-            <p className="text-sm text-muted-foreground">
+            <a
+              href="https://console.aws.amazon.com/ses/"
+              target="_blank"
+              rel="noreferrer"
+              className="button button-outline"
+            >
+              <ExternalLink size={15} aria-hidden="true" />
+              Open Amazon SES
+            </a>
+            <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
               Verification is performed in the AWS console. Postbox has no SES
               identity-status endpoint, so this page does not report
               verification status or generate DNS records.
@@ -38,7 +64,13 @@ export function DomainsPage({ brandId }: { brandId: number }) {
           </Section>
         </>
       ) : (
-        <p>Select a brand to configure domains.</p>
+        <div className="empty-panel">
+          <Globe2 size={28} aria-hidden="true" />
+          <h2>Select a brand</h2>
+          <p className="page-subtitle">
+            Choose a brand to configure its sender and tracking domains.
+          </p>
+        </div>
       )}
     </div>
   );

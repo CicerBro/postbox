@@ -1,3 +1,15 @@
+import {
+  CalendarDays,
+  Send,
+  CheckCheck,
+  MailOpen,
+  MousePointerClick,
+  Undo2,
+  ShieldAlert,
+  Activity,
+  Users,
+} from "lucide-react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import {
@@ -113,29 +125,41 @@ export function OverviewPage({ brandId }: { brandId: number }) {
     );
   const data = query.data;
   const kpis = [
-    ["Sent", "sent", "sent_percent"],
-    ["Delivered", "delivered_percent", "delivered_points"],
-    ["Opened", "opened_percent", "opened_points"],
-    ["Clicked", "clicked_percent", "clicked_points"],
-    ["Bounced", "bounced_percent", "bounced_points"],
-    ["Complaints", "complaints_percent", "complaints_points"],
-  ];
+    ["Sent", "sent", "sent_percent", Send],
+    ["Delivered", "delivered_percent", "delivered_points", CheckCheck],
+    ["Opened", "opened_percent", "opened_points", MailOpen],
+    ["Clicked", "clicked_percent", "clicked_points", MousePointerClick],
+    ["Bounced", "bounced_percent", "bounced_points", Undo2],
+    ["Complaints", "complaints_percent", "complaints_points", ShieldAlert],
+  ] as const;
   const growth = data.growth ?? [];
   return (
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Your newsletter at a glance</p>
           <h1>Overview</h1>
+          <p className="page-subtitle">
+            Monitor your audience and campaign performance.
+          </p>
         </div>
-        <span className="period-label">Last 30 days</span>
+        <div className="flex items-center gap-2">
+          <span className="period-label">
+            <CalendarDays size={14} />
+            Last 30 days
+          </span>
+          <Button asChild>
+            <Link to="/campaigns/new">
+              <Send size={14} /> Create campaign
+            </Link>
+          </Button>
+        </div>
       </div>
       <div className="kpi-strip">
-        {kpis.map(([label, key, delta]) => (
+        {kpis.map(([label, key, delta, Icon]) => (
           <div className="kpi" key={key}>
             <p>
               {label}
-              {key !== "sent" ? " %" : ""}
+              <Icon aria-hidden="true" />
             </p>
             <strong>
               {data.current[key] == null
@@ -145,9 +169,20 @@ export function OverviewPage({ brandId }: { brandId: number }) {
                   : data.current[key]!.toFixed(1) + "%"}
             </strong>
             <small>
-              {data.change[delta] == null
-                ? "No previous-period comparison"
-                : `${data.change[delta]! >= 0 ? "+" : ""}${data.change[delta]!.toFixed(1)}${key === "sent" ? "%" : " pp"} vs previous 30 days`}
+              {data.change[delta] == null ? (
+                "No previous-period comparison"
+              ) : (
+                <>
+                  <span
+                    className={`kpi-delta ${data.change[delta] === 0 || key === "sent" ? "" : data.change[delta]! > 0 !== (key === "bounced_percent" || key === "complaints_percent") ? "positive" : "negative"}`}
+                  >
+                    {data.change[delta]! >= 0 ? "+" : ""}
+                    {data.change[delta]!.toFixed(1)}
+                    {key === "sent" ? "%" : " pp"}
+                  </span>{" "}
+                  vs previous 30 days
+                </>
+              )}
             </small>
           </div>
         ))}
@@ -159,7 +194,10 @@ export function OverviewPage({ brandId }: { brandId: number }) {
       <div className="chart-panels">
         <Card>
           <CardHeader>
-            <CardTitle>Subscriber growth</CardTitle>
+            <div className="section-heading">
+              <CardTitle>Subscriber growth</CardTitle>
+              <Users size={16} className="muted" />
+            </div>
             <p className="muted">
               Active list memberships · daily UTC snapshots
             </p>
@@ -179,7 +217,10 @@ export function OverviewPage({ brandId }: { brandId: number }) {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Emails sent per hour</CardTitle>
+            <div className="section-heading">
+              <CardTitle>Sending activity</CardTitle>
+              <Activity size={16} className="muted" />
+            </div>
             <p className="muted">UTC · today compared with yesterday</p>
             <div className="chart-legend">
               <span>Today</span>
@@ -198,8 +239,10 @@ export function OverviewPage({ brandId }: { brandId: number }) {
       </div>
       {data.current.sent === 0 && (
         <div className="empty-note">
-          No emails sent in this period. Your campaign results will appear here
-          after sending.
+          <span className="flex items-center gap-2">
+            <Activity size={15} /> No emails sent in this period. Campaign
+            results will appear after sending.
+          </span>
         </div>
       )}
     </>

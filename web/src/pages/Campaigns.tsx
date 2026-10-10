@@ -6,7 +6,7 @@ import { useApp } from "../lib/app-context";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
-import { Badge } from "../components/ui/badge";
+import { Plus, Search, ArrowUpRight, Mail, Users, Send } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -22,6 +22,8 @@ import {
 } from "../components/ui/dialog";
 import { EmailEditor } from "../components/EmailEditor";
 import {
+  StatusBadge,
+  contentExcerpt,
   allRows,
   bytes,
   Campaign,
@@ -71,7 +73,11 @@ type Checklist = {
 export function CampaignsPage({ brandId }: { brandId: number }) {
   const [after, setAfter] = useState(0),
     [history, setHistory] = useState<number[]>([]);
+  const [search, setSearch] = useState(""),
+    [filter, setFilter] = useState("all");
   useEffect(() => {
+    setSearch("");
+    setFilter("all");
     setAfter(0);
     setHistory([]);
   }, [brandId]);
@@ -83,74 +89,126 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
   });
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-header flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Campaigns</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="page-subtitle text-sm text-muted-foreground">
             Create newsletters and follow each delivery.
           </p>
         </div>
         <Button asChild>
-          <Link to="/campaigns/new">New campaign</Link>
+          <Link to="/campaigns/new">
+            <Plus size={16} /> New campaign
+          </Link>
         </Button>
+      </div>
+      <div className="page-tabs" aria-label="Filter campaigns on this page">
+        {["all", "draft", "scheduled", "sending", "sent"].map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            className={filter === tab ? "active" : ""}
+            aria-pressed={filter === tab}
+            onClick={() => setFilter(tab)}
+          >
+            {tab === "all"
+              ? "All campaigns"
+              : tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
       </div>
       <ErrorMessage error={query.error} />
       {query.isPending ? (
         <p role="status">Loading campaigns…</p>
       ) : (
-        <div className="overflow-auto rounded-lg border">
-          <table className={tableClass}>
-            <thead>
-              <tr>
-                <th>Subject</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Scheduled</th>
-                <th>
-                  <span className="sr-only">Report</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {query.data?.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <Link
-                      className="font-medium underline underline-offset-4"
-                      to={`/campaigns/${c.id}`}
-                    >
-                      {c.subject}
-                    </Link>
-                  </td>
-                  <td>
-                    <Badge variant="outline">{c.status}</Badge>
-                  </td>
-                  <td>{new Date(c.created_at).toLocaleString()}</td>
-                  <td>
-                    {c.scheduled_at
-                      ? new Date(c.scheduled_at).toLocaleString()
-                      : "Unscheduled"}
-                  </td>
-                  <td>
-                    <Link
-                      className="underline"
-                      to={`/campaigns/${c.id}/report`}
-                    >
-                      Report
-                    </Link>
-                  </td>
+        <div className="table-card">
+          <div className="table-toolbar">
+            <div>
+              <h2 className="section-heading">Campaign overview</h2>
+              <p className="row-subtitle">
+                {query.data?.length ?? 0} campaigns on this page
+              </p>
+            </div>
+            <div className="toolbar-search">
+              <Search size={16} aria-hidden="true" />
+              <Input
+                aria-label="Search campaigns on this page"
+                placeholder="Search this page…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="overflow-auto">
+            <table className={tableClass}>
+              <thead>
+                <tr>
+                  <th>Campaign</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Scheduled</th>
+                  <th>
+                    <span className="sr-only">Report</span>
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {!query.data?.length && (
-            <p className="p-6 text-sm text-muted-foreground">
-              No campaigns on this page.
-            </p>
-          )}
+              </thead>
+              <tbody>
+                {query.data
+                  ?.filter(
+                    (c) =>
+                      (filter === "all" || c.status === filter) &&
+                      c.subject.toLowerCase().includes(search.toLowerCase()),
+                  )
+                  .map((c) => (
+                    <tr key={c.id}>
+                      <td>
+                        <Link className="row-title" to={`/campaigns/${c.id}`}>
+                          {c.subject}
+                        </Link>
+                        <p className="row-subtitle max-w-sm truncate">
+                          {contentExcerpt(c.html) || `Campaign #${c.id}`}
+                        </p>
+                      </td>
+                      <td>
+                        <StatusBadge status={c.status} />
+                      </td>
+                      <td>{new Date(c.created_at).toLocaleString()}</td>
+                      <td>
+                        {c.scheduled_at
+                          ? new Date(c.scheduled_at).toLocaleString()
+                          : "Unscheduled"}
+                      </td>
+                      <td>
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link to={`/campaigns/${c.id}/report`}>
+                            Report <ArrowUpRight size={14} />
+                          </Link>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            {!query.data?.filter(
+              (c) =>
+                (filter === "all" || c.status === filter) &&
+                c.subject.toLowerCase().includes(search.toLowerCase()),
+            ).length && (
+              <div className="empty-panel">
+                <Mail size={28} />
+                <h3>No campaigns found</h3>
+                <p>
+                  {search || filter !== "all"
+                    ? "Try another search or status on this page."
+                    : "Create your first campaign to reach your audience."}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
-      <div className="flex gap-2">
+      <div className="table-footer flex gap-2">
+        <span className="row-subtitle mr-auto">Page {history.length + 1}</span>
         <Button
           variant="outline"
           disabled={!history.length}
@@ -412,7 +470,12 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
           <h1 className="mt-2 text-2xl font-semibold">
             {routeID ? subject || "Campaign" : "New campaign"}
           </h1>
-          <Badge variant="outline">{status}</Badge>
+          <div className="mt-2 flex items-center gap-3">
+            <StatusBadge status={status} />
+            <span className="row-subtitle">
+              {dirty && editable ? "Unsaved changes" : "Saved campaign"}
+            </span>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {draftID > 0 && (
@@ -457,7 +520,12 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
       )}
       <Card>
         <CardHeader>
-          <CardTitle>Content</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Mail size={18} /> Campaign content
+          </CardTitle>
+          <p className="row-subtitle">
+            Craft the message your subscribers will receive.
+          </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <label className="block text-sm">
@@ -536,7 +604,14 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Audience</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Users size={18} /> Audience
+          </CardTitle>
+          <p className="row-subtitle">
+            {targets.filter((t) => t.mode === "include").length} included
+            audiences · {targets.filter((t) => t.mode === "exclude").length}{" "}
+            exclusions
+          </p>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
@@ -557,7 +632,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
                     (row) => (
                       <label
                         key={row.id}
-                        className="mb-2 flex items-center justify-between gap-3 text-sm"
+                        className="audience-option mb-2 flex items-center justify-between gap-3 rounded-md border p-3 text-sm"
                       >
                         <span>{row.name}</span>
                         <select
@@ -597,7 +672,12 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
       {draftID > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Sending</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Send size={18} /> Delivery
+            </CardTitle>
+            <p className="row-subtitle">
+              Review your campaign, send a test, and choose when to deliver.
+            </p>
           </CardHeader>
           <CardContent className="space-y-4">
             {editable && (

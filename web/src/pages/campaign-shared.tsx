@@ -1,3 +1,4 @@
+import { Badge } from "../components/ui/badge";
 import { api } from "../lib/api";
 export type Campaign = {
   id: number;
@@ -62,3 +63,31 @@ export const bytes = (n: number) =>
   n >= 1048576
     ? `${(n / 1048576).toFixed(1)} MB`
     : `${(n / 1024).toFixed(1)} KB`;
+
+export function StatusBadge({ status }: { status: string }) {
+  const tone = ["sent", "delivered", "completed", "finished"].includes(status)
+    ? "success"
+    : ["failed", "cancelled", "canceled"].includes(status)
+      ? "danger"
+      : ["paused", "unknown", "scheduled"].includes(status)
+        ? "warning"
+        : ["sending", "preparing", "claimed"].includes(status)
+          ? "info"
+          : "neutral";
+  return (
+    <Badge variant="outline" className={`status-badge status-${tone}`}>
+      <span className="status-dot" aria-hidden="true" />
+      {status}
+    </Badge>
+  );
+}
+export function contentExcerpt(html: string) {
+  return (html ?? "")
+    .replace(/<head[\s\S]*?<\/head>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 110);
+}
