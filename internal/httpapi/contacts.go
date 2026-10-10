@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"postbox/internal/contacts"
+	"strconv"
 	"strings"
 )
 
@@ -31,8 +32,9 @@ func (a *API) lists(w http.ResponseWriter, r *http.Request) {
 	id := number(r.PathValue("id"))
 	switch r.Method {
 	case "GET":
+		const listColumns = "SELECT l.*,coalesce(c.active,0) AS active,coalesce(c.subscribed,0) AS subscribed,coalesce(c.unsubscribed,0) AS unsubscribed,coalesce(c.bounced,0) AS bounced,coalesce(c.complained,0) AS complained FROM lists l LEFT JOIN list_counters c ON c.list_id=l.id "
 		if id != 0 {
-			v, e := queryRows(r.Context(), a.db.Reader, "SELECT * FROM lists WHERE brand_id=? AND id=?", brand, id)
+			v, e := queryRows(r.Context(), a.db.Reader, listColumns+"WHERE l.brand_id=? AND l.id=?", brand, id)
 			if e == nil && len(v) == 0 {
 				http.NotFound(w, r)
 				return
@@ -41,7 +43,7 @@ func (a *API) lists(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		after, limit := page(r)
-		v, e := queryRows(r.Context(), a.db.Reader, "SELECT * FROM lists WHERE brand_id=? AND id>? ORDER BY id LIMIT ?", brand, after, limit)
+		v, e := queryRows(r.Context(), a.db.Reader, listColumns+"WHERE l.brand_id=? AND l.id>? ORDER BY l.id LIMIT ?", brand, after, limit)
 		result(w, v, e)
 	case "DELETE":
 		result(w, map[string]bool{"deleted": true}, s.DeleteList(r.Context(), brand, id))
@@ -137,7 +139,21 @@ func (a *API) subscribers(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		if id == 0 {
 			after, limit := page(r)
-			v, e := s.Search(r.Context(), brand, after, limit)
+			filter := contacts.SearchFilter{EmailPrefix: r.URL.Query().Get("q"), Status: r.URL.Query().Get("status"), MembershipStatus: r.URL.Query().Get("membership_status")}
+			if raw := r.URL.Query().Get("list_id"); raw != "" {
+				var e error
+				filter.ListID, e = strconv.ParseInt(raw, 10, 64)
+				if e != nil || filter.ListID <= 0 {
+					fail(w, 400, errors.New("list_id must be a positive integer"))
+					return
+				}
+				var exists int
+				if e = a.db.Reader.QueryRowContext(r.Context(), "SELECT 1 FROM lists WHERE brand_id=? AND id=?", brand, filter.ListID).Scan(&exists); e != nil {
+					result(w, nil, e)
+					return
+				}
+			}
+			v, e := s.SearchFiltered(r.Context(), brand, after, limit, filter)
 			result(w, v, e)
 		} else {
 			v, e := queryRows(r.Context(), a.db.Reader, "SELECT * FROM subscribers WHERE brand_id=? AND id=?", brand, id)
