@@ -15,12 +15,13 @@ import (
 	"postbox/internal/store"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 func equal(a, b []byte) bool { return len(a) > 0 && subtle.ConstantTimeCompare(a, b) == 1 }
 func HashPassword(password string) (string, error) {
-	if len(password) < 12 {
-		return "", errors.New("password must have at least 12 characters")
+	if utf8.RuneCountInString(password) < 8 {
+		return "", errors.New("password must have at least 8 characters")
 	}
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {

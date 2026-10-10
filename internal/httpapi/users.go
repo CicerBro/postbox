@@ -356,7 +356,7 @@ func (a *API) documentUsers() {
 				}
 			case path == "/api/v1/users" || path == "/api/v1/users/{id}":
 				props["email"] = map[string]any{"type": "string", "format": "email"}
-				props["password"] = map[string]any{"type": "string", "minLength": 12}
+				props["password"] = map[string]any{"type": "string", "minLength": 8}
 				props["role"] = map[string]any{"type": "string", "enum": []string{"admin", "brand_user"}}
 				if method == "post" {
 					required = []string{"email", "password"}

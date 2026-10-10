@@ -181,10 +181,15 @@ function UserEditor({
           }
           type="password"
           autoComplete="new-password"
+          minLength={8}
+          aria-describedby="user-password-hint"
           required={!user}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
+        <p id="user-password-hint" className="text-sm text-muted-foreground">
+          At least 8 characters.
+        </p>
         <label htmlFor="user-role" className="block text-sm space-y-2">
           Role
           <SelectField

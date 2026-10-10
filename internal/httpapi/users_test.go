@@ -7,10 +7,57 @@ import (
 	"github.com/pquerna/otp/totp"
 	"net/http"
 	"postbox/internal/send"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestUserPasswordMinimumLength(t *testing.T) {
+	a, m, db, c, csrf := setup(t)
+	for _, route := range []struct{ path, method string }{{"/api/v1/users", "post"}, {"/api/v1/users/{id}", "patch"}} {
+		op := a.paths[route.path].(map[string]any)[route.method].(map[string]any)
+		body := op["requestBody"].(map[string]any)
+		schema := body["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+		password := schema["properties"].(map[string]any)["password"].(map[string]any)
+		if password["minLength"] != 8 {
+			t.Fatalf("%s %s password minimum: %v", route.method, route.path, password["minLength"])
+		}
+	}
+	w := request(m, "POST", "/api/v1/users", `{"email":"boundary@example.org","password":"1234567"}`, &c, csrf)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "at least 8 characters") {
+		t.Fatal("seven-character initial password accepted", w.Code, w.Body.String())
+	}
+	w = request(m, "POST", "/api/v1/users", `{"email":"boundary@example.org","password":"12345678"}`, &c, csrf)
+	if w.Code != 200 {
+		t.Fatal("eight-character initial password rejected", w.Code, w.Body.String())
+	}
+	var created struct{ ID int64 }
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/api/v1/users/%d", created.ID)
+	w = request(m, "PATCH", path, `{"password":"7654321"}`, &c, csrf)
+	if w.Code != 400 {
+		t.Fatal("seven-character replacement password accepted", w.Code, w.Body.String())
+	}
+	var hash string
+	if err := db.Reader.QueryRow(`SELECT password_hash FROM users WHERE id=?`, created.ID).Scan(&hash); err != nil || !verifyPassword(hash, "12345678") {
+		t.Fatal("rejected update changed password", err)
+	}
+	w = request(m, "PATCH", path, `{"password":"87654321"}`, &c, csrf)
+	if w.Code != 200 {
+		t.Fatal("eight-character replacement password rejected", w.Code, w.Body.String())
+	}
+	w = request(m, "PATCH", path, `{"password":""}`, &c, csrf)
+	if w.Code != 200 {
+		t.Fatal("blank replacement password did not retain current password", w.Code, w.Body.String())
+	}
+	w = request(m, "POST", "/api/v1/auth/login", `{"email":"boundary@example.org","password":"87654321"}`, nil, "")
+	if w.Code != 200 {
+		t.Fatal("eight-character replacement password cannot log in", w.Code, w.Body.String())
+	}
+}
 
 func TestUserManagementAuthorizationAndMFA(t *testing.T) {
 	a, m, db, c, csrf := setup(t)
