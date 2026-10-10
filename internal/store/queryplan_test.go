@@ -206,7 +206,7 @@ func TestProductionHotQueryPlans(t *testing.T) {
 		{"claimer", "../send/pipeline.go", "claim", "SELECT r.subscriber_id", []any{1, 40, 200}, nil},
 		{"claim_update", "../send/pipeline.go", "claim", "UPDATE campaign_recipients", []any{1, 41}, nil},
 		{"result_update", "../send/pipeline.go", "writeResults", "UPDATE campaign_recipients", []any{"sent", "newmsg", "", "sent", 100, 1, 41}, nil},
-		{"message_id", "../events/events.go", "Process", "SELECT campaign_id,subscriber_id FROM campaign_recipients", []any{"msg41"}, nil},
+		{"message_id", "../events/events.go", "process", "SELECT cr.campaign_id,cr.subscriber_id FROM campaign_recipients cr JOIN campaigns", []any{"msg41", 1, 1}, nil},
 		{"email", "../subscribers/service.go", "GetByEmail", "SELECT ", []any{1, "person41@example.test"}, nil},
 		{"subscribers_page", "../subscribers/service.go", "Search", "SELECT ", []any{1, 40, 100}, nil},
 		{"memberships", "../httpapi/subscribers.go", "subscribers", "SELECT ls.*", []any{1, 41}, nil},

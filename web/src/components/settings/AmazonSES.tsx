@@ -13,6 +13,8 @@ type Settings = {
   configured: boolean;
   has_credentials: boolean;
   has_session_token: boolean;
+  sns_topic_arn: string;
+  sqs_queue_url: string;
   updated_at?: number | string;
 };
 type Status = {
@@ -73,6 +75,8 @@ export function AmazonSES({ brandId }: { brandId: number }) {
   const id = useId();
   const action = useAction();
   const [region, setRegion] = useState("");
+  const [topicArn, setTopicArn] = useState("");
+  const [queueUrl, setQueueUrl] = useState("");
   const [accessKey, setAccessKey] = useState("");
   const [secretKey, setSecretKey] = useState("");
   const [token, setToken] = useState("");
@@ -86,9 +90,11 @@ export function AmazonSES({ brandId }: { brandId: number }) {
   useEffect(() => {
     if (q.data) {
       setRegion(q.data.region);
+      setTopicArn(q.data.sns_topic_arn);
+      setQueueUrl(q.data.sqs_queue_url);
     }
   }, [q.data]);
-  const dirty = region !== q.data?.region ||
+  const dirty = region !== q.data?.region || topicArn !== q.data?.sns_topic_arn || queueUrl !== q.data?.sqs_queue_url ||
     !!accessKey || !!secretKey || !!token || clearToken;
   const error = action.error || q.error;
 
@@ -114,7 +120,7 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                   await api("/aws-settings", {
                     method: "PATCH", brandId,
                     body: {
-                      mode: "static", region,
+                      mode: "static", region, sns_topic_arn: topicArn, sqs_queue_url: queueUrl,
                       ...(accessKey ? { access_key_id: accessKey } : {}),
                       ...(secretKey ? { secret_access_key: secretKey } : {}),
                       ...(token ? { session_token: token } : {}),
@@ -157,12 +163,31 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                     Remove saved session token
                   </label>}
                 </div>
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium">SES events</h3>
+                  <p className="text-sm text-muted-foreground">Create the SNS topic and optional SQS queue in AWS, then enter their details here. Use the SES configuration set in Brand identity to publish events to this topic.</p>
+                  <Field label="SNS topic ARN" type="text" value={topicArn}
+                    disabled={action.busy} onChange={(e) => setTopicArn(e.target.value)} />
+                  <Field label="SQS queue URL (optional)" type="url" value={queueUrl}
+                    disabled={action.busy} onChange={(e) => setQueueUrl(e.target.value)} />
+                  {topicArn && <p className="text-sm text-muted-foreground">For direct SNS delivery, subscribe your public /events/sns URL to this topic. For SQS delivery, subscribe the queue to the topic.</p>}
+                </div>
                 <Button disabled={action.busy || !region}>Save Amazon SES settings</Button>
               </form>
             ) : <dl className="grid gap-3 text-sm sm:grid-cols-2">
               <div><dt className="text-muted-foreground">Access keys</dt><dd>{q.data.has_credentials ? "Configured" : "Not configured"}</dd></div>
               <div><dt className="text-muted-foreground">AWS region</dt><dd>{q.data.region || "Not configured"}</dd></div>
+              <div><dt className="text-muted-foreground">SNS topic ARN</dt><dd>{q.data.sns_topic_arn || "Not configured"}</dd></div>
+              <div><dt className="text-muted-foreground">SQS queue URL</dt><dd>{q.data.sqs_queue_url || "Not configured"}</dd></div>
             </dl>}
+            {session.admin && <div className="space-y-2">
+              <Button variant="outline" disabled={action.busy || dirty || !q.data.has_credentials || !q.data.sns_topic_arn} onClick={() => {
+                void action.run(async () => {
+                  await api("/aws-settings/setup-events", { method: "POST", brandId });
+                }, "SES configuration set now publishes events to this brand's SNS topic.");
+              }}>Configure SES event destination</Button>
+              <p className="text-sm text-muted-foreground">Save the SNS topic first. The brand's AWS keys need SES event destination setup permission.</p>
+            </div>}
           </Section>
           <Section title="Sending status" description="Live account statistics reported by AWS for the saved connection. Quotas are shared by all senders in this AWS account and region.">
             <Button variant="outline" disabled={action.busy || !q.data.has_credentials || (session.admin && dirty)} onClick={() => {

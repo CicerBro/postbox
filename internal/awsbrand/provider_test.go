@@ -35,6 +35,75 @@ func TestStatusWithDevelopmentAWSService(t *testing.T) {
 	}
 }
 
+func TestBrandEventRoutesUseSavedSettings(t *testing.T) {
+	p, _ := testProvider(t, "")
+	ctx := context.Background()
+	topic := "arn:aws:sns:eu-west-1:123456789012:brand-one"
+	queue := "https://sqs.eu-west-1.amazonaws.com/123456789012/brand-one"
+	if e := p.Save(ctx, 1, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "key", SecretAccessKey: "secret", TopicARN: &topic, QueueURL: &queue}); e != nil {
+		t.Fatal(e)
+	}
+	routes, e := p.EventRoutes(ctx)
+	if e != nil || len(routes) != 1 || routes[0].BrandID != 1 || routes[0].TopicARN != topic || routes[0].QueueURL != queue {
+		t.Fatalf("unexpected routes: %+v %v", routes, e)
+	}
+	if id, e := p.EventBrand(ctx, topic); e != nil || id != 1 {
+		t.Fatalf("topic resolved to %d: %v", id, e)
+	}
+	if _, e := p.SQSClient(ctx, 1); e != nil {
+		t.Fatal(e)
+	}
+	if e := p.Save(ctx, 2, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "other", SecretAccessKey: "other", TopicARN: &topic}); e == nil {
+		t.Fatal("SNS topic assigned to two brands")
+	}
+	blank := ""
+	if e := p.Save(ctx, 1, Update{Mode: "static", Region: "eu-west-1", TopicARN: &blank, QueueURL: &blank}); e != nil {
+		t.Fatal(e)
+	}
+	if routes, e = p.EventRoutes(ctx); e != nil || len(routes) != 0 {
+		t.Fatalf("cleared topic still routed: %+v %v", routes, e)
+	}
+}
+
+func TestSetupEventsUsesBrandKeys(t *testing.T) {
+	var created bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Authorization"), "Credential=brand-event-key/") {
+			t.Error("event setup did not use brand keys")
+		}
+		if r.URL.Path == "/" {
+			w.Header().Set("Content-Type", "text/xml")
+			fmt.Fprint(w, `<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/"><GetCallerIdentityResult><Account>123456789012</Account></GetCallerIdentityResult></GetCallerIdentityResponse>`)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/event-destinations") && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"EventDestinations":[]}`)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/event-destinations") && r.Method == http.MethodPost {
+			created = true
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{}`)
+			return
+		}
+		t.Errorf("unexpected AWS request: %s %s", r.Method, r.URL.Path)
+		http.Error(w, "unexpected request", 404)
+	}))
+	defer server.Close()
+	p, db := testProvider(t, server.URL)
+	if _, err := db.Writer.Exec("UPDATE brands SET configuration_set='postbox' WHERE id=1"); err != nil {
+		t.Fatal(err)
+	}
+	topic := "arn:aws:sns:eu-west-1:123456789012:brand-one"
+	if err := p.Save(context.Background(), 1, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "brand-event-key", SecretAccessKey: "secret", TopicARN: &topic}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetupEvents(context.Background(), 1); err != nil || !created {
+		t.Fatalf("event destination was not created: %v", err)
+	}
+}
+
 func testProvider(t *testing.T, endpoint string) (*Provider, *store.DB) {
 	t.Helper()
 	db, e := store.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -208,7 +277,7 @@ func TestMigrationRemovesServerCredentialConnections(t *testing.T) {
 		CREATE TABLE brand_aws_settings (brand_id INTEGER PRIMARY KEY REFERENCES brands(id) ON DELETE CASCADE, mode TEXT NOT NULL CHECK(mode IN ('static','instance_role')), region TEXT NOT NULL, credentials BLOB NOT NULL, revision INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL) STRICT;
 		INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'instance_role','us-east-1',x'00',1),(2,'static','eu-west-1',x'01',1);
 		INSERT INTO suppressions(brand_id,kind,value,reason,created_at) VALUES(1,'email','old@example.test','ses_sync',1),(2,'email','keep@example.test','ses_sync',1);
-		DELETE FROM schema_migrations WHERE name='012_brand_keys_only.sql'`)
+		DELETE FROM schema_migrations WHERE name IN ('012_brand_keys_only.sql','013_brand_ses_events.sql')`)
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -16,11 +16,11 @@ import (
 )
 
 type Config struct {
-	DB, Listen, BaseURL, Region, SecretFile, QueueURL, TopicARN, GeoIP, BackupDir, TurnstileSecret, TurnstileSiteKey string
-	SecureCookies, Development                                                                                       bool
-	MaxWorkers, RetentionDays, SoftBounceLimit                                                                       int
-	RecoveryPolicy                                                                                                   string
-	SessionTTL, ShutdownTimeout                                                                                      time.Duration
+	DB, Listen, BaseURL, Region, SecretFile, GeoIP, BackupDir, TurnstileSecret, TurnstileSiteKey string
+	SecureCookies, Development                                                                   bool
+	MaxWorkers, RetentionDays, SoftBounceLimit                                                   int
+	RecoveryPolicy                                                                               string
+	SessionTTL, ShutdownTimeout                                                                  time.Duration
 }
 
 func Load(args []string) (Config, error) {
@@ -31,8 +31,6 @@ func Load(args []string) (Config, error) {
 	f.StringVar(&c.BaseURL, "base-url", env("BASE_URL", ""), "public HTTPS base URL")
 	f.StringVar(&c.Region, "region", env("AWS_REGION", os.Getenv("AWS_REGION")), "AWS region")
 	f.StringVar(&c.SecretFile, "secret-file", env("SECRET_FILE", ""), "persistent tracking token secret file")
-	f.StringVar(&c.QueueURL, "sqs-queue-url", env("SQS_QUEUE_URL", ""), "SES event SQS queue URL")
-	f.StringVar(&c.TopicARN, "sns-topic-arn", env("SNS_TOPIC_ARN", ""), "expected SNS topic ARN")
 	f.StringVar(&c.GeoIP, "geoip", env("GEOIP", ""), "optional local MaxMind database")
 	f.StringVar(&c.BackupDir, "backup-dir", env("BACKUP_DIR", "./data/backups"), "online backup directory")
 	f.StringVar(&c.TurnstileSecret, "turnstile-secret", env("TURNSTILE_SECRET", ""), "Cloudflare Turnstile secret")

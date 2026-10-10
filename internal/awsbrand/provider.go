@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"postbox/internal/send"
 	"postbox/internal/store"
@@ -32,12 +34,14 @@ import (
 
 // Update is write-only. Blank secret fields preserve saved values unless ClearSessionToken is set.
 type Update struct {
-	Mode              string `json:"mode"`
-	Region            string `json:"region"`
-	AccessKeyID       string `json:"access_key_id"`
-	SecretAccessKey   string `json:"secret_access_key"`
-	SessionToken      string `json:"session_token"`
-	ClearSessionToken bool   `json:"clear_session_token"`
+	Mode              string  `json:"mode"`
+	Region            string  `json:"region"`
+	AccessKeyID       string  `json:"access_key_id"`
+	SecretAccessKey   string  `json:"secret_access_key"`
+	SessionToken      string  `json:"session_token"`
+	ClearSessionToken bool    `json:"clear_session_token"`
+	TopicARN          *string `json:"sns_topic_arn"`
+	QueueURL          *string `json:"sqs_queue_url"`
 }
 
 // Settings deliberately contains no credential values, including access key IDs.
@@ -48,6 +52,8 @@ type Settings struct {
 	HasCredentials  bool   `json:"has_credentials"`
 	HasSessionToken bool   `json:"has_session_token"`
 	UpdatedAt       int64  `json:"updated_at"`
+	TopicARN        string `json:"sns_topic_arn"`
+	QueueURL        string `json:"sqs_queue_url"`
 }
 type material struct{ AccessKeyID, SecretAccessKey, SessionToken string }
 type record struct {
@@ -126,7 +132,7 @@ func read(ctx context.Context, q interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, id int64) (record, error) {
 	var r record
-	e := q.QueryRowContext(ctx, "SELECT mode,region,credentials,revision,updated_at FROM brand_aws_settings WHERE brand_id=?", id).Scan(&r.Mode, &r.Region, &r.encrypted, &r.revision, &r.UpdatedAt)
+	e := q.QueryRowContext(ctx, "SELECT mode,region,credentials,revision,updated_at,sns_topic_arn,sqs_queue_url FROM brand_aws_settings WHERE brand_id=?", id).Scan(&r.Mode, &r.Region, &r.encrypted, &r.revision, &r.UpdatedAt, &r.TopicARN, &r.QueueURL)
 	r.Configured = e == nil
 	return r, e
 }
@@ -148,6 +154,7 @@ func (p *Provider) Settings(ctx context.Context, id int64) (Settings, error) {
 }
 
 var regionPattern = regexp.MustCompile(`^[a-z]{2}(?:-[a-z]+)+-\d+$`)
+var accountPattern = regexp.MustCompile(`^\d{12}$`)
 
 func (p *Provider) Save(ctx context.Context, id int64, u Update) error {
 	u.Mode = strings.TrimSpace(u.Mode)
@@ -170,6 +177,21 @@ func (p *Provider) Save(ctx context.Context, id int64, u Update) error {
 			return e
 		}
 		previous := m
+		if u.TopicARN != nil {
+			old.TopicARN = strings.TrimSpace(*u.TopicARN)
+		}
+		if u.QueueURL != nil {
+			old.QueueURL = strings.TrimSpace(*u.QueueURL)
+		}
+		if old.QueueURL != "" && old.TopicARN == "" {
+			return errors.New("an SNS topic ARN is required for SQS ingestion")
+		}
+		if old.TopicARN != "" && !validTopicARN(old.TopicARN, u.Region) {
+			return errors.New("SNS topic ARN must match the brand AWS region")
+		}
+		if old.QueueURL != "" && !validQueueURL(old.QueueURL, u.Region) {
+			return errors.New("SQS queue URL must match the brand AWS region")
+		}
 		if u.AccessKeyID != "" {
 			if m.AccessKeyID != "" && u.AccessKeyID != m.AccessKeyID && u.SecretAccessKey == "" {
 				return errors.New("a new access key requires its secret access key")
@@ -192,7 +214,7 @@ func (p *Provider) Save(ctx context.Context, id int64, u Update) error {
 		if e != nil {
 			return e
 		}
-		_, e = c.ExecContext(ctx, `INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(brand_id) DO UPDATE SET mode=excluded.mode,region=excluded.region,credentials=excluded.credentials,revision=brand_aws_settings.revision+1,updated_at=excluded.updated_at`, id, u.Mode, u.Region, b, time.Now().UnixMilli())
+		_, e = c.ExecContext(ctx, `INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at,sns_topic_arn,sqs_queue_url) VALUES(?,?,?,?,?,?,?) ON CONFLICT(brand_id) DO UPDATE SET mode=excluded.mode,region=excluded.region,credentials=excluded.credentials,sns_topic_arn=excluded.sns_topic_arn,sqs_queue_url=excluded.sqs_queue_url,revision=brand_aws_settings.revision+1,updated_at=excluded.updated_at`, id, u.Mode, u.Region, b, time.Now().UnixMilli(), old.TopicARN, old.QueueURL)
 		if e == nil && (!old.Configured || old.Mode != u.Mode || old.Region != u.Region || previous != m) {
 			return resetSuppressions(ctx, c, id)
 		}
@@ -204,6 +226,74 @@ func (p *Provider) Save(ctx context.Context, id int64, u Update) error {
 		p.mu.Unlock()
 	}
 	return e
+}
+
+func validTopicARN(arn, region string) bool {
+	parts := strings.Split(arn, ":")
+	return len(parts) == 6 && parts[0] == "arn" && parts[1] == "aws" && parts[2] == "sns" && parts[3] == region && accountPattern.MatchString(parts[4]) && parts[5] != ""
+}
+
+func validQueueURL(raw, region string) bool {
+	u, e := url.Parse(raw)
+	if e != nil || u.Scheme != "https" || u.Host != "sqs."+region+".amazonaws.com" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	return len(parts) == 2 && accountPattern.MatchString(parts[0]) && parts[1] != ""
+}
+
+type EventRoute struct {
+	BrandID  int64
+	Region   string
+	TopicARN string
+	QueueURL string
+	Revision int64
+}
+
+func (p *Provider) EventRoutes(ctx context.Context) ([]EventRoute, error) {
+	rows, err := p.db.Reader.QueryContext(ctx, `SELECT brand_id,region,sns_topic_arn,sqs_queue_url,revision FROM brand_aws_settings WHERE mode='static' AND sns_topic_arn!=''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var routes []EventRoute
+	for rows.Next() {
+		var route EventRoute
+		if err := rows.Scan(&route.BrandID, &route.Region, &route.TopicARN, &route.QueueURL, &route.Revision); err != nil {
+			return nil, err
+		}
+		routes = append(routes, route)
+	}
+	return routes, rows.Err()
+}
+
+func (p *Provider) EventBrand(ctx context.Context, topicARN string) (int64, error) {
+	var id int64
+	err := p.db.Reader.QueryRowContext(ctx, `SELECT brand_id FROM brand_aws_settings WHERE mode='static' AND sns_topic_arn=?`, topicARN).Scan(&id)
+	return id, err
+}
+
+func (p *Provider) SQSClient(ctx context.Context, id int64) (*sqs.Client, error) {
+	r, err := read(ctx, p.db.Reader, id)
+	if err != nil || r.Mode != "static" || r.QueueURL == "" {
+		return nil, errors.New("brand SQS connection is not configured")
+	}
+	m, err := p.open(id, r.encrypted)
+	if err != nil {
+		return nil, err
+	}
+	if m.AccessKeyID == "" || m.SecretAccessKey == "" {
+		return nil, errors.New("brand AWS access keys are not configured")
+	}
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(r.Region), config.WithHTTPClient(p.http), config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(m.AccessKeyID, m.SecretAccessKey, m.SessionToken)))
+	if err != nil {
+		return nil, errors.New("brand SQS configuration could not be loaded")
+	}
+	return sqs.NewFromConfig(cfg, func(o *sqs.Options) {
+		if p.endpoint != "" {
+			o.BaseEndpoint = aws.String(p.endpoint)
+		}
+	}), nil
 }
 func (p *Provider) Delete(ctx context.Context, id int64) error {
 	e := p.db.Immediate(ctx, func(c *sql.Conn) error {
@@ -299,6 +389,10 @@ func fingerprint(r record) string {
 	h.Write([]byte(r.Region))
 	h.Write([]byte{0})
 	h.Write(r.encrypted)
+	h.Write([]byte{0})
+	h.Write([]byte(r.TopicARN))
+	h.Write([]byte{0})
+	h.Write([]byte(r.QueueURL))
 	return hex.EncodeToString(h.Sum(nil))
 }
 

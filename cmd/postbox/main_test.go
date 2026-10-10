@@ -214,7 +214,7 @@ func TestServeHealthAndGracefulShutdown(t *testing.T) {
 	dir := t.TempDir()
 	var output bytes.Buffer
 	child := exec.Command(os.Args[0], "-test.run=^TestServeProcess$")
-	child.Env = append(os.Environ(), "POSTBOX_TEST_SERVE_CHILD=1", "POSTBOX_DB="+filepath.Join(dir, "serve.db"), "POSTBOX_SECRET_FILE="+filepath.Join(dir, "tracking.secret"), "POSTBOX_BACKUP_DIR="+filepath.Join(dir, "backups"), "POSTBOX_LISTEN="+address, "POSTBOX_BASE_URL=http://localhost:"+strings.Split(address, ":")[1], "POSTBOX_DEVELOPMENT=true", "POSTBOX_SECURE_COOKIES=false", "POSTBOX_SQS_QUEUE_URL=", "POSTBOX_SNS_TOPIC_ARN=", "POSTBOX_AWS_REGION=eu-west-1", "AWS_ACCESS_KEY_ID=TEST_ONLY_KEY", "AWS_SECRET_ACCESS_KEY=TEST_ONLY_SECRET", "AWS_SESSION_TOKEN=", "AWS_EC2_METADATA_DISABLED=true", "AWS_ENDPOINT_URL="+fake.URL, "POSTBOX_NOTIFICATION_TO=", "POSTBOX_SHUTDOWN_TIMEOUT=5s")
+	child.Env = append(os.Environ(), "POSTBOX_TEST_SERVE_CHILD=1", "POSTBOX_DB="+filepath.Join(dir, "serve.db"), "POSTBOX_SECRET_FILE="+filepath.Join(dir, "tracking.secret"), "POSTBOX_BACKUP_DIR="+filepath.Join(dir, "backups"), "POSTBOX_LISTEN="+address, "POSTBOX_BASE_URL=http://localhost:"+strings.Split(address, ":")[1], "POSTBOX_DEVELOPMENT=true", "POSTBOX_SECURE_COOKIES=false", "POSTBOX_AWS_REGION=eu-west-1", "AWS_ACCESS_KEY_ID=", "AWS_SECRET_ACCESS_KEY=", "AWS_SESSION_TOKEN=", "AWS_EC2_METADATA_DISABLED=true", "AWS_ENDPOINT_URL="+fake.URL, "POSTBOX_NOTIFICATION_TO=", "POSTBOX_SHUTDOWN_TIMEOUT=5s")
 	child.Stdout = &output
 	child.Stderr = &output
 	if err := child.Start(); err != nil {
