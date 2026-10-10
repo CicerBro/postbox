@@ -17,6 +17,9 @@ jobs:
         run: bun install --frozen-lockfile && bun run build
       - name: Test and vet
         run: go test -race ./... && go vet ./...
+      - name: Test frontend source preservation and themes
+        working-directory: web
+        run: bun test
       - name: Verify CGO-free deployment
         env:
           CGO_ENABLED: '0'

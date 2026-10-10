@@ -1,0 +1,554 @@
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../lib/api";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "../components/ui/dialog";
+import {
+  allPages,
+  type ContactList,
+  type CustomField,
+  ErrorMessage,
+  Field,
+  selectClass,
+  tableClass,
+  useContactAction,
+} from "../components/contacts/shared";
+
+type Rule = {
+  all?: Rule[];
+  any?: Rule[];
+  field?: string;
+  op?: string;
+  value?: string | number | boolean;
+};
+type Segment = { id: number; name: string; rules: Rule | string };
+type Campaign = { id: number; subject: string };
+const initialRule = (): Rule => ({
+  field: "status",
+  op: "eq",
+  value: "active",
+});
+const operations: Record<string, string> = {
+  eq: "Equals",
+  ne: "Does not equal",
+  gt: "Greater than",
+  gte: "At least",
+  lt: "Less than",
+  lte: "At most",
+  is_set: "Is set",
+  not_set: "Is not set",
+  in: "Matches",
+  not_in: "Does not match",
+};
+
+function RuleEditor({
+  rule,
+  onChange,
+  fields,
+  lists,
+  campaigns,
+  depth = 0,
+}: {
+  rule: Rule;
+  onChange: (v: Rule) => void;
+  fields: CustomField[];
+  lists: ContactList[];
+  campaigns: Campaign[];
+  depth?: number;
+}) {
+  const group = rule.all || rule.any;
+  if (group) {
+    const mode = rule.all ? "all" : "any";
+    const replace = (rows: Rule[]) =>
+      onChange(rows.length ? { [mode]: rows } : initialRule());
+    return (
+      <div className="rounded-lg border p-4 space-y-3">
+        <div className="flex gap-3 items-center">
+          <span className="text-sm">Match</span>
+          <select
+            aria-label="Group matching"
+            className={selectClass + " max-w-44"}
+            value={mode}
+            onChange={(e) => onChange({ [e.target.value]: group })}
+          >
+            <option value="all">All conditions</option>
+            <option value="any">Any condition</option>
+          </select>
+        </div>
+        {group.map((child, i) => (
+          <div key={i} className="flex gap-2 items-start">
+            <div className="flex-1">
+              <RuleEditor
+                rule={child}
+                onChange={(v) =>
+                  replace(group.map((r, j) => (i === j ? v : r)))
+                }
+                fields={fields}
+                lists={lists}
+                campaigns={campaigns}
+                depth={depth + 1}
+              />
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => replace(group.filter((_, j) => i !== j))}
+              aria-label={`Remove condition ${i + 1}`}
+            >
+              Remove
+            </Button>
+          </div>
+        ))}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={group.length >= 100}
+            onClick={() => replace([...group, initialRule()])}
+          >
+            Add condition
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={depth >= 19 || group.length >= 100}
+            onClick={() => replace([...group, { any: [initialRule()] }])}
+          >
+            Add group
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  const field = rule.field || "status";
+  const membership = ["list", "opened", "clicked"].includes(field);
+  const custom = fields.find((f) => `fields.${f.key}` === field);
+  const numeric =
+    field === "inactive" || membership || custom?.type === "number";
+  const date =
+    field === "created_at" ||
+    field === "gdpr_consent" ||
+    custom?.type === "date";
+  const type = numeric
+    ? "number"
+    : custom?.type === "boolean"
+      ? "boolean"
+      : date
+        ? "date"
+        : "text";
+  const ops = membership
+    ? ["in", "not_in"]
+    : field === "inactive"
+      ? ["eq"]
+      : ["eq", "ne", "gt", "gte", "lt", "lte", "is_set", "not_set"];
+  const val = rule.value ?? "";
+  const changeField = (next: string) => {
+    const f = fields.find((v) => `fields.${v.key}` === next);
+    onChange({
+      field: next,
+      op: ["list", "opened", "clicked"].includes(next) ? "in" : "eq",
+      value:
+        next === "status"
+          ? "active"
+          : next === "inactive"
+            ? 4
+            : f?.type === "boolean"
+              ? true
+              : "",
+    });
+  };
+  const changeValue = (value: string) => {
+    let next: string | number | boolean = value;
+    if (numeric && value !== "") next = Number(value);
+    else if (type === "boolean") next = value === "true";
+    else if (date && !custom && value)
+      next = new Date(`${value}T00:00:00Z`).getTime();
+    onChange({ ...rule, value: next });
+  };
+  const dateValue =
+    !custom && typeof val === "number"
+      ? new Date(val).toISOString().slice(0, 10)
+      : String(val);
+  return (
+    <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-3">
+      <Field label="Field">
+        <select
+          className={selectClass}
+          value={field}
+          onChange={(e) => changeField(e.target.value)}
+        >
+          {[
+            ["email", "Email"],
+            ["name", "Name"],
+            ["status", "Subscriber status"],
+            ["created_at", "Created date (UTC)"],
+            ["gdpr_consent", "GDPR consent date (UTC)"],
+            ["list", "List membership"],
+            ["opened", "Opened campaign"],
+            ["clicked", "Clicked campaign"],
+            ["inactive", "Inactive for N campaigns"],
+          ].map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+          {fields
+            .filter((f) => f.is_filterable)
+            .map((f) => (
+              <option key={f.id} value={`fields.${f.key}`}>
+                {f.label} ({f.type})
+              </option>
+            ))}
+        </select>
+      </Field>
+      <Field label="Operation">
+        <select
+          className={selectClass}
+          value={rule.op || "eq"}
+          onChange={(e) => onChange({ ...rule, op: e.target.value })}
+        >
+          {ops.map((op) => (
+            <option key={op} value={op}>
+              {operations[op]}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {!["is_set", "not_set"].includes(rule.op || "") && (
+        <Field label={field === "inactive" ? "Campaigns" : "Value"}>
+          {membership ? (
+            <select
+              className={selectClass}
+              value={String(val)}
+              onChange={(e) => changeValue(e.target.value)}
+            >
+              <option value="">
+                Choose {field === "list" ? "list" : "campaign"}
+              </option>
+              {(field === "list"
+                ? lists.map((l) => ({ id: l.id, label: l.name }))
+                : campaigns.map((c) => ({ id: c.id, label: c.subject }))
+              ).map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          ) : field === "status" ? (
+            <select
+              className={selectClass}
+              value={String(val)}
+              onChange={(e) => changeValue(e.target.value)}
+            >
+              {["active", "bounced", "complained", "blocklisted"].map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          ) : type === "boolean" ? (
+            <select
+              className={selectClass}
+              value={String(val)}
+              onChange={(e) => changeValue(e.target.value)}
+            >
+              <option value="true">True</option>
+              <option value="false">False</option>
+            </select>
+          ) : (
+            <Input
+              type={type === "number" ? "number" : date ? "date" : "text"}
+              min={numeric ? 1 : undefined}
+              step={custom?.type === "number" ? "any" : undefined}
+              value={date ? dateValue : String(val)}
+              onChange={(e) => changeValue(e.target.value)}
+            />
+          )}
+        </Field>
+      )}
+      {depth === 0 && (
+        <Button
+          className="sm:col-span-3 justify-self-start"
+          variant="outline"
+          size="sm"
+          onClick={() => onChange({ all: [rule] })}
+        >
+          Add more conditions
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function SegmentsWorkspace({ brandId }: { brandId: number }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [editing, setEditing] = useState<Segment | null>(null);
+  const [name, setName] = useState("");
+  const [rule, setRule] = useState<Rule>(initialRule());
+  const [preview, setPreview] = useState<{
+    key: string;
+    count?: number;
+    error?: unknown;
+  }>({ key: "" });
+  const [deleteRow, setDeleteRow] = useState<Segment | null>(null);
+  const [localError, setLocalError] = useState<unknown>();
+  const action = useContactAction(brandId);
+  const segments = useQuery({
+    queryKey: ["contacts", brandId, "segments"],
+    queryFn: ({ signal }) => allPages<Segment>("/segments", brandId, signal),
+    enabled: brandId > 0,
+  });
+  const fields = useQuery({
+    queryKey: ["contacts", brandId, "fields"],
+    queryFn: ({ signal }) =>
+      api<CustomField[]>("/custom-fields", { brandId, signal }),
+    enabled: brandId > 0,
+  });
+  const lists = useQuery({
+    queryKey: ["contacts", brandId, "lists"],
+    queryFn: ({ signal }) => allPages<ContactList>("/lists", brandId, signal),
+    enabled: brandId > 0,
+  });
+  const campaigns = useQuery({
+    queryKey: ["contacts", brandId, "segment-campaigns"],
+    queryFn: ({ signal }) => allPages<Campaign>("/campaigns", brandId, signal),
+    enabled: brandId > 0,
+  });
+  const previewKey = `${brandId}:${JSON.stringify(rule)}`;
+  useEffect(() => {
+    setEditing(null);
+    setDeleteRow(null);
+    setLocalError(undefined);
+  }, [brandId]);
+  useEffect(() => {
+    if (!editing || !brandId) return;
+    const abort = new AbortController();
+    let live = true;
+    const timer = setTimeout(() => {
+      api<{ count: number }>("/segments/preview", {
+        method: "POST",
+        brandId,
+        body: rule,
+        signal: abort.signal,
+      })
+        .then((v) => {
+          if (live) setPreview({ key: previewKey, count: v.count });
+        })
+        .catch((e) => {
+          if (live && !abort.signal.aborted)
+            setPreview({ key: previewKey, error: e });
+        });
+    }, 400);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [previewKey, editing, brandId, rule]);
+  const edit = (s?: Segment) => {
+    action.reset();
+    setLocalError(undefined);
+    setPreview({ key: "" });
+    setEditing(s || { id: 0, name: "", rules: initialRule() });
+    setName(s?.name || "");
+    try {
+      setRule(
+        s
+          ? typeof s.rules === "string"
+            ? JSON.parse(s.rules)
+            : s.rules
+          : initialRule(),
+      );
+    } catch (e) {
+      setLocalError(e);
+    }
+  };
+  useEffect(() => {
+    if (searchParams.get("new")) {
+      edit();
+      const next = new URLSearchParams(searchParams);
+      next.delete("new");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Segments</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Build audiences from list memberships, engagement and indexed custom
+            fields.
+          </p>
+        </div>
+        <Button onClick={() => edit()}>New segment</Button>
+      </div>
+      <ErrorMessage
+        error={segments.error || fields.error || lists.error || campaigns.error}
+      />
+      {segments.isPending ? (
+        <p role="status">Loading segments…</p>
+      ) : !segments.data?.length ? (
+        <div className="rounded-lg border p-10 text-center text-muted-foreground">
+          No segments yet. Create a rule to define your first audience.
+        </div>
+      ) : (
+        <div className="rounded-lg border overflow-x-auto">
+          <table className={tableClass}>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Rules</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {segments.data.map((s) => (
+                <tr key={s.id}>
+                  <td className="font-medium">{s.name}</td>
+                  <td>
+                    <code className="text-xs break-all">
+                      {typeof s.rules === "string"
+                        ? s.rules
+                        : JSON.stringify(s.rules)}
+                    </code>
+                  </td>
+                  <td>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => edit(s)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          action.reset();
+                          setDeleteRow(s);
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Dialog
+        open={!!editing}
+        onOpenChange={(open) => !open && setEditing(null)}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editing?.id ? "Edit segment" : "New segment"}
+            </DialogTitle>
+          </DialogHeader>
+          <Field label="Name">
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <RuleEditor
+            rule={rule}
+            onChange={setRule}
+            fields={fields.data || []}
+            lists={lists.data || []}
+            campaigns={campaigns.data || []}
+          />
+          <div aria-live="polite" className="rounded-lg bg-muted p-3 text-sm">
+            {preview.key !== previewKey ? (
+              "Counting matches…"
+            ) : preview.error ? (
+              <ErrorMessage error={preview.error} />
+            ) : (
+              `${preview.count?.toLocaleString()} matching contacts. Sending also applies subscriber status and suppression checks.`
+            )}
+          </div>
+          <ErrorMessage error={localError || action.error} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !name.trim() ||
+                action.isPending ||
+                preview.key !== previewKey ||
+                !!preview.error
+              }
+              onClick={async () => {
+                try {
+                  await action.mutateAsync({
+                    path: editing?.id ? `/segments/${editing.id}` : "/segments",
+                    method: editing?.id ? "PATCH" : "POST",
+                    body: { name: name.trim(), rules: rule },
+                  });
+                  setEditing(null);
+                } catch {
+                  /* displayed */
+                }
+              }}
+            >
+              Save segment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!deleteRow}
+        onOpenChange={(open) => !open && setDeleteRow(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {deleteRow?.name}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm">
+            This removes the saved segment. Contacts remain in the brand.
+          </p>
+          <ErrorMessage error={action.error} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteRow(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={action.isPending}
+              onClick={async () => {
+                try {
+                  await action.mutateAsync({
+                    path: `/segments/${deleteRow?.id}`,
+                    method: "DELETE",
+                  });
+                  setDeleteRow(null);
+                } catch {
+                  /* displayed */
+                }
+              }}
+            >
+              Delete segment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+export function SegmentsPage({ brandId }: { brandId: number }) {
+  return brandId > 0 ? (
+    <SegmentsWorkspace key={brandId} brandId={brandId} />
+  ) : (
+    <p>Select a brand to manage segments.</p>
+  );
+}

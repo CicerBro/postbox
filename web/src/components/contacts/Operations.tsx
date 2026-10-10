@@ -1,0 +1,727 @@
+import { useEffect, useState } from "react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "../ui/dialog";
+import { download } from "../../lib/api";
+import {
+  type ContactList,
+  type CustomField,
+  ErrorMessage,
+  Field,
+  parseCSV,
+  selectClass,
+  tableClass,
+  useContactAction,
+  useContactsQuery,
+} from "./shared";
+
+type ImportResult = {
+  rows: number;
+  imported: number;
+  invalid: number;
+  errors?: string[];
+  preview?: {
+    email: string;
+    name: string;
+    status: string;
+    fields: Record<string, unknown>;
+  }[];
+};
+export function CSVImport({
+  brandId,
+  lists,
+  fields,
+}: {
+  brandId: number;
+  lists: ContactList[];
+  fields: CustomField[];
+}) {
+  const [file, setFile] = useState<File>();
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [listIds, setListIds] = useState<number[]>([]);
+  const [preview, setPreview] = useState<ImportResult>();
+  const [result, setResult] = useState<ImportResult>();
+  const [error, setError] = useState<unknown>();
+  const [confirm, setConfirm] = useState(false);
+  const action = useContactAction<ImportResult>(brandId);
+  const resetPreview = () => {
+    setPreview(undefined);
+    setResult(undefined);
+    setError(undefined);
+    action.reset();
+  };
+  const options = { mapping, list_ids: listIds };
+  const run = async (dry: boolean) => {
+    if (!file) return;
+    try {
+      const v = await action.mutateAsync({
+        path: `/subscribers/import${dry ? "/preview" : ""}?options=${encodeURIComponent(JSON.stringify(options))}`,
+        body: file,
+      });
+      if (dry) setPreview(v);
+      else {
+        setResult(v);
+        setPreview(undefined);
+        setConfirm(false);
+      }
+    } catch {
+      if (!dry) {
+        setPreview(undefined);
+        setConfirm(false);
+        setError(
+          new Error(
+            "Import stopped. Earlier batches may have committed. Review contacts before running another preview.",
+          ),
+        );
+      }
+    }
+  };
+  return (
+    <section className="rounded-lg border p-6 space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold">Import CSV</h2>
+        <p className="text-sm text-muted-foreground">
+          Map columns, validate without writing, then commit. Existing opt-outs
+          and suppressed statuses are preserved.
+        </p>
+      </div>
+      <Field label="CSV file">
+        <Input
+          type="file"
+          accept=".csv,text/csv"
+          onChange={async (e) => {
+            resetPreview();
+            setFile(undefined);
+            setHeaders([]);
+            const f = e.target.files?.[0];
+            if (!f) return;
+            try {
+              if (f.size > 1024 ** 3)
+                throw new Error("The CSV limit is 1 GiB.");
+              const first = parseCSV(await f.slice(0, 256 * 1024).text(), 1)[0];
+              if (!first?.length) throw new Error("CSV must have a header.");
+              if (new Set(first).size !== first.length)
+                throw new Error("CSV headers must be unique.");
+              setHeaders(first);
+              setMapping(
+                Object.fromEntries(
+                  first.map((h) => [
+                    h,
+                    [
+                      "email",
+                      "name",
+                      "status",
+                      "fields",
+                      "gdpr_consent_at",
+                    ].includes(
+                      h
+                        .replace(/^\uFEFF/, "")
+                        .trim()
+                        .toLowerCase(),
+                    )
+                      ? h
+                          .replace(/^\uFEFF/, "")
+                          .trim()
+                          .toLowerCase()
+                      : "",
+                  ]),
+                ),
+              );
+              setFile(f);
+            } catch (err) {
+              setError(err);
+            }
+          }}
+        />
+      </Field>
+      {!!headers.length && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {headers.map((h) => (
+            <Field key={h} label={h || "(blank header)"}>
+              <select
+                className={selectClass}
+                value={mapping[h]}
+                onChange={(e) => {
+                  resetPreview();
+                  setMapping({ ...mapping, [h]: e.target.value });
+                }}
+              >
+                <option value="">Ignore</option>
+                <option value="email">Email</option>
+                <option value="name">Name</option>
+                <option value="status">Status (includes opt-outs)</option>
+                <option value="fields">Custom fields JSON</option>
+                <option value="gdpr_consent_at">
+                  Consent timestamp (milliseconds)
+                </option>
+                {fields.map((f) => (
+                  <option key={f.key} value={`fields.${f.key}`}>
+                    {f.label} ({f.type})
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ))}
+        </div>
+      )}
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Destination lists</legend>
+        <div className="flex flex-wrap gap-4">
+          {lists.map((l) => (
+            <label className="text-sm flex gap-2 items-center" key={l.id}>
+              <input
+                type="checkbox"
+                checked={listIds.includes(l.id)}
+                onChange={(e) => {
+                  resetPreview();
+                  setListIds(
+                    e.target.checked
+                      ? [...listIds, l.id]
+                      : listIds.filter((id) => id !== l.id),
+                  );
+                }}
+              />
+              {l.name}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <ErrorMessage error={error || action.error} />
+      <Button
+        variant="outline"
+        disabled={
+          !file ||
+          action.isPending ||
+          Object.values(mapping).filter((v) => v === "email").length !== 1
+        }
+        onClick={() => run(true)}
+      >
+        {action.isPending ? "Processing CSV…" : "Preview import"}
+      </Button>
+      {preview && (
+        <div className="space-y-3">
+          <p role="status" className="text-sm">
+            {preview.rows.toLocaleString()} rows,{" "}
+            {(preview.rows - preview.invalid).toLocaleString()} valid,{" "}
+            {preview.invalid.toLocaleString()} invalid. No rows have been
+            written.
+          </p>
+          {preview.errors?.map((s, i) => (
+            <p key={i} className="text-sm text-destructive">
+              {s}
+            </p>
+          ))}
+          <div className="overflow-x-auto rounded-lg border">
+            <table className={tableClass}>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Fields</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.preview?.map((v, i) => (
+                  <tr key={i}>
+                    <td>{v.email}</td>
+                    <td>{v.name}</td>
+                    <td>{v.status || "active"}</td>
+                    <td>
+                      <code className="text-xs">
+                        {JSON.stringify(v.fields)}
+                      </code>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Showing up to 20 valid rows. Double opt-in memberships remain
+            unconfirmed; this import does not send confirmation emails.
+          </p>
+          <Button
+            disabled={action.isPending || preview.rows === preview.invalid}
+            onClick={() => setConfirm(true)}
+          >
+            Import valid rows
+          </Button>
+        </div>
+      )}
+      {result && (
+        <p role="status" className="text-sm">
+          Imported {result.imported.toLocaleString()} rows. Skipped{" "}
+          {result.invalid.toLocaleString()} invalid rows.
+        </p>
+      )}
+      <Dialog open={confirm} onOpenChange={setConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Commit CSV import?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm">
+            Import{" "}
+            {(preview ? preview.rows - preview.invalid : 0).toLocaleString()}{" "}
+            valid rows from {file?.name} into{" "}
+            {listIds.length
+              ? `${listIds.length} selected lists`
+              : "the brand without list memberships"}
+            . Invalid rows will be skipped. Commits happen in batches.
+          </p>
+          <ErrorMessage error={action.error} />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={action.isPending}
+              onClick={() => setConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button disabled={action.isPending} onClick={() => run(false)}>
+              {action.isPending ? "Importing…" : "Confirm import"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}
+
+export function ExportContacts({
+  brandId,
+  lists,
+}: {
+  brandId: number;
+  lists: ContactList[];
+}) {
+  const [list, setList] = useState(0);
+  const [error, setError] = useState<unknown>();
+  const [busy, setBusy] = useState(false);
+  return (
+    <section className="rounded-lg border p-6 space-y-4">
+      <h2 className="text-lg font-semibold">Export contacts</h2>
+      <p className="text-sm text-muted-foreground">
+        Download emails, names, statuses, custom fields and consent dates. A
+        list export includes membership opt-out status.
+      </p>
+      <div className="flex flex-wrap gap-3">
+        <select
+          aria-label="Export list"
+          className={selectClass + " max-w-xs"}
+          value={list}
+          onChange={(e) => setList(Number(e.target.value))}
+        >
+          <option value="0">All brand contacts</option>
+          {lists.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(undefined);
+            try {
+              await download(
+                `/subscribers/export${list ? `?list_id=${list}` : ""}`,
+                brandId,
+                "subscribers.csv",
+              );
+            } catch (e) {
+              setError(e);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Preparing download…" : "Download CSV"}
+        </Button>
+      </div>
+      <ErrorMessage error={error} />
+    </section>
+  );
+}
+
+export function MassOperations({
+  brandId,
+  lists,
+}: {
+  brandId: number;
+  lists: ContactList[];
+}) {
+  const [text, setText] = useState("");
+  const [emails, setEmails] = useState<string[] | null>(null);
+  const [error, setError] = useState<unknown>();
+  const [mode, setMode] = useState("unsubscribe");
+  const [list, setList] = useState(0);
+  const [confirmed, setConfirmed] = useState(false);
+  const [result, setResult] = useState<number>();
+  const action = useContactAction<{ affected: number }>(brandId);
+  const reset = () => {
+    setEmails(null);
+    setConfirmed(false);
+    setResult(undefined);
+    setError(undefined);
+    action.reset();
+  };
+  const preview = () => {
+    reset();
+    const values = [
+      ...new Set(
+        text
+          .split(/[\s,;]+/)
+          .filter(Boolean)
+          .map((e) => e.trim().toLowerCase()),
+      ),
+    ];
+    if (!values.length || values.length > 10000) {
+      setError(
+        new Error("Provide between 1 and 10,000 distinct email addresses."),
+      );
+      return;
+    }
+    if (values.some((e) => !/^[^\s@]+@[^\s@]+$/.test(e))) {
+      setError(new Error("Remove invalid email addresses before continuing."));
+      return;
+    }
+    setEmails(values);
+  };
+  return (
+    <section className="rounded-lg border p-6 space-y-4">
+      <h2 className="text-lg font-semibold">Mass unsubscribe or GDPR erase</h2>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Action">
+          <select
+            className={selectClass}
+            value={mode}
+            onChange={(e) => {
+              reset();
+              setMode(e.target.value);
+            }}
+          >
+            <option value="unsubscribe">Unsubscribe</option>
+            <option value="erase">GDPR erase</option>
+          </select>
+        </Field>
+        {mode === "unsubscribe" && (
+          <Field label="Scope">
+            <select
+              className={selectClass}
+              value={list}
+              onChange={(e) => {
+                reset();
+                setList(Number(e.target.value));
+              }}
+            >
+              <option value="0">All lists in this brand</option>
+              {lists.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+      </div>
+      <Field label="Email addresses (one per line)">
+        <Textarea
+          rows={6}
+          value={text}
+          onChange={(e) => {
+            reset();
+            setText(e.target.value);
+          }}
+        />
+      </Field>
+      <Field label="Or choose a CSV with an email header">
+        <Input
+          type="file"
+          accept=".csv,text/csv"
+          onChange={async (e) => {
+            reset();
+            const f = e.target.files?.[0];
+            if (!f) return;
+            try {
+              if (f.size > 10 * 1024 * 1024)
+                throw new Error("Mass action CSVs must be at most 10 MiB.");
+              const rows = parseCSV(await f.text(), 10002);
+              if (rows.length > 10001)
+                throw new Error("Mass actions support up to 10,000 rows.");
+              const col =
+                rows[0]?.findIndex(
+                  (h) =>
+                    h
+                      .replace(/^\uFEFF/, "")
+                      .trim()
+                      .toLowerCase() === "email",
+                ) ?? -1;
+              if (col < 0) throw new Error("CSV requires an email header.");
+              const data = rows.slice(1).filter((r) => r.some(Boolean));
+              if (data.some((r) => !r[col]?.trim()))
+                throw new Error(
+                  "Every nonempty CSV row must contain an email address.",
+                );
+              setText(data.map((r) => r[col]).join("\n"));
+            } catch (err) {
+              setError(err);
+            }
+          }}
+        />
+      </Field>
+      <ErrorMessage error={error || action.error} />
+      <Button variant="outline" onClick={preview}>
+        Preview addresses
+      </Button>
+      {emails && (
+        <div className="space-y-3 rounded-lg bg-muted p-4">
+          <p className="text-sm">
+            {emails.length.toLocaleString()} unique addresses submitted for{" "}
+            {mode === "erase"
+              ? "permanent erasure of contact profiles, memberships and event history in this brand"
+              : list
+                ? `unsubscribe from ${lists.find((l) => l.id === list)?.name}`
+                : "unsubscribe from all lists in this brand"}
+            . This is an input count. Unknown addresses are skipped and the
+            server reports the affected count after completion.
+          </p>
+          <pre className="max-h-40 overflow-auto text-xs">
+            {emails.slice(0, 50).join("\n")}
+            {emails.length > 50 ? "\n…" : ""}
+          </pre>
+          <label className="flex gap-2 text-sm items-center">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.target.checked)}
+            />
+            I have reviewed the addresses and scope.
+          </label>
+          <Button
+            variant="destructive"
+            disabled={!confirmed || action.isPending}
+            onClick={async () => {
+              try {
+                const r = await action.mutateAsync({
+                  path: `/subscribers/mass-${mode}`,
+                  body: { emails, list_id: mode === "erase" ? 0 : list },
+                });
+                setResult(r.affected);
+                setEmails(null);
+                setConfirmed(false);
+              } catch {
+                setEmails(null);
+                setConfirmed(false);
+                setError(
+                  new Error(
+                    "The operation stopped. Some addresses may already have been processed. Refresh contacts and preview again before retrying.",
+                  ),
+                );
+              }
+            }}
+          >
+            {action.isPending
+              ? "Processing…"
+              : mode === "erase"
+                ? "Permanently erase contacts"
+                : "Unsubscribe contacts"}
+          </Button>
+        </div>
+      )}
+      {result !== undefined && (
+        <p role="status" className="text-sm">
+          Server processed {result.toLocaleString()} matching contacts.
+        </p>
+      )}
+    </section>
+  );
+}
+
+export function ListForm({
+  brandId,
+  list,
+}: {
+  brandId: number;
+  list: ContactList;
+}) {
+  const form = useContactsQuery<{ hosted_url: string; html: string }>(
+    brandId,
+    `form-${list.id}`,
+    `/lists/${list.id}/form`,
+  );
+  const [copyStatus, setCopyStatus] = useState("");
+  return (
+    <div className="space-y-3">
+      <ErrorMessage error={form.error} />
+      {form.isPending ? (
+        <p role="status">Loading form…</p>
+      ) : (
+        form.data && (
+          <>
+            <a
+              className="text-sm underline break-all"
+              href={form.data.hosted_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open hosted subscribe form
+            </a>
+            <Field label="Embed HTML">
+              <Textarea readOnly rows={4} value={form.data.html} />
+            </Field>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(form.data!.html);
+                  setCopyStatus("Copied");
+                } catch {
+                  setCopyStatus("Copy failed. Select and copy the HTML above.");
+                }
+              }}
+            >
+              Copy embed HTML
+            </Button>
+            <p role="status" className="text-sm">
+              {copyStatus}
+            </p>
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
+export function Housekeeping({ brandId }: { brandId: number }) {
+  const [days, setDays] = useState(30);
+  const [campaigns, setCampaigns] = useState(4);
+  const [confirm, setConfirm] = useState(false);
+  const [result, setResult] = useState("");
+  const action = useContactAction<{ removed?: number }>(brandId);
+  const cutoff = Date.now() - days * 86400000;
+  useEffect(() => {
+    setResult("");
+    setConfirm(false);
+  }, [days]);
+  return (
+    <section className="rounded-lg border p-6 space-y-4">
+      <h2 className="text-lg font-semibold">Housekeeping</h2>
+      <Field label="Remove unconfirmed memberships older than (days)">
+        <Input
+          type="number"
+          min="1"
+          step="1"
+          value={days}
+          onChange={(e) => setDays(Number(e.target.value))}
+        />
+      </Field>
+      <p className="text-sm text-muted-foreground">
+        Removes stale double opt-in memberships and their confirmation tokens.
+        Contact profiles and subscribed memberships remain.
+      </p>
+      <Button
+        variant="outline"
+        disabled={!Number.isInteger(days) || days < 1 || action.isPending}
+        onClick={() => {
+          action.reset();
+          setConfirm(true);
+        }}
+      >
+        Review cleanup
+      </Button>
+      <div className="border-t pt-4 space-y-3">
+        <Field label="Inactive for the last N sent campaigns">
+          <Input
+            type="number"
+            min="1"
+            step="1"
+            value={campaigns}
+            onChange={(e) => setCampaigns(Number(e.target.value))}
+          />
+        </Field>
+        <p className="text-sm text-muted-foreground">
+          Creates a saved segment for contacts with no recorded opens or clicks
+          in the last N sent campaigns.
+        </p>
+        <Button
+          variant="outline"
+          disabled={
+            !Number.isInteger(campaigns) || campaigns < 1 || action.isPending
+          }
+          onClick={async () => {
+            try {
+              await action.mutateAsync({
+                path: "/segments",
+                body: {
+                  name: `Inactive for ${campaigns} campaigns`,
+                  rules: { field: "inactive", value: campaigns },
+                },
+              });
+              setResult(
+                "Inactive segment created. Review it on the Segments page.",
+              );
+            } catch {
+              /* displayed */
+            }
+          }}
+        >
+          Create inactive segment
+        </Button>
+      </div>
+      <ErrorMessage error={action.error} />
+      <p role="status" className="text-sm">
+        {result}
+      </p>
+      <Dialog open={confirm} onOpenChange={setConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove stale unconfirmed memberships?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm">
+            Remove unconfirmed memberships created before{" "}
+            {new Date(cutoff).toLocaleDateString()} in this brand. This cannot
+            be undone.
+          </p>
+          <ErrorMessage error={action.error} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={action.isPending}
+              onClick={async () => {
+                try {
+                  const v = await action.mutateAsync({
+                    path: "/housekeeping/unconfirmed",
+                    body: { older_than: cutoff },
+                  });
+                  setResult(
+                    `Removed ${v.removed?.toLocaleString()} unconfirmed memberships.`,
+                  );
+                  setConfirm(false);
+                } catch {
+                  /* displayed */
+                }
+              }}
+            >
+              Remove memberships
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}

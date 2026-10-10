@@ -4,6 +4,7 @@ frontend:
 build: frontend
 	CGO_ENABLED=0 go build -trimpath -o bin/postbox ./cmd/postbox
 test:
+	cd web && bun test
 	go test ./...
 race:
 	go test -race ./...
