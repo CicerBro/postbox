@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -279,8 +281,35 @@ func (a *API) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, 200, options)
 }
+
+// Finish methods in the WebAuthn library read the request body. Buffer its exact
+// bytes before any write transaction so a slow client cannot hold SQLite's writer.
+func bufferPasskeyFinish(w http.ResponseWriter, r *http.Request) (*http.Request, bool) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		status := http.StatusBadRequest
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			status = http.StatusRequestEntityTooLarge
+		}
+		fail(w, status, errors.New("cannot read passkey response"))
+		return nil, false
+	}
+	buffered := r.Clone(r.Context())
+	buffered.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(body)), nil
+	}
+	buffered.Body, _ = buffered.GetBody()
+	buffered.ContentLength = int64(len(body))
+	return buffered, true
+}
+
 func (a *API) finishPasskeyRegistration(w http.ResponseWriter, r *http.Request) {
 	if !a.passkeyAvailable(w, r) {
+		return
+	}
+	var ok bool
+	if r, ok = bufferPasskeyFinish(w, r); !ok {
 		return
 	}
 	s, err := a.consumePasskeyCeremony(w, r, "register")
@@ -288,7 +317,6 @@ func (a *API) finishPasskeyRegistration(w http.ResponseWriter, r *http.Request) 
 		fail(w, 401, errors.New("invalid or expired passkey ceremony"))
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var id int64
 	err = a.db.Immediate(r.Context(), func(c *sql.Conn) error {
 		var active int
@@ -352,12 +380,15 @@ func (a *API) finishPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 	if !a.passkeyAvailable(w, r) {
 		return
 	}
+	var ok bool
+	if r, ok = bufferPasskeyFinish(w, r); !ok {
+		return
+	}
 	s, err := a.consumePasskeyCeremony(w, r, "login")
 	if err != nil {
 		fail(w, 401, errors.New("invalid credentials"))
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	token, csrf := secret(), secret()
 	expires := time.Now().Add(a.cfg.SessionTTL)
 	var id int64
