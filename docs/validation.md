@@ -46,8 +46,8 @@ test database and a loopback fake SES endpoint. Browser checks covered:
   first paint and saved preferences; System subscribes to OS appearance changes.
 - Settings, account security and the API-key page load without browser errors.
 - The admin UI directly adapts shadcn-admin's inset layout, compact sidebar,
-  locally bundled Inter font and warm amber OKLCH light/dark themes. The palette
-  adapts Amber Minimal while retaining the compact reference layout.
+  locally bundled Inter font and neutral OKLCH light/dark surfaces with amber accents. The palette
+  uses Amber Minimal-inspired accents while retaining the compact reference layout.
 - Reference comparison at 1762 by 1194 verifies the 256px sidebar, workspace
   button at (16,16) sized 224 by 48, first navigation row at (16,112) sized
   224 by 32, and main inset starting at x=256 with width 1498.
@@ -69,7 +69,9 @@ navigation, Radix checkbox keyboard toggling, subscriber status filters includin
 returning to the empty "All statuses" value, and Enter opening a subscriber profile.
 Native admin checkboxes and selects are replaced with shared Radix controls.
 The sending action has a Pause icon and explicit "Pause sending" text when enabled.
-The warm dark theme was inspected and the existing Light preference restored.
+White light-mode surfaces and neutral charcoal dark-mode surfaces were inspected;
+amber remains confined to actions, highlights and charts. The existing Light
+preference was restored.
 
 Go package/API helper terminology now uses subscribers. Database tables and indexes
 already use subscriber names; all nine applied migration files are unchanged.
@@ -78,3 +80,5 @@ The legacy `/contacts` route redirects to `/subscribers`, preserving query/hash.
 ![Amber overview and sending control](screenshots/amber-overview.jpg)
 
 ![Amber subscriber workspace](screenshots/amber-subscribers.jpg)
+
+![Neutral charcoal dark mode](screenshots/amber-dark-overview.jpg)
