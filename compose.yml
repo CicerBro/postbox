@@ -1,0 +1,38 @@
+services:
+  postbox:
+    build:
+      context: .
+    image: postbox:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTBOX_BASE_URL: ${POSTBOX_BASE_URL:?Set POSTBOX_BASE_URL to the public HTTPS origin in .env}
+      POSTBOX_AWS_REGION: ${POSTBOX_AWS_REGION:?Set POSTBOX_AWS_REGION in .env}
+      POSTBOX_DB: /var/lib/postbox/postbox.db
+      POSTBOX_SECRET_FILE: /var/lib/postbox/tracking.secret
+      POSTBOX_BACKUP_DIR: /var/lib/postbox/backups
+      POSTBOX_LISTEN: 0.0.0.0:8080
+      POSTBOX_SECURE_COOKIES: "true"
+      POSTBOX_DEVELOPMENT: "false"
+      POSTBOX_SHUTDOWN_TIMEOUT: 60s
+    ports:
+      - "127.0.0.1:${POSTBOX_PORT:-8080}:8080"
+    volumes:
+      - postbox-data:/var/lib/postbox
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 75s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  postbox-data:

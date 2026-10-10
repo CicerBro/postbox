@@ -1,0 +1,23 @@
+# Only build inputs enter the context. Runtime secrets and data stay on the host.
+**
+!go.mod
+!go.sum
+!cmd/
+!cmd/postbox/
+!cmd/postbox/**
+!internal/
+!internal/**
+!web/
+!web/**
+web/node_modules/
+web/dist/
+internal/web/dist/
+**/.DS_Store
+**/.env
+**/.env.*
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.secret
+**/*.log

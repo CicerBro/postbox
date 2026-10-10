@@ -93,6 +93,51 @@ The SQS client uses 20-second long polling with a longer HTTP timeout. Poison me
 
 ## Deployment and operations
 
+### Docker Compose
+
+The [Dockerfile](Dockerfile) builds the frontend with Bun and a static Go binary, then packages it in [`scratch`](https://docs.docker.com/build/building/base-images/#create-a-minimal-base-image-using-scratch) with CA certificates and embedded timezone data. The image runs as UID/GID `65532:65532`. The [Compose configuration](compose.yml) uses a read-only root filesystem, drops all capabilities, and persists SQLite, its WAL files, the tracking secret, CSV jobs and backups in the `postbox-data` named volume.
+
+Prepare runtime configuration and build the image:
+
+```sh
+cp .env.example .env
+chmod 600 .env
+# Edit .env: set POSTBOX_BASE_URL and POSTBOX_AWS_REGION, plus AWS credentials if needed.
+docker compose build --pull
+docker compose run --rm postbox init
+```
+
+Create the initial administrator before starting the service. Supply `POSTBOX_ADMIN_EMAIL`, `POSTBOX_ADMIN_PASSWORD` and `POSTBOX_ADMIN_TOTP` through a protected shell environment, as described in First run, then forward them only to the one-off command:
+
+```sh
+docker compose run --rm \
+  -e POSTBOX_ADMIN_EMAIL -e POSTBOX_ADMIN_PASSWORD -e POSTBOX_ADMIN_TOTP \
+  postbox admin
+unset POSTBOX_ADMIN_PASSWORD POSTBOX_ADMIN_TOTP
+docker compose up -d
+docker compose logs -f postbox
+curl --fail http://127.0.0.1:8080/healthz
+```
+
+Configure a host TLS reverse proxy to forward your public origin to `127.0.0.1:8080` (or `POSTBOX_PORT`). Preserve Host, disable buffering for streaming reports, and restrict `/metrics`. A proxy running in another container should share the Compose network and connect to `postbox:8080`; loopback inside that proxy container refers to the proxy itself. Secure cookies and HTTPS validation are enforced by Compose. Monitor `/healthz` externally; the scratch image contains no shell or HTTP probe utility.
+
+The image uses the AWS SDK credential chain. Instance/task roles must be reachable from the container. Static credentials can be placed in the protected `.env`; shared credential profiles or web identity token files require explicit read-only mounts and their corresponding AWS environment variables. They are never included in the build context. Keep administrator bootstrap secrets out of `.env` so they are not passed to the long-running service.
+
+One-off CLI commands share the same data volume. For example:
+
+```sh
+docker compose run --rm postbox setup-ses
+docker compose run --rm \
+  -e POSTBOX_BACKUP_FILE=/var/lib/postbox/backups/manual-2026-10-10.sqlite \
+  postbox backup
+```
+
+Use a new filename for each backup. Copy backups and `tracking.secret` off-host, and preserve the named volume across deployments. `docker compose down` keeps it; `docker compose down -v` deletes it. A bind mount requires a directory owned by `65532:65532` with mode `0700`. Run one Postbox service per database volume. Compose allows 75 seconds for graceful shutdown; keep this longer than the configured application shutdown timeout.
+
+Rebuild with `docker compose build --pull` and deploy with `docker compose up -d`. BuildKit supports both Linux amd64 and arm64, for example `docker buildx build --platform linux/amd64,linux/arm64 --tag REGISTRY/postbox:TAG --push .`. Builder versions are pinned through `GO_VERSION` and `BUN_VERSION` build arguments; keep Go aligned with `go.mod` when upgrading.
+
+### Systemd
+
 Install `postbox` at `/usr/local/bin/postbox`, create a `postbox` system account, copy [environment example](deploy/postbox.env.example) to `/etc/postbox/postbox.env` with mode 0600, and install [systemd unit](deploy/postbox.service) at `/etc/systemd/system/postbox.service`. Initialize the database and create the admin as the service user, then enable the service:
 
 ```sh
