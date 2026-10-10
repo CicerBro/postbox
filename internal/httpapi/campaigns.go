@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"net/http"
+	"postbox/internal/send"
 	"time"
 )
 
@@ -182,7 +183,7 @@ func (a *API) campaignAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if has(action, "resend-unknown") {
-			fail(w, 403, errors.New("administrator required for uncertain delivery retries"))
+			fail(w, 403, errors.New("uncertain recipients cannot be resent because SES may already have accepted them"))
 			return
 		}
 	}
@@ -243,28 +244,8 @@ func (a *API) campaignAction(w http.ResponseWriter, r *http.Request) {
 		result(w, map[string]int64{"id": newID}, err)
 		return
 	case has(action, "resend-unknown"):
-		err = a.db.Immediate(r.Context(), func(c *sql.Conn) error {
-			var status string
-			if e := c.QueryRowContext(r.Context(), "SELECT status FROM campaigns WHERE id=?", id).Scan(&status); e != nil {
-				return e
-			}
-			if status != "paused" && status != "sent" {
-				return errors.New("campaign must be paused or sent")
-			}
-			res, e := c.ExecContext(r.Context(), "UPDATE campaign_recipients SET status='pending',error=NULL WHERE campaign_id=? AND status='unknown'", id)
-			if e != nil {
-				return e
-			}
-			n, e := res.RowsAffected()
-			if e != nil {
-				return e
-			}
-			if _, e = c.ExecContext(r.Context(), "UPDATE campaign_stats SET unknown=MAX(0,unknown-?) WHERE campaign_id=?", n, id); e != nil {
-				return e
-			}
-			_, e = c.ExecContext(r.Context(), "UPDATE campaigns SET status='paused',finished_at=NULL WHERE id=?", id)
-			return e
-		})
+		fail(w, http.StatusConflict, errors.New("uncertain recipients cannot be resent because SES may already have accepted them"))
+		return
 	}
 	result(w, map[string]bool{"ok": err == nil}, err)
 }
@@ -313,7 +294,7 @@ func (a *API) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if has(r.URL.Path, "checklist") {
-		v, e := a.engine.Estimate(r.Context(), id)
+		v, e := a.engine.Checklist(r.Context(), id, send.PreflightOptions{})
 		result(w, v, e)
 		return
 	}
@@ -358,7 +339,7 @@ func (a *API) report(w http.ResponseWriter, r *http.Request) {
 		result(w, nil, e)
 		return
 	}
-	links, e := queryRows(r.Context(), a.db.Reader, "SELECT l.id,l.url,COALESCE(s.clicks_total,0) clicks_total,COALESCE(s.clicks_unique,0) clicks_unique FROM links l LEFT JOIN link_stats s ON s.link_id=l.id WHERE l.campaign_id=? ORDER BY l.id", id)
+	links, e := queryRows(r.Context(), a.db.Reader, "SELECT l.id,l.url,COALESCE(s.clicks_total,0) clicks_total,COALESCE(s.clicks_unique,0) clicks_unique,COALESCE(s.clicks_human_total,0) clicks_human_total,COALESCE(s.clicks_human_unique,0) clicks_human_unique FROM links l LEFT JOIN link_stats s ON s.link_id=l.id WHERE l.campaign_id=? ORDER BY l.id", id)
 	if e != nil {
 		result(w, nil, e)
 		return

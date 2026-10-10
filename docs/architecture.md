@@ -46,7 +46,7 @@ flowchart LR
 
 Preparation persists transformed subject, HTML and plain text, fixed date values, tracked links, and the sender envelope. Recipient snapshot columns freeze email, name and JSON fields so an edited profile cannot change the sent web version. Personalized web rendering uses that source and snapshot with the same renderer. Link IDs are stable campaign-local values mapped to durable global `links.id` rows.
 
-Claims commit before delivery to rendering. The claimer advances by subscriber ID with bounded in-flight work. Each attempt is journaled before contacting SES because an interrupted or timed-out call may have been accepted. Results update recipients, campaign statistics and send-hour rollups in one transaction. Recovery defaults to `claimed` to `unknown`, preserving uncertain attempts without automatic duplicate delivery. Explicit resend is an administrative action. Unsubscribe and suppression prevent additional pending claims. Graceful shutdown stops claiming, drains in-flight requests, and flushes results before closing SQLite.
+Claims commit before delivery to rendering. The claimer advances by subscriber ID with bounded in-flight work. Each attempt is journaled before contacting SES because an interrupted or timed-out call may have been accepted. Results update recipients, campaign statistics and send-hour rollups in one transaction. An uncertain attempt is terminal `unknown`; it is never automatically retried or manually resent. This preserves the at-most-once delivery policy when SES may have accepted a request. Unsubscribe and suppression prevent additional pending claims. Graceful shutdown stops claiming, drains in-flight requests, and flushes results before closing SQLite.
 
 The quota comes from SES GetAccount at campaign start and periodically thereafter. One account limiter counts messages, caps its burst at one second of account quota, and adjusts live. Concurrency follows observed latency with a cap. Throttle feedback lowers effective rate with jittered backoff, then recovers toward the account limit. Daily quota checks precede sending. Kill-switch, pause, cancel and account-level suspension stop further starts.
 
@@ -70,7 +70,7 @@ Migrations are embedded, ordered by filename, and applied atomically. `schema_mi
 
 ## Final database schema
 
-The executable DDL is the authoritative schema: [001_initial.sql](../internal/store/migrations/001_initial.sql) contains every base table from the build plan; [002_durability.sql](../internal/store/migrations/002_durability.sql) supplies preparation, recovery, aggregation, opt-in, audit and migration additions. [003_counter_snapshots.sql](../internal/store/migrations/003_counter_snapshots.sql) adds daily counter baselines and failed-job pagination; [004_snapshot_guard.sql](../internal/store/migrations/004_snapshot_guard.sql) records whether the immutable recipient snapshot has committed. All tables, including metadata, are STRICT. Composite relationship and rollup tables are WITHOUT ROWID. JSON fields have validity constraints. No event-table foreign-key cascade can accidentally delete a large event history.
+The executable DDL is the authoritative schema: [001_initial.sql](../internal/store/migrations/001_initial.sql) contains the base tables; [002_durability.sql](../internal/store/migrations/002_durability.sql) supplies preparation, recovery, aggregation, opt-in, audit and migration additions. [003_counter_snapshots.sql](../internal/store/migrations/003_counter_snapshots.sql) adds daily counter baselines and failed-job pagination; [004_snapshot_guard.sql](../internal/store/migrations/004_snapshot_guard.sql) records whether the immutable recipient snapshot has committed; [005_user_limits.sql](../internal/store/migrations/005_user_limits.sql) adds campaign ownership, per-user/per-brand daily limits and reservations, and pending TOTP enrollment secrets. All tables, including metadata, are STRICT. Composite relationship and rollup tables are WITHOUT ROWID. JSON fields have validity constraints. No event-table foreign-key cascade can accidentally delete a large event history.
 
 | Tables | Durable contents and relationships |
 | --- | --- |
@@ -93,6 +93,8 @@ The executable DDL is the authoritative schema: [001_initial.sql](../internal/st
 | `jobs` | Queue, JSON payload, due timestamp, status, attempt count, lease deadline and error |
 | `webhooks` | Brand endpoints, selected JSON event types, signing secret and active flag |
 | `users`, `user_brands` | Login credential hashes, TOTP and role; brand-scoped JSON permissions |
+| `user_brand_daily`, `campaign_user_reservations` | Daily reserved recipient budget by user and brand; per-campaign reservation records |
+| `totp_pending` | Short-lived TOTP enrollment secret linked to the enrolling session |
 | `sessions`, `api_keys` | Hashed session tokens, CSRF hash and expiry; prefix/hash API credentials with scopes and revocation |
 | `settings` | Persisted key/value settings including the global sending switch |
 | `subscription_confirmations` | Hashed one-use list/subscriber confirmation tokens and expiry |
@@ -133,4 +135,4 @@ Queries never use OFFSET. Raw event scans do not power dashboard pages. Large im
 
 `go test ./internal/store` verifies migration reopening, STRICT tables, reader write rejection, settings on four simultaneous reader connections, foreign-key enforcement, rollback on callback errors and panics, and index coverage for every declared FK. EXPLAIN QUERY PLAN cases cover claims, results, recipient snapshots, MessageId/email lookups, contact/list pagination, expression-index segment counts, campaign/recipient reports, due jobs/campaigns, raw timelines, SES lookups and pending skips. Each case rejects an unindexed full scan of a large subscriber, membership, recipient or raw-event table and requires an index access path.
 
-Sender rate and rendering performance must be measured separately against fake SES before claiming production-scale proof. Those measurements include achieved rate, latency distribution, process memory/CPU, and writer latency at the two requested account rates.
+Sender rate and rendering performance must be measured separately against fake SES before claiming production-scale proof. Full 350k load tests are currently running; no final performance results are available yet. Report achieved rate, latency distribution, process memory/CPU, and writer latency at the requested account rates only after those runs finish.

@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-webauthn/webauthn/webauthn"
+
 	"postbox/internal/send"
 	"postbox/internal/store"
 )
@@ -26,12 +28,13 @@ type Config struct {
 	BaseURL, TurnstileSecret, TurnstileSiteKey string
 }
 type API struct {
-	db     *store.DB
-	engine *send.Engine
-	cfg    Config
-	mu     sync.Mutex
-	limits map[string]*bucket
-	paths  map[string]any
+	passkeys *webauthn.WebAuthn
+	db       *store.DB
+	engine   *send.Engine
+	cfg      Config
+	mu       sync.Mutex
+	limits   map[string]*bucket
+	paths    map[string]any
 }
 type bucket struct {
 	n     int
@@ -49,7 +52,8 @@ func New(db *store.DB, engine *send.Engine, cfg Config) *API {
 	if cfg.SessionTTL <= 0 {
 		cfg.SessionTTL = 24 * time.Hour
 	}
-	return &API{db: db, engine: engine, cfg: cfg, limits: map[string]*bucket{}, paths: map[string]any{}}
+	rp, _ := passkeyRP(cfg.BaseURL)
+	return &API{passkeys: rp, db: db, engine: engine, cfg: cfg, limits: map[string]*bucket{}, paths: map[string]any{}}
 }
 func (a *API) route(mux *http.ServeMux, pattern string, h http.HandlerFunc) {
 	a.documentRoute(pattern)
@@ -72,9 +76,11 @@ func (a *API) Register(m *http.ServeMux) {
 	a.route(m, "POST /api/v1/api-keys", a.keys)
 	a.route(m, "DELETE /api/v1/api-keys/{id}", a.keys)
 	a.registerUsers(m)
+	a.registerPasskeys(m)
 	a.registerCampaigns(m)
 	a.registerContacts(m)
 	a.registerOperations(m)
+	a.registerWebhooks(m)
 	a.registerPublic(m)
 }
 func respond(w http.ResponseWriter, status int, v any) {

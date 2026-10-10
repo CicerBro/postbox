@@ -41,6 +41,17 @@ func (a *API) documentRoute(pattern string) {
 		parameters = append(parameters, map[string]any{"name": "X-CSRF-Token", "in": "header", "required": false, "description": "Required for all mutations authenticated by the session cookie. Returned by login or session endpoint.", "schema": map[string]any{"type": "string"}})
 		op["parameters"] = parameters
 	}
+	if method == "GET" && path == "/api/v1/overview" {
+		op["parameters"] = append(parameters, map[string]any{"name": "days", "in": "query", "description": "Campaign start comparison window in days. Defaults to 30; preceding window has the same duration.", "schema": map[string]any{"type": "integer", "minimum": 1, "maximum": 365, "default": 30}})
+		op["description"] = "KPIs use campaign_stats attributed to started_at, falling back to finished_at then created_at for imported history. Rates use sent as denominator and are null when sent is zero. Changes are percentage points, except sent_percent (relative percentage, null with zero previous sent). All-time stats remain available. Growth contains 60 UTC calendar days including today. Hourly contains 48 UTC calendar buckets for yesterday and today, with zero-filled missing buckets including future hours today."
+		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Brand overview counters and comparisons", "content": map[string]any{"application/json": map[string]any{"schema": overviewResponseSchema()}}}
+	}
+
+	if method == "GET" && path == "/api/v1/campaigns/{id}/checklist" {
+		op["description"] = "Read-only pre-send checks preserve the estimate fields and return checks.ready with structured errors and warnings. Unknown merge tags are errors; missing recipient custom-field values without fallback are warnings. Recipients, inactive, suppressed, and skipped counts use the selected include/exclude audience. SES remaining daily quota and the campaign owner's optional remaining user quota are checked without reserving quota. HTML and MIME size estimates use sample recipient values; HTML clipping is warned at 102 KiB. At most 100 public HTTP/HTTPS destinations receive HEAD requests, with concurrency four and a three-second timeout each. DNS-pinned dialing rejects local, private, and metadata addresses; redirects are not followed and produce warnings. Personalized destinations use sample values and require real-recipient verification. This endpoint does not persist preparation, recipient snapshots, or reservations. Readiness describes this preview; runtime eligibility and quota are checked again when sending."
+		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Estimate and structured pre-send checks, including validation failures", "content": map[string]any{"application/json": map[string]any{"schema": checklistResponseSchema()}}}
+	}
+
 	if strings.HasSuffix(path, "/events") {
 		op["responses"].(map[string]any)["200"] = map[string]any{"description": "SSE stream; stats event emitted once per second until disconnect", "content": map[string]any{"text/event-stream": map[string]any{"schema": map[string]any{"type": "string"}}}}
 	}
@@ -137,4 +148,57 @@ func requestSchema(path string) map[string]any {
 }
 func (a *API) openapi(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]any{"openapi": "3.0.3", "info": map[string]string{"title": "Postbox API", "version": "1.0.0", "description": "JSON API with brand-scoped read/write bearer keys and authenticated CSRF-protected user sessions. Keyset list responses are arrays; use the last row id as after. Timestamps are Unix milliseconds. Secrets are returned only when created."}, "paths": a.paths, "components": map[string]any{"securitySchemes": map[string]any{"bearerAuth": map[string]string{"type": "http", "scheme": "bearer"}, "cookieAuth": map[string]string{"type": "apiKey", "in": "cookie", "name": "postbox_session"}}}})
+}
+
+func overviewResponseSchema() map[string]any {
+	integer := map[string]any{"type": "integer", "format": "int64"}
+	percent := map[string]any{"type": "number", "nullable": true}
+	kpi := map[string]any{}
+	for _, name := range []string{"sent", "delivered", "opened", "clicked", "bounced", "complaints"} {
+		kpi[name] = integer
+	}
+	for _, name := range []string{"delivered_percent", "opened_percent", "clicked_percent", "bounced_percent", "complaints_percent"} {
+		kpi[name] = percent
+	}
+	change := map[string]any{}
+	for _, name := range []string{"sent_percent", "delivered_points", "opened_points", "clicked_points", "bounced_points", "complaints_points"} {
+		change[name] = percent
+	}
+	object := func(props map[string]any) map[string]any {
+		return map[string]any{"type": "object", "properties": props}
+	}
+	array := func(props map[string]any) map[string]any {
+		return map[string]any{"type": "array", "items": object(props)}
+	}
+	return object(map[string]any{
+		"stats":   array(map[string]any{"sent": integer, "delivered": integer, "opened": integer, "clicked": integer, "bounced": integer, "complaints": integer}),
+		"period":  object(map[string]any{"days": integer, "basis": map[string]any{"type": "string", "enum": []string{"campaign_start"}}, "timezone": map[string]any{"type": "string", "enum": []string{"UTC"}}, "current_start": integer, "previous_start": integer, "end": integer}),
+		"current": object(kpi), "previous": object(kpi), "change": object(change),
+		"growth":            array(map[string]any{"day": integer, "active": integer, "subscribed": integer, "unsubscribed": integer}),
+		"hourly":            array(map[string]any{"hour": integer, "sent": integer}),
+		"hourly_comparison": array(map[string]any{"hour": integer, "today": integer, "yesterday": integer}),
+	})
+}
+
+func checklistResponseSchema() map[string]any {
+	integer := map[string]any{"type": "integer", "format": "int64"}
+	number := map[string]any{"type": "number"}
+	boolean := map[string]any{"type": "boolean"}
+	text := map[string]any{"type": "string"}
+	issue := map[string]any{"type": "object", "required": []string{"code", "message"}, "properties": map[string]any{"code": text, "message": text, "tag": text}}
+	link := map[string]any{"type": "object", "required": []string{"url", "status", "personalized"}, "properties": map[string]any{
+		"url": text, "status": map[string]any{"type": "string", "enum": []string{"ok", "broken", "blocked", "warning"}}, "http_status": integer, "message": text, "personalized": boolean,
+	}}
+	checks := map[string]any{"type": "object", "required": []string{"ready", "errors", "warnings", "links", "html_bytes", "html_clipping", "suppressed", "inactive", "skipped", "remaining_daily_quota", "sample_recipient"}, "properties": map[string]any{
+		"ready":  map[string]any{"type": "boolean", "description": "False when any blocking error is present. Warnings require review but do not block readiness."},
+		"errors": map[string]any{"type": "array", "items": issue}, "warnings": map[string]any{"type": "array", "items": issue}, "links": map[string]any{"type": "array", "maxItems": 100, "items": link},
+		"html_bytes": map[string]any{"type": "integer", "format": "int64", "description": "Sample rendered HTML bytes before MIME encoding, excluding MIME headers and text alternative."}, "html_clipping": boolean,
+		"suppressed": integer, "inactive": integer, "skipped": integer, "remaining_daily_quota": number,
+		"user_remaining_daily_quota": map[string]any{"type": "integer", "format": "int64", "description": "Remaining daily recipient budget for a limited non-admin campaign owner; omitted for unlimited owners."},
+		"sample_recipient":           map[string]any{"type": "boolean", "description": "True when rendering and personalized link resolution use synthetic sample recipient values."},
+	}}
+	quota := map[string]any{"type": "object", "required": []string{"max_send_rate", "max_24_hour_send", "sent_last_24_hours"}, "properties": map[string]any{"max_send_rate": number, "max_24_hour_send": number, "sent_last_24_hours": number}}
+	return map[string]any{"type": "object", "required": []string{"recipients", "message_bytes", "upload_bytes", "duration_seconds", "quota", "fits_daily_quota", "checks"}, "properties": map[string]any{
+		"recipients": integer, "message_bytes": integer, "upload_bytes": integer, "duration_seconds": number, "quota": quota, "fits_daily_quota": boolean, "checks": checks,
+	}}
 }

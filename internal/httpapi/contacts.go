@@ -9,7 +9,7 @@ import (
 )
 
 func (a *API) registerContacts(m *http.ServeMux) {
-	for _, p := range []string{"GET /api/v1/lists", "POST /api/v1/lists", "PATCH /api/v1/lists/{id}", "DELETE /api/v1/lists/{id}"} {
+	for _, p := range []string{"GET /api/v1/lists", "POST /api/v1/lists", "GET /api/v1/lists/{id}", "PATCH /api/v1/lists/{id}", "DELETE /api/v1/lists/{id}"} {
 		a.route(m, p, a.lists)
 	}
 	for _, p := range []string{"GET /api/v1/subscribers", "POST /api/v1/subscribers", "POST /api/v1/subscribers/bulk", "GET /api/v1/subscribers/by-email", "GET /api/v1/subscribers/{id}", "PATCH /api/v1/subscribers/{id}", "DELETE /api/v1/subscribers/{id}", "POST /api/v1/subscribers/{id}/unsubscribe", "GET /api/v1/subscribers/{id}/memberships", "PUT /api/v1/subscribers/{id}/memberships"} {
@@ -31,6 +31,15 @@ func (a *API) lists(w http.ResponseWriter, r *http.Request) {
 	id := number(r.PathValue("id"))
 	switch r.Method {
 	case "GET":
+		if id != 0 {
+			v, e := queryRows(r.Context(), a.db.Reader, "SELECT * FROM lists WHERE brand_id=? AND id=?", brand, id)
+			if e == nil && len(v) == 0 {
+				http.NotFound(w, r)
+				return
+			}
+			result(w, v, e)
+			return
+		}
 		after, limit := page(r)
 		v, e := queryRows(r.Context(), a.db.Reader, "SELECT * FROM lists WHERE brand_id=? AND id>? ORDER BY id LIMIT ?", brand, after, limit)
 		result(w, v, e)

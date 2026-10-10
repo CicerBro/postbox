@@ -84,15 +84,13 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	token, csrf := secret(), secret()
 	expires := time.Now().Add(a.cfg.SessionTTL)
 	err = a.db.Immediate(r.Context(), func(c *sql.Conn) error {
-		_, err := c.ExecContext(r.Context(), "INSERT INTO sessions(token_hash,user_id,expires_at,csrf_hash) VALUES(?,?,?,?)", digest(token), id, expires.UnixMilli(), digest(csrf))
-		return err
+		return insertSession(r.Context(), c, id, token, csrf, expires)
 	})
 	if err != nil {
 		fail(w, 500, err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "postbox_session", Value: token, Path: "/", HttpOnly: true, Secure: a.cfg.SecureCookies, SameSite: http.SameSiteStrictMode, Expires: expires})
-	respond(w, 200, map[string]any{"user_id": id, "csrf_token": csrf, "expires_at": expires.UnixMilli()})
+	a.sessionResponse(w, id, token, csrf, expires)
 }
 func (a *API) session(w http.ResponseWriter, r *http.Request) {
 	i := r.Context().Value(identityKey{}).(*identity)
@@ -103,7 +101,17 @@ func (a *API) session(w http.ResponseWriter, r *http.Request) {
 	csrf := secret()
 	cookie, _ := r.Cookie("postbox_session")
 	_, err := a.db.Writer.ExecContext(r.Context(), "UPDATE sessions SET csrf_hash=? WHERE token_hash=?", digest(csrf), digest(cookie.Value))
-	result(w, map[string]any{"user_id": i.UserID, "admin": i.Admin, "csrf_token": csrf}, err)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	var otp bool
+	var count int
+	if err = a.db.Reader.QueryRowContext(r.Context(), `SELECT totp_secret IS NOT NULL,(SELECT count(*) FROM passkeys WHERE user_id=users.id) FROM users WHERE id=?`, i.UserID).Scan(&otp, &count); err != nil {
+		fail(w, 500, err)
+		return
+	}
+	respond(w, 200, map[string]any{"user_id": i.UserID, "admin": i.Admin, "csrf_token": csrf, "totp_enabled": otp, "passkeys_enabled": count > 0, "passkeys_available": a.passkeys != nil, "passkey_count": count})
 }
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie("postbox_session")
@@ -114,4 +122,13 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 	_, err = a.db.Writer.ExecContext(r.Context(), "DELETE FROM sessions WHERE token_hash=?", digest(c.Value))
 	http.SetCookie(w, &http.Cookie{Name: "postbox_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: a.cfg.SecureCookies, SameSite: http.SameSiteStrictMode})
 	result(w, map[string]bool{"logged_out": true}, err)
+}
+
+func insertSession(ctx context.Context, c *sql.Conn, id int64, token, csrf string, expires time.Time) error {
+	_, err := c.ExecContext(ctx, "INSERT INTO sessions(token_hash,user_id,expires_at,csrf_hash) VALUES(?,?,?,?)", digest(token), id, expires.UnixMilli(), digest(csrf))
+	return err
+}
+func (a *API) sessionResponse(w http.ResponseWriter, id int64, token, csrf string, expires time.Time) {
+	http.SetCookie(w, &http.Cookie{Name: "postbox_session", Value: token, Path: "/", HttpOnly: true, Secure: a.cfg.SecureCookies, SameSite: http.SameSiteStrictMode, Expires: expires})
+	respond(w, 200, map[string]any{"user_id": id, "csrf_token": csrf, "expires_at": expires.UnixMilli()})
 }
