@@ -66,6 +66,16 @@ func (a *API) documentRoute(pattern string) {
 	if strings.HasPrefix(path, "/subscribe/") && method == "POST" {
 		op["requestBody"] = map[string]any{"required": true, "content": map[string]any{"application/x-www-form-urlencoded": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"email", "consent"}, "properties": map[string]any{"email": map[string]any{"type": "string", "format": "email"}, "name": map[string]any{"type": "string"}, "website": map[string]any{"type": "string", "description": "Honeypot, leave empty"}, "consent": map[string]any{"type": "string"}, "cf-turnstile-response": map[string]any{"type": "string"}}}}}}
 	}
+	if strings.Contains(path, "/suppressions") {
+		scopes := []string{"brand", "global"}
+		defaultScope := "brand"
+		if method == "GET" {
+			scopes = append(scopes, "effective")
+			defaultScope = "effective"
+		}
+		op["parameters"] = append(op["parameters"].([]map[string]any), map[string]any{"name": "scope", "in": "query", "schema": map[string]any{"type": "string", "enum": scopes, "default": defaultScope}})
+		op["description"] = "Brand scope returns or modifies only the selected brand's suppressions. Global scope requires an administrator session. GET defaults to effective: selected-brand rules plus global rules. For brand users and API keys, global rules are returned only when their email or domain matches a subscriber already in that brand. Administrator sessions see all global rules. Sending always applies all global rules, including to future contacts."
+	}
 	documentListSettings(method, path, op)
 	methods[strings.ToLower(method)] = op
 }

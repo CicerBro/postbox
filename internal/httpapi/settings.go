@@ -83,6 +83,11 @@ func (a *API) settings(w http.ResponseWriter, r *http.Request) {
 	})
 	result(w, map[string]bool{"saved": true}, e)
 }
+
+// Keep both effective-read queries shared with their query-plan tests.
+const effectiveSuppressionQuery = "SELECT * FROM suppressions WHERE brand_id=? AND id>? UNION ALL SELECT * FROM suppressions WHERE brand_id IS NULL AND id>? ORDER BY id LIMIT ?"
+const scopedEffectiveSuppressionQuery = "SELECT * FROM suppressions WHERE brand_id=? AND id>? UNION ALL SELECT p.* FROM suppressions p WHERE p.brand_id IS NULL AND p.id>? AND ((p.kind='email' AND EXISTS(SELECT 1 FROM subscribers s WHERE s.brand_id=? AND s.email=p.value)) OR (p.kind='domain' AND EXISTS(SELECT 1 FROM subscribers s WHERE s.brand_id=? AND s.domain=p.value))) ORDER BY id LIMIT ?"
+
 func (a *API) suppressions(w http.ResponseWriter, r *http.Request) {
 	scope := r.URL.Query().Get("scope")
 	if scope == "" {
@@ -118,9 +123,14 @@ func (a *API) suppressions(w http.ResponseWriter, r *http.Request) {
 			query = "SELECT * FROM suppressions WHERE brand_id IS NULL AND id>? ORDER BY id LIMIT ?"
 			args = []any{after, limit}
 		} else if scope == "effective" {
-			// Separate indexed ranges keep pagination bounded for both scopes.
-			query = "SELECT * FROM suppressions WHERE brand_id=? AND id>? UNION ALL SELECT * FROM suppressions WHERE brand_id IS NULL AND id>? ORDER BY id LIMIT ?"
+			// Separate indexed ranges preserve keyset pagination for both scopes.
+			query = effectiveSuppressionQuery
 			args = []any{brand, after, after, limit}
+			i := r.Context().Value(identityKey{}).(*identity)
+			if !i.Admin || i.UserID == 0 || i.BrandID != 0 {
+				query = scopedEffectiveSuppressionQuery
+				args = []any{brand, after, after, brand, brand, limit}
+			}
 		}
 		v, e := queryRows(r.Context(), a.db.Reader, query, args...)
 		result(w, v, e)

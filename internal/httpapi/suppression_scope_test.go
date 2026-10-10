@@ -14,10 +14,10 @@ func TestSuppressionScopes(t *testing.T) {
 	_, mux, db, adminCookie, adminCSRF := setup(t)
 	for _, stmt := range []string{
 		`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'one','One','one@example.org',0),(2,'two','Two','two@example.org',0)`,
-		`INSERT INTO suppressions(id,brand_id,kind,value,reason,created_at) VALUES(1,1,'email','brand@example.org','manual',0),(2,NULL,'email','bounce@example.org','hard_bounce',0),(3,2,'email','private@example.org','manual',0),(4,NULL,'email','complaint@example.org','complaint',0),(5,NULL,'domain','blocked.example','ses_sync',0)`,
+		`INSERT INTO suppressions(id,brand_id,kind,value,reason,created_at) VALUES(1,1,'email','brand@example.org','manual',0),(2,NULL,'email','bounce@example.org','hard_bounce',0),(3,2,'email','private@example.org','manual',0),(4,NULL,'email','complaint@example.org','complaint',0),(5,NULL,'domain','blocked.example','ses_sync',0),(6,NULL,'email','foreign@example.org','complaint',0),(7,NULL,'domain','foreign.example','manual',0),(8,NULL,'email','unowned@example.org','manual',0)`,
 		`INSERT INTO users(id,email,password_hash,role,created_at) VALUES(2,'user@example.org','unused','brand_user',0)`,
 		`INSERT INTO user_brands(user_id,brand_id,permissions) VALUES(2,1,'["read","write"]')`,
-		`INSERT INTO subscribers(brand_id,email,status,created_at,updated_at) VALUES(1,'bounce@example.org','bounced',0,0),(1,'complaint@example.org','complained',0,0)`,
+		`INSERT INTO subscribers(brand_id,email,status,created_at,updated_at) VALUES(1,'bounce@example.org','bounced',0,0),(1,'complaint@example.org','complained',0,0),(1,'person@blocked.example','active',0,0),(2,'foreign@example.org','complained',0,0),(2,'person@foreign.example','active',0,0)`,
 	} {
 		if _, err := db.Writer.Exec(stmt); err != nil {
 			t.Fatal(err)
@@ -56,8 +56,14 @@ func TestSuppressionScopes(t *testing.T) {
 				ids   []int64
 			}{
 				{"", []int64{1, 2, 4, 5}}, {"&scope=effective", []int64{1, 2, 4, 5}},
-				{"&scope=brand", []int64{1}}, {"&after=2&limit=1", []int64{4}},
+				{"&scope=brand", []int64{1}}, {"&after=2&limit=1", []int64{4}}, {"&after=5&limit=1", []int64{}},
 			} {
+				if actor == "admin" && (tc.query == "" || tc.query == "&scope=effective") {
+					tc.ids = []int64{1, 2, 4, 5, 6, 7, 8}
+				}
+				if actor == "admin" && tc.query == "&after=5&limit=1" {
+					tc.ids = []int64{6}
+				}
 				w := do(actor, "GET", "/api/v1/suppressions?brand_id=1"+tc.query, "")
 				if w.Code != 200 {
 					t.Fatal(w.Code, w.Body.String())
@@ -122,7 +128,7 @@ func TestSuppressionScopes(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &globals); err != nil {
 		t.Fatal(err)
 	}
-	if len(globals) != 3 {
+	if len(globals) != 6 {
 		t.Fatal(w.Body.String())
 	}
 	if w := do("admin", "POST", "/api/v1/suppressions?scope=global", `{"brand_id":2,"kind":"email","value":"new-global@example.org","reason":"complaint"}`); w.Code != 200 {
@@ -154,29 +160,47 @@ func TestSuppressionScopes(t *testing.T) {
 
 func TestSuppressionScopeQueryUsesIndexes(t *testing.T) {
 	_, _, db, _, _ := setup(t)
-	rows, err := db.Reader.Query(`EXPLAIN QUERY PLAN SELECT * FROM suppressions WHERE brand_id=? AND id>? UNION ALL SELECT * FROM suppressions WHERE brand_id IS NULL AND id>? ORDER BY id LIMIT ?`, 1, 0, 0, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	searches := 0
-	for rows.Next() {
-		var id, parent, unused int
-		var detail string
-		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(detail, "SCAN suppressions") {
-			t.Fatal(detail)
-		}
-		if strings.Contains(detail, "SEARCH suppressions USING INDEX suppressions_brand") {
-			searches++
-		}
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	if searches != 2 {
-		t.Fatalf("expected two indexed scope searches, got %d", searches)
+	for _, tc := range []struct {
+		name              string
+		query             string
+		args              []any
+		subscriberIndexes bool
+	}{
+		{"admin", effectiveSuppressionQuery, []any{1, 0, 0, 100}, false},
+		{"scoped", scopedEffectiveSuppressionQuery, []any{1, 0, 0, 1, 1, 100}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rows, err := db.Reader.Query("EXPLAIN QUERY PLAN "+tc.query, tc.args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			searches := 0
+			email, domain := false, false
+			for rows.Next() {
+				var id, parent, unused int
+				var detail string
+				if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(detail, "SCAN suppressions") || strings.Contains(detail, "SCAN p") || strings.Contains(detail, "SCAN s") {
+					t.Fatal(detail)
+				}
+				if strings.Contains(detail, "suppressions_brand") {
+					searches++
+				}
+				email = email || strings.Contains(detail, "subscribers_brand_email")
+				domain = domain || strings.Contains(detail, "subscribers_brand_domain")
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			if searches != 2 {
+				t.Fatalf("expected two indexed scope searches, got %d", searches)
+			}
+			if tc.subscriberIndexes && (!email || !domain) {
+				t.Fatalf("expected indexed subscriber email and domain probes, got email=%v domain=%v", email, domain)
+			}
+		})
 	}
 }
