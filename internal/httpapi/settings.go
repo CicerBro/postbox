@@ -147,6 +147,23 @@ func (a *API) suppressions(w http.ResponseWriter, r *http.Request) {
 		result(w, map[string]bool{"deleted": true}, requireChanged(res, e))
 		return
 	}
+	if r.Method == "PATCH" {
+		var patch subscribers.SuppressionPatch
+		if !decode(w, r, &patch) {
+			return
+		}
+		var brandID *int64
+		if scope == "brand" {
+			brandID = &brand
+		}
+		v, err := a.subscriberService().UpdateSuppression(r.Context(), number(r.PathValue("id")), brandID, patch)
+		if errors.Is(err, subscribers.ErrSuppressionConflict) {
+			fail(w, http.StatusConflict, err)
+			return
+		}
+		result(w, v, err)
+		return
+	}
 	var in subscribers.Suppression
 	if !decode(w, r, &in) {
 		return

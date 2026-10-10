@@ -364,20 +364,10 @@ func unsubscribe(ctx context.Context, c *sql.Conn, brandID, id, listID int64) er
 	return e
 }
 func (s *Service) AddSuppression(ctx context.Context, v Suppression) error {
-	if v.Kind == "email" {
-		n, e := render.NormalizeEmail(v.Value)
-		if e != nil {
-			return e
-		}
-		v.Value = n
-	} else if v.Kind == "domain" {
-		n, e := render.NormalizeEmail("validation@" + strings.TrimSpace(v.Value))
-		if e != nil {
-			return e
-		}
-		v.Value = strings.Split(n, "@")[1]
-	} else {
-		return errors.New("kind must be email or domain")
+	var e error
+	v, e = normalizeSuppression(v)
+	if e != nil {
+		return e
 	}
 	if v.Reason == "" {
 		v.Reason = "manual"
@@ -392,4 +382,87 @@ func (s *Service) AddSuppression(ctx context.Context, v Suppression) error {
 		}
 		return skipPendingTx(ctx, c, "subscriber_id IN (SELECT id FROM subscribers WHERE "+column+"=? AND (? IS NULL OR brand_id=?))", v.Value, v.BrandID, v.BrandID)
 	})
+}
+
+// SuppressionPatch preserves fields omitted by the caller.
+type SuppressionPatch struct {
+	Kind   *string `json:"kind"`
+	Value  *string `json:"value"`
+	Reason *string `json:"reason"`
+}
+
+var ErrSuppressionConflict = errors.New("a suppression with this kind and value already exists in this scope")
+
+func normalizeSuppression(v Suppression) (Suppression, error) {
+	value := strings.TrimSpace(v.Value)
+	switch v.Kind {
+	case "email":
+		n, err := render.NormalizeEmail(value)
+		if err != nil {
+			return v, err
+		}
+		_, domain, _ := strings.Cut(n, "@")
+		if !strings.Contains(domain, ".") {
+			return v, errors.New("email must contain a full domain, such as person@example.com")
+		}
+		v.Value = n
+	case "domain":
+		if strings.Contains(value, "@") {
+			return v, errors.New("domain must not contain an email address")
+		}
+		n, err := render.NormalizeEmail("validation@" + value)
+		if err != nil {
+			return v, err
+		}
+		_, v.Value, _ = strings.Cut(n, "@")
+	default:
+		return v, errors.New("kind must be email or domain")
+	}
+	return v, nil
+}
+
+// UpdateSuppression applies a patch within an immutable brand or global scope.
+func (s *Service) UpdateSuppression(ctx context.Context, id int64, brandID *int64, patch SuppressionPatch) (Suppression, error) {
+	var v Suppression
+	err := s.db.Immediate(ctx, func(c *sql.Conn) error {
+		v.ID, v.BrandID = id, brandID
+		if err := c.QueryRowContext(ctx, "SELECT kind,value,reason FROM suppressions WHERE id=? AND brand_id IS ?", id, brandID).Scan(&v.Kind, &v.Value, &v.Reason); err != nil {
+			return err
+		}
+		if patch.Kind != nil {
+			v.Kind = *patch.Kind
+		}
+		if patch.Value != nil {
+			v.Value = *patch.Value
+		}
+		if patch.Reason != nil {
+			v.Reason = *patch.Reason
+		}
+		var err error
+		v, err = normalizeSuppression(v)
+		if err != nil {
+			return err
+		}
+		switch v.Reason {
+		case "hard_bounce", "soft_bounce_limit", "complaint", "manual", "ses_sync":
+		default:
+			return errors.New("reason must be hard_bounce, soft_bounce_limit, complaint, manual, or ses_sync")
+		}
+		var duplicate int
+		if err := c.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM suppressions WHERE kind=? AND value=? AND brand_id IS ? AND id<>?)", v.Kind, v.Value, brandID, id).Scan(&duplicate); err != nil {
+			return err
+		}
+		if duplicate != 0 {
+			return ErrSuppressionConflict
+		}
+		if _, err := c.ExecContext(ctx, "UPDATE suppressions SET kind=?,value=?,reason=? WHERE id=? AND brand_id IS ?", v.Kind, v.Value, v.Reason, id, brandID); err != nil {
+			return err
+		}
+		column := "email"
+		if v.Kind == "domain" {
+			column = "domain"
+		}
+		return skipPendingTx(ctx, c, "subscriber_id IN (SELECT id FROM subscribers WHERE "+column+"=? AND (? IS NULL OR brand_id=?))", v.Value, brandID, brandID)
+	})
+	return v, err
 }

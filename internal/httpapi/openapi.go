@@ -75,6 +75,11 @@ func (a *API) documentRoute(pattern string) {
 		}
 		op["parameters"] = append(op["parameters"].([]map[string]any), map[string]any{"name": "scope", "in": "query", "schema": map[string]any{"type": "string", "enum": scopes, "default": defaultScope}})
 		op["description"] = "Brand scope returns or modifies only the selected brand's suppressions. Global scope requires an administrator session. GET defaults to effective: selected-brand rules plus global rules. For brand users and API keys, global rules are returned only when their email or domain matches a subscriber already in that brand. Administrator sessions see all global rules. Sending always applies all global rules, including to future subscribers."
+		if method == "PATCH" {
+			op["description"] = op["description"].(string) + " PATCH preserves omitted kind, value, and reason fields; the rule stays in its existing scope and retains its creation time. Email rules require a plain address with a full domain; domain rules require only a domain. Editing applies the new rule to pending recipients without reactivating subscriber or delivery status."
+			op["responses"].(map[string]any)["409"] = map[string]any{"description": "Another suppression already has this normalized kind and value in the selected scope"}
+		}
+
 	}
 	documentListSettings(method, path, op)
 	methods[strings.ToLower(method)] = op
@@ -92,9 +97,13 @@ func requestSchema(path string) map[string]any {
 		add("goodbye_email", "object")
 		add("confirmation_email", "object")
 	case strings.Contains(path, "suppressions"):
-		add("kind", "string")
-		add("value", "string")
-		required = []string{"kind", "value"}
+		props["kind"] = map[string]any{"type": "string", "enum": []string{"email", "domain"}}
+		props["value"] = map[string]any{"type": "string", "description": "A plain email address with a full domain for email rules, or a domain without @ for domain rules."}
+		if strings.HasSuffix(path, "/{id}") {
+			props["reason"] = map[string]any{"type": "string", "enum": []string{"hard_bounce", "soft_bounce_limit", "complaint", "manual", "ses_sync"}}
+		} else {
+			required = []string{"kind", "value"}
+		}
 	case strings.HasSuffix(path, "/login"):
 		for _, s := range []string{"email", "password", "totp"} {
 			add(s, "string")

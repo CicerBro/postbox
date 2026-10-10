@@ -87,9 +87,9 @@ func TestSuppressionScopes(t *testing.T) {
 		})
 	}
 	for _, actor := range []string{"user", "key"} {
-		for _, method := range []string{"GET", "POST", "DELETE"} {
+		for _, method := range []string{"GET", "POST", "PATCH", "DELETE"} {
 			path := "/api/v1/suppressions?scope=global"
-			if method == "DELETE" {
+			if method == "DELETE" || method == "PATCH" {
 				path = "/api/v1/suppressions/2?scope=global"
 			}
 			w := do(actor, method, path, `{"kind":"email","value":"global@example.org"}`)
@@ -98,6 +98,9 @@ func TestSuppressionScopes(t *testing.T) {
 			}
 		}
 		for _, path := range []string{"/api/v1/suppressions/2?brand_id=1", "/api/v1/suppressions/3?brand_id=1"} {
+			if w := do(actor, "PATCH", path, `{"reason":"manual"}`); w.Code != 404 {
+				t.Fatalf("%s editing foreign row: %d %s", actor, w.Code, w.Body.String())
+			}
 			if w := do(actor, "DELETE", path, ""); w.Code != 404 {
 				t.Fatalf("%s deleting foreign row: %d %s", actor, w.Code, w.Body.String())
 			}
@@ -106,13 +109,13 @@ func TestSuppressionScopes(t *testing.T) {
 			t.Fatalf("%s cross-brand read: %d", actor, w.Code)
 		}
 	}
-	for _, method := range []string{"GET", "POST", "DELETE"} {
+	for _, method := range []string{"GET", "POST", "PATCH", "DELETE"} {
 		for _, scope := range []string{"unknown", "all", "effective"} {
 			if method == "GET" && scope == "effective" {
 				continue
 			}
 			path := "/api/v1/suppressions?brand_id=1&scope=" + scope
-			if method == "DELETE" {
+			if method == "DELETE" || method == "PATCH" {
 				path = "/api/v1/suppressions/1?brand_id=1&scope=" + scope
 			}
 			if w := do("admin", method, path, `{"kind":"email","value":"invalid@example.org"}`); w.Code != 400 {

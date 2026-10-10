@@ -1,10 +1,19 @@
 import { useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
 import { SelectField } from "../ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 import { Section, Field, Message, useAction } from "./Common";
 type Suppression = {
   id: number;
@@ -20,6 +29,7 @@ export function Suppressions({ brandId }: { brandId: number }) {
   const [target, setTarget] = useState("brand");
   const [kind, setKind] = useState("email");
   const [value, setValue] = useState("");
+  const [editing, setEditing] = useState<Suppression | null>(null);
   const a = useAction();
   const q = useInfiniteQuery({
     queryKey: ["suppressions", brandId, scope],
@@ -97,6 +107,12 @@ export function Suppressions({ brandId }: { brandId: number }) {
         <Field
           label={kind === "email" ? "Email address" : "Domain"}
           type={kind === "email" ? "email" : "text"}
+          pattern={kind === "email" ? "[^@\\s]+@[^@\\s]+\\.[^@\\s]+" : undefined}
+          title={
+            kind === "email"
+              ? "Enter an email address such as name@example.com."
+              : undefined
+          }
           required
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -149,33 +165,48 @@ export function Suppressions({ brandId }: { brandId: number }) {
                   <td>{s.reason}</td>
                   <td>
                     {(s.brand_id !== null || session.admin) && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={a.busy}
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              `Remove suppression for ${s.value}? Existing subscriber statuses will remain unchanged.`,
+                      <div className="flex items-center gap-1 pr-3">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Edit suppression for ${s.value}`}
+                          title="Edit suppression"
+                          disabled={a.busy}
+                          onClick={() => setEditing(s)}
+                        >
+                          <Pencil size={16} aria-hidden="true" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                          aria-label={`Remove suppression for ${s.value}`}
+                          title="Remove suppression"
+                          disabled={a.busy}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Remove suppression for ${s.value}? Existing subscriber statuses will remain unchanged.`,
+                              )
                             )
-                          )
-                            void a.run(async () => {
-                              const global = s.brand_id === null;
-                              await api(
-                                `/suppressions/${s.id}?scope=${global ? "global" : "brand"}`,
-                                {
-                                  method: "DELETE",
-                                  ...(global ? {} : { brandId }),
-                                },
-                              );
-                              await qc.invalidateQueries({
-                                queryKey: ["suppressions"],
-                              });
-                            }, "Suppression removed.");
-                        }}
-                      >
-                        Remove
-                      </Button>
+                              void a.run(async () => {
+                                const global = s.brand_id === null;
+                                await api(
+                                  `/suppressions/${s.id}?scope=${global ? "global" : "brand"}`,
+                                  {
+                                    method: "DELETE",
+                                    ...(global ? {} : { brandId }),
+                                  },
+                                );
+                                await qc.invalidateQueries({
+                                  queryKey: ["suppressions"],
+                                });
+                              }, "Suppression removed.");
+                          }}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </Button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -193,6 +224,126 @@ export function Suppressions({ brandId }: { brandId: number }) {
           Load more
         </Button>
       )}
+      {editing && (
+        <EditSuppression
+          key={editing.id}
+          suppression={editing}
+          brandId={brandId}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </Section>
+  );
+}
+
+function EditSuppression({
+  suppression,
+  brandId,
+  onClose,
+}: {
+  suppression: Suppression;
+  brandId: number;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [kind, setKind] = useState(suppression.kind);
+  const [value, setValue] = useState(suppression.value);
+  const [reason, setReason] = useState(suppression.reason);
+  const a = useAction();
+  const global = suppression.brand_id === null;
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !a.busy) onClose();
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit suppression</DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            This entry applies to {global ? "all brands" : "the selected brand"}.
+            Existing subscriber statuses will remain unchanged.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void a.run(async () => {
+              await api(
+                `/suppressions/${suppression.id}?scope=${global ? "global" : "brand"}`,
+                {
+                  method: "PATCH",
+                  ...(global ? {} : { brandId }),
+                  body: { kind, value, reason },
+                },
+              );
+              await qc.invalidateQueries({ queryKey: ["suppressions"] });
+              onClose();
+            });
+          }}
+        >
+          <label
+            htmlFor="edit-suppression-kind"
+            className="block text-sm space-y-2"
+          >
+            Kind
+            <SelectField
+              id="edit-suppression-kind"
+              value={kind}
+              onValueChange={setKind}
+              options={[
+                { value: "email", label: "Email" },
+                { value: "domain", label: "Domain" },
+              ]}
+            />
+          </label>
+          <Field
+            label={kind === "email" ? "Email address" : "Domain"}
+            type={kind === "email" ? "email" : "text"}
+            pattern={kind === "email" ? "[^@\\s]+@[^@\\s]+\\.[^@\\s]+" : undefined}
+            title={
+              kind === "email"
+                ? "Enter an email address such as name@example.com."
+                : undefined
+            }
+            required
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+          <label
+            htmlFor="edit-suppression-reason"
+            className="block text-sm space-y-2"
+          >
+            Reason
+            <SelectField
+              id="edit-suppression-reason"
+              value={reason}
+              onValueChange={setReason}
+              options={[
+                { value: "manual", label: "Manual" },
+                { value: "hard_bounce", label: "Hard bounce" },
+                { value: "soft_bounce_limit", label: "Soft bounce limit" },
+                { value: "complaint", label: "Complaint" },
+                { value: "ses_sync", label: "SES sync" },
+              ]}
+            />
+          </label>
+          <Message {...a} />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={a.busy}
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button disabled={a.busy}>Save changes</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

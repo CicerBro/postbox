@@ -11,7 +11,7 @@ import (
 func (a *API) registerOperations(m *http.ServeMux) {
 	a.route(m, "GET /api/v1/settings", a.settings)
 	a.route(m, "PATCH /api/v1/settings", a.settings)
-	for _, p := range []string{"GET /api/v1/suppressions", "POST /api/v1/suppressions", "DELETE /api/v1/suppressions/{id}"} {
+	for _, p := range []string{"GET /api/v1/suppressions", "POST /api/v1/suppressions", "PATCH /api/v1/suppressions/{id}", "DELETE /api/v1/suppressions/{id}"} {
 		a.route(m, p, a.suppressions)
 	}
 	for _, p := range []string{"POST /api/v1/subscribers/import", "POST /api/v1/subscribers/import/preview", "GET /api/v1/subscribers/export", "POST /api/v1/subscribers/mass-unsubscribe", "POST /api/v1/subscribers/mass-erase", "GET /api/v1/subscribers/{id}/activity", "POST /api/v1/housekeeping/unconfirmed", "GET /api/v1/jobs"} {
