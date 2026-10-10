@@ -64,4 +64,72 @@ latency and jitter while the independent 175/s proof continued. Results:
 These sequential runs are not an isolated benchmark, so the exact improvement
 and memory difference include machine contention and GC variation. The modified
 run passed the complete-campaign 2% tolerance without raising the account quota.
-The full 350,000-recipient run remains the acceptance proof.
+The full 350,000-recipient ledger runs are the acceptance proof; see the final run below.
+
+## Durable dispatch ledger regression
+
+The first ledger smoke slowed as the campaign grew, with completion writer
+p99 around 1.1 seconds and no requests in flight during stalled batches.
+The exact completion UPDATE plan on live ledgers of 10,000 and 35,646 rows
+used only the campaign prefix of the WITHOUT ROWID primary key. This made
+every completion revisit the campaign's dispatches, despite an existing
+owner index. A 10,000-recipient CPU profile attributed 15.12% of total sampled
+CPU to `finishDispatchTx` and 22.65% to SQLite's VM execution overall.
+
+The completion UPDATE now names `campaign_dispatch_owner`, constraining
+campaign, owner subscriber and attempt. Its durable generation comparison
+and immediate transaction remain in place. The production-source plan test
+requires the full owner and journal keys both before and after ANALYZE.
+
+The subsequent 50,000-recipient smoke at 1,000/s completed in 50.897 seconds,
+achieving 982.37/s over the complete campaign and 994.50/s over the request
+span. Accepted and sent counts were both 50,000, duplicates were zero, and
+failed and unknown counts were zero. Request p99 was 152ms and writer p99
+was 257ms. Sampled peak heap was 367.68MB, RSS was 511.95MB, and CPU time was
+144.75 seconds. This run overlapped other validation work, so its resource
+figures include contention. It passed the 2% complete-campaign tolerance;
+the full ledger-enabled 350,000-recipient runs are the acceptance proof.
+
+## Full 350,000-recipient ledger proof
+
+| Configured rate | Run context | Complete rate | Request rate | Duration | Request p50/p99 | Writer p99 | Peak heap | Peak RSS | CPU | Accepted / sent | Duplicates / failed / unknown | Max accepted in one second |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,000/s | Isolated | 989.62/s | 997.63/s | 353.670s | 127/152ms | 62ms | 387.5MB | 808.8MB | 1,048.0s (296.3%) | 350,000 / 350,000 | 0 / 0 / 0 | 1,232 |
+| 175/s | Overlapped UI builds, CLI cross-builds, and full test runs | 173.18/s | 173.42/s | 2,021.036s | 128/170ms | 56ms | 204.0MB | 422.9MB | 1,618.1s (80.1%) | 350,000 / 350,000 | 0 / 0 / 0 | 191 |
+
+Both full campaigns completed within the 2% rate tolerance with the durable dispatch ledger enabled. Resource figures include both the client and in-process fake SES fixture. The 175/s resource and throughput figures also reflect concurrent machine load. Raw run artifacts: [1,000/s isolated](performance/1000-isolated-350000.json) and [175/s overlapped](performance/175-350000.json).
+
+The isolated 1,000/s run is recorded in
+[`performance/1000-isolated-350000.json`](performance/1000-isolated-350000.json).
+It completed all 350,000 recipients in 353.670 seconds, or 989.62/s across the
+complete campaign, within the 2% acceptance tolerance. The request span achieved
+997.63/s. All 350,000 sends were accepted and sent; failed, unknown, and duplicate
+counts were zero. Request p50/p99 were 127/152ms and writer p99 was 62ms.
+Sampled peak heap was 387.5MB, peak RSS was 808.8MB, and combined process CPU
+was 1,048.0 seconds (296.3% of one core). The fixture is in-process and its
+resource figures include both the client and fake SES server.
+
+The fixture observed a maximum of 1,232 accepted completions in one wall-clock
+second. This does not establish a 1,232/s admission rate or mean the configured
+quota was exceeded. The token bucket bounds dispatch starts by its refill rate
+and burst allowance, while request latency and jitter can shift completions
+across second boundaries. The configured bucket permits at most a 20-token
+catch-up burst at 1,000/s (five at 175/s); it does not promise every observed
+completion bucket stays at or below the quota.
+
+The run proves this isolated 350,000-recipient case at 1,000/s with the durable
+dispatch ledger enabled. It does not establish an unconditional production
+throughput or memory bound. The full contended 1,000/s run achieved 978.80/s, 2.12% below target and just
+outside the 2% complete-campaign tolerance. The isolated pass does not prove
+that contention was its only cause. The full 175/s run is recorded in
+[`performance/175-350000.json`](performance/175-350000.json). It completed in
+2,021.036 seconds at 173.18/s over the full campaign, within the 2% tolerance;
+the request span achieved 173.42/s. Accepted and sent counts were 350,000, with
+zero duplicates, failures, or unknown outcomes. Request p50/p99 were 128/170ms
+and writer p99 was 56ms. Sampled peak heap was 204.0MB, peak RSS was 422.9MB,
+and combined process CPU was 1,618.1 seconds (80.1% of one core). The run
+overlap included UI builds, CLI cross-builds, and full test runs, so resource
+and throughput results reflect concurrent machine load. The fixture observed
+191 completions in its busiest wall-clock second; as with the 1,000/s run, this
+is a completion bucket affected by request latency and jitter, not the dispatch
+start rate.

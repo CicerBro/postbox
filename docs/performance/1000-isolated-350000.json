@@ -1,0 +1,42 @@
+{
+  "recipients": 350000,
+  "configured_rate": 1000,
+  "achieved_rate": 989.6242816264717,
+  "duration_seconds": 353.669575917,
+  "template_bytes": 100000,
+  "peak_heap_bytes": 387456264,
+  "peak_rss_bytes": 808796160,
+  "cpu_seconds": 1048.029565,
+  "cpu_percent": 296.3301443961225,
+  "accepted": 350000,
+  "duplicates": 0,
+  "max_second_accepted": 1232,
+  "within_two_percent": true,
+  "database": "redacted temporary SQLite path",
+  "metrics": {
+    "achieved_rate": 997.6264216811503,
+    "request_duration_seconds": 350.83272895899995,
+    "configured_rate": 1000,
+    "effective_rate": 1000,
+    "sent": 350000,
+    "failed": 0,
+    "unknown": 0,
+    "in_flight": 0,
+    "backlog": 0,
+    "requests": 350000,
+    "p50_ms": 127,
+    "p99_ms": 152,
+    "writer_p99_ms": 62,
+    "writer_batches": 1403,
+    "writer_rows": 350000,
+    "errors": {}
+  },
+  "source_metadata": {
+    "source_run_file": "postbox-load-1000-isolated.json",
+    "binary_provenance": "The original executable build revision was not recorded.",
+    "isolation": "Isolated run, as named by the source artifact.",
+    "comparison_revision": "5fdbb8236e7a3a6fa0fcdef21baa72a246caedae",
+    "comparison_revision_note": "Committed sender, render, and dispatch-ledger sources at this revision match the code path validated by the run; later worktree changes were in auth, UI, and CLI areas.",
+    "binary_build_revision": "unverified; not recorded with the source artifact"
+  }
+}
