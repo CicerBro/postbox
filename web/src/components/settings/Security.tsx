@@ -97,6 +97,7 @@ export function Security() {
       {!session.totp_enabled && !enrollment && (
         <Button
           variant="outline"
+          className="security-factor-button security-authenticator"
           disabled={a.busy || !password}
           onClick={() =>
             a.run(async () => {
@@ -131,6 +132,7 @@ export function Security() {
           </p>
           <div className="flex gap-2">
             <Button
+              className="security-factor-button security-authenticator"
               disabled={a.busy || !code}
               onClick={() =>
                 a.run(async () => {
@@ -159,7 +161,7 @@ export function Security() {
       )}
       {session.totp_enabled && (
         <Button
-          variant="outline"
+          variant="destructive"
           disabled={a.busy || !password || !code}
           onClick={() => {
             if (
@@ -198,6 +200,7 @@ export function Security() {
           />
           <Button
             variant="outline"
+            className="security-factor-button security-passkey"
             disabled={
               a.busy ||
               !password ||
@@ -267,7 +270,7 @@ export function Security() {
                     </p>
                   </div>
                   <Button
-                    variant="outline"
+                    variant="destructive"
                     size="sm"
                     disabled={
                       a.busy || !password || (session.totp_enabled && !code)

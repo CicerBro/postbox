@@ -1676,3 +1676,17 @@ select,
     color: var(--muted-foreground);
   }
 }
+
+@layer components {
+  .button.security-factor-button {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .button.security-factor-button:hover:not(:disabled) {
+    background: var(--primary);
+    filter: brightness(1.08);
+  }
+  .button.security-factor-button:focus-visible {
+    outline-color: var(--ring);
+  }
+}
