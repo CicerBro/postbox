@@ -334,3 +334,36 @@ func TestCustomizedConfirmationAndFieldUpdate(t *testing.T) {
 		t.Fatal("field key rename silently lost stored fields")
 	}
 }
+
+func TestSuppressionSkipsPendingOnce(t *testing.T) {
+	ctx := context.Background()
+	s, b, _ := fixture(t)
+	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "reader@example.org"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	r, e := s.db.Writer.Exec("INSERT INTO campaigns(brand_id,uuid,status,subject,html,created_at,updated_at) VALUES(?,'pending','sending','subject','html',1,1)", b.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	id, _ := r.LastInsertId()
+	if _, e = s.db.Writer.Exec("INSERT INTO campaign_recipients(campaign_id,subscriber_id,status) VALUES(?,?,'pending')", id, v.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.db.Writer.Exec("INSERT INTO campaign_stats(campaign_id) VALUES(?)", id); e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < 2; i++ {
+		if e = s.AddSuppression(ctx, Suppression{Kind: "domain", Value: "EXAMPLE.ORG"}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	var status string
+	var skipped int
+	if e = s.db.Reader.QueryRow("SELECT status FROM campaign_recipients WHERE campaign_id=? AND subscriber_id=?", id, v.ID).Scan(&status); e != nil || status != "skipped" {
+		t.Fatalf("suppression not applied %q %v", status, e)
+	}
+	if e = s.db.Reader.QueryRow("SELECT skipped FROM campaign_stats WHERE campaign_id=?", id).Scan(&skipped); e != nil || skipped != 1 {
+		t.Fatalf("counter %d %v", skipped, e)
+	}
+}
