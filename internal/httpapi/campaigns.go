@@ -22,6 +22,7 @@ type campaignInput struct {
 }
 
 func (a *API) registerCampaigns(m *http.ServeMux) {
+	a.route(m, "POST /api/v1/email-preview", a.editorPreview)
 	for _, p := range []string{"GET /api/v1/campaigns", "POST /api/v1/campaigns", "GET /api/v1/campaigns/{id}", "PATCH /api/v1/campaigns/{id}", "DELETE /api/v1/campaigns/{id}"} {
 		a.route(m, p, a.campaigns)
 	}

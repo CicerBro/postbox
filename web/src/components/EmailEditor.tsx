@@ -7,6 +7,7 @@ import { MergeView } from "@codemirror/merge";
 import type { Editor } from "grapesjs";
 import "grapesjs/dist/css/grapes.min.css";
 import { useQuery } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   buildVisualCandidate,
   sanitizeVisualDocument,
@@ -24,17 +25,17 @@ import {
   DialogTitle,
   DialogFooter,
 } from "./ui/dialog";
-import { ErrorMessage } from "../pages/campaign-shared";
+import { allRows, ErrorMessage } from "../pages/campaign-shared";
 
 type Props = {
   value: string;
   onChange: (html: string) => void;
   brandId: number;
   readOnly?: boolean;
-  renderPreview?: (
-    subscriberId: number,
-  ) => Promise<{ subject: string; html: string; text: string }>;
-  dirty?: boolean;
+  subject?: string;
+  campaignId?: number;
+  text?: string;
+  inlineCSS?: boolean;
 };
 // Mount this inside the portal. The parent can run its effects before Radix
 // mounts dialog contents, so a parent-owned ref can miss the opening entirely.
@@ -91,8 +92,10 @@ export function EmailEditor({
   onChange,
   brandId,
   readOnly = false,
-  renderPreview,
-  dirty = false,
+  subject = "",
+  campaignId = 0,
+  text = "",
+  inlineCSS = false,
 }: Props) {
   const rawHost = useRef<HTMLDivElement>(null),
     visualHost = useRef<HTMLDivElement>(null);
@@ -106,14 +109,26 @@ export function EmailEditor({
     [original, setOriginal] = useState("");
   const [tag, setTag] = useState("name"),
     [fallback, setFallback] = useState(""),
-    [subscriber, setSubscriber] = useState(""),
-    [preview, setPreview] = useState<{
-      subject: string;
-      html: string;
-      text: string;
-    } | null>(null),
     [error, setError] = useState<unknown>(null),
     [loading, setLoading] = useState(false);
+  const [navigation, setNavigation] = useState({ brandId, list: "", cursors: [0] });
+  const previewList = navigation.brandId === brandId ? navigation.list : "";
+  const after = navigation.cursors.at(-1) ?? 0;
+  const lists = useQuery({
+    queryKey: ["editor-lists", brandId],
+    queryFn: () => allRows<{ id: number; name: string }>("/lists", brandId),
+    enabled: brandId > 0 && mode === "raw",
+  });
+  const recipients = useQuery({
+    queryKey: ["editor-recipients", brandId, previewList, after],
+    queryFn: ({ signal }) => api<{ id: number; email: string; name: string }[]>(
+      `/subscribers?list_id=${previewList}&membership_status=subscribed&status=active&after=${after}&limit=2`,
+      { brandId, signal },
+    ),
+    enabled: brandId > 0 && !!previewList && mode === "raw",
+  });
+  const recipient = previewList ? recipients.data?.[0] : undefined;
+  const recipientReady = !previewList || recipients.isSuccess;
   const fields = useQuery({
     queryKey: ["editor-fields", brandId],
     queryFn: () =>
@@ -121,6 +136,24 @@ export function EmailEditor({
         brandId,
       }),
     enabled: brandId > 0,
+  });
+  const [previewSource, setPreviewSource] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setPreviewSource(value), 400);
+    return () => clearTimeout(timer);
+  }, [value]);
+  const samplePreview = useQuery({
+    queryKey: ["editor-preview", brandId, campaignId, previewSource, inlineCSS, recipient?.id ?? 0, subject, text],
+    queryFn: ({ signal }) =>
+      api<{ subject: string; html: string; text: string }>("/email-preview", {
+        method: "POST",
+        brandId,
+        body: { html: previewSource, inline_css: inlineCSS, subscriber_id: recipient?.id ?? 0, campaign_id: campaignId, subject, text },
+        signal,
+      }),
+    enabled: brandId > 0 && mode === "raw" && recipientReady,
+    retry: false,
+    gcTime: 0,
   });
   useEffect(() => {
     if (!rawHost.current || mode !== "raw") return;
@@ -159,7 +192,6 @@ export function EmailEditor({
       editor.dispatch({
         changes: { from: 0, to: editor.state.doc.length, insert: value },
       });
-    setPreview(null);
   }, [value]);
   useEffect(() => {
     if (mode !== "visual" || !visualHost.current) return;
@@ -277,24 +309,6 @@ export function EmailEditor({
       ),
     );
   }
-  async function rendered() {
-    setLoading(true);
-    setError(null);
-    try {
-      const id = Number(subscriber);
-      if (!Number.isSafeInteger(id) || id <= 0)
-        throw new Error("Enter a valid subscriber ID");
-      if (dirty)
-        throw new Error(
-          "Save the current draft before rendering with subscriber data.",
-        );
-      if (renderPreview) setPreview(await renderPreview(id));
-    } catch (e) {
-      setError(e);
-    } finally {
-      setLoading(false);
-    }
-  }
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
@@ -327,7 +341,7 @@ export function EmailEditor({
           {mobile ? "Desktop preview" : "Mobile preview"}
         </Button>
       </div>
-      <ErrorMessage error={error ?? fields.error} />
+      <ErrorMessage error={error ?? fields.error ?? lists.error ?? (previewList ? recipients.error : null) ?? samplePreview.error} />
       {mode === "raw" ? (
         <>
           <div className="flex flex-wrap items-end gap-2">
@@ -376,15 +390,66 @@ export function EmailEditor({
               className="min-w-0 overflow-hidden rounded-md border"
               aria-label="Full HTML source"
             />
-            <div className="overflow-auto rounded-md border bg-white p-2">
+            <div className="min-w-0 overflow-auto rounded-md border p-2">
+              <div className="mb-3 flex flex-wrap items-end gap-2">
+                <label className="min-w-0 flex-1 space-y-1 text-sm" htmlFor="preview-list">
+                  Preview as subscriber from
+                  <SelectField
+                    id="preview-list"
+                    value={previewList}
+                    onValueChange={(list) => setNavigation({ brandId, list, cursors: [0] })}
+                    options={[
+                      { value: "", label: "Sample data" },
+                      ...(lists.data?.map((list) => ({ value: String(list.id), label: list.name })) ?? []),
+                    ]}
+                  />
+                </label>
+                {previewList && (
+                  <div className="flex min-w-0 items-center rounded-md border">
+                    <Button type="button" variant="ghost" size="icon" aria-label="Previous subscriber"
+                      disabled={navigation.cursors.length <= 1 || recipients.isFetching}
+                      onClick={() => setNavigation((current) => ({ ...current, cursors: current.cursors.slice(0, -1) }))}>
+                      <ChevronLeft size={16} />
+                    </Button>
+                    <span className="max-w-[240px] truncate px-2 text-sm" title={recipient?.email} aria-live="polite">
+                      {recipients.isPending ? "Loading subscribers…" : recipient?.email ?? "No active subscribers"}
+                    </span>
+                    <Button type="button" variant="ghost" size="icon" aria-label="Next subscriber"
+                      disabled={!recipient || (recipients.data?.length ?? 0) < 2 || recipients.isFetching}
+                      onClick={() => {
+                        if (recipient) setNavigation((current) => ({ ...current, cursors: [...current.cursors, recipient.id] }));
+                      }}>
+                      <ChevronRight size={16} />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <p className="mb-2 text-sm text-muted-foreground" role="status">
+                {!recipientReady || previewSource !== value || samplePreview.isPending || samplePreview.isFetching
+                    ? "Rendering preview…"
+                    : samplePreview.isError
+                      ? "Preview could not be rendered. Check the error above."
+                      : recipient && campaignId > 0
+                        ? "Preview with subscriber data. Browser links open the saved campaign."
+                        : `${recipient ? "Preview with subscriber data" : "Preview with sample data"}. Unsubscribe and browser links are sample URLs.`}
+              </p>
               <iframe
                 title="Email preview"
                 sandbox=""
                 referrerPolicy="no-referrer"
-                srcDoc={preview?.html ?? value}
-                className="mx-auto h-[480px] border-0"
+                srcDoc={(recipientReady && previewSource === value ? samplePreview.data?.html : undefined) ?? ""}
+                className="mx-auto h-[480px] border-0 bg-white"
                 style={{ width: mobile ? 375 : "100%", maxWidth: "100%" }}
               />
+              {recipientReady && samplePreview.data && (
+                <div className="mt-2 text-sm">
+                  {subject && <p>Rendered subject: {samplePreview.data.subject}</p>}
+                  <details>
+                    <summary>Plain-text rendering</summary>
+                    <pre className="whitespace-pre-wrap">{samplePreview.data.text}</pre>
+                  </details>
+                </div>
+              )}
             </div>
           </div>
         </>
@@ -409,53 +474,6 @@ export function EmailEditor({
               Discard visual changes
             </Button>
           </div>
-        </div>
-      )}
-      {renderPreview && mode === "raw" && (
-        <div className="space-y-2">
-          {dirty && (
-            <p className="text-sm text-muted-foreground">
-              Save changes to preview the current draft with the Go sending
-              renderer.
-            </p>
-          )}
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="text-sm">
-              Real subscriber ID
-              <Input
-                type="number"
-                min="1"
-                value={subscriber}
-                onChange={(e) => setSubscriber(e.target.value)}
-              />
-            </label>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={rendered}
-              disabled={loading || dirty}
-            >
-              Render subscriber preview
-            </Button>
-            {preview && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setPreview(null)}
-              >
-                Return to source preview
-              </Button>
-            )}
-          </div>
-          {preview && (
-            <div className="text-sm">
-              <p>Rendered subject: {preview.subject}</p>
-              <details>
-                <summary>Plain-text rendering</summary>
-                <pre className="whitespace-pre-wrap">{preview.text}</pre>
-              </details>
-            </div>
-          )}
         </div>
       )}
       <Dialog

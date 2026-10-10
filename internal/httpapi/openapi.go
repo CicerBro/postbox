@@ -83,7 +83,7 @@ func (a *API) documentRoute(pattern string) {
 	}
 	documentListSettings(method, path, op)
 	if path == "/api/v1/email-preview" {
-		op["description"] = "Render current, unsaved email HTML, subject and text using the sending renderer. subscriber_id selects a real subscriber within the scoped brand; omit it or use zero for sample data. Empty custom fields use their fallback or an empty value. Action URLs are absolute sample URLs with invalid preview tokens. Does not create campaigns, tracking links, or send messages."
+		op["description"] = "Render current, unsaved email HTML, subject and text using the sending renderer. subscriber_id selects a real subscriber within the scoped brand; omit it or use zero for sample data. Empty custom fields use their fallback or an empty value. A scoped campaign_id with a real subscriber produces recipient-specific action URLs; browser links open the saved campaign. Otherwise action URLs use invalid sample tokens. Does not create campaigns, tracking links, or send messages."
 		op["responses"].(map[string]any)["200"] = map[string]any{
 			"description": "Rendered sample HTML",
 			"content": map[string]any{
@@ -106,6 +106,7 @@ func requestSchema(path string) map[string]any {
 		add("subject", "string")
 		add("text", "string")
 		props["subscriber_id"] = map[string]any{"type": "integer", "minimum": 0}
+		props["campaign_id"] = map[string]any{"type": "integer", "minimum": 0}
 		add("inline_css", "boolean")
 		required = []string{"html"}
 	case strings.HasSuffix(path, "/memberships"):

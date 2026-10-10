@@ -568,16 +568,10 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
             value={html}
             onChange={setHtml}
             readOnly={!editable}
-            dirty={dirty}
-            renderPreview={
-              draftID
-                ? (subscriberID) =>
-                    api(
-                      `/campaigns/${draftID}/preview?subscriber_id=${subscriberID}`,
-                      { brandId },
-                    )
-                : undefined
-            }
+            inlineCSS={inline}
+            subject={subject}
+            campaignId={draftID}
+            text={text}
           />
           <details>
             <summary className="cursor-pointer text-sm">
