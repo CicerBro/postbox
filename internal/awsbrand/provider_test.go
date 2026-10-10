@@ -103,19 +103,8 @@ func TestEncryptedCredentialsAndMetadata(t *testing.T) {
 	if e = p.Save(ctx, 1, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "NEW_ACCESS"}); e == nil {
 		t.Fatal("access key rotated without matching secret")
 	}
-	if e = p.Save(ctx, 1, Update{Mode: "instance_role", Region: "eu-west-1"}); e != nil {
-		t.Fatal(e)
-	}
-	r, e = read(ctx, db.Reader, 1)
-	if e != nil {
-		t.Fatal(e)
-	}
-	m, e = p.open(1, r.encrypted)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if m != (material{}) {
-		t.Fatal("role mode retained credentials")
+	if e = p.Save(ctx, 1, Update{Mode: "instance_role", Region: "eu-west-1"}); e == nil {
+		t.Fatal("server credentials mode accepted")
 	}
 }
 func TestClientCacheBrandIsolationRotationAndQuotaScope(t *testing.T) {
@@ -188,10 +177,15 @@ func TestClientCacheBrandIsolationRotationAndQuotaScope(t *testing.T) {
 func TestInvalidConfigurationNeverResolvesToFallback(t *testing.T) {
 	p, db := testProvider(t, "")
 	ctx := context.Background()
+	t.Setenv("AWS_ACCESS_KEY_ID", "server-key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "server-secret")
+	if _, e := p.ResolveBrand(ctx, 1); e == nil || e.Error() != "brand AWS access keys are not configured" {
+		t.Fatalf("unconfigured brand used server credentials: %v", e)
+	}
 	if e := p.Save(ctx, 1, Update{Mode: "static", Region: "us-east-1"}); e == nil {
 		t.Fatal("missing static credentials accepted")
 	}
-	if e := p.Save(ctx, 1, Update{Mode: "instance_role"}); e == nil {
+	if e := p.Save(ctx, 1, Update{Mode: "static"}); e == nil {
 		t.Fatal("missing region accepted")
 	}
 	_, e := db.Writer.Exec(`INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'static','us-east-1',x'00',1)`)
@@ -200,6 +194,42 @@ func TestInvalidConfigurationNeverResolvesToFallback(t *testing.T) {
 	}
 	if _, e = p.ResolveBrand(ctx, 1); e == nil || strings.Contains(e.Error(), "00") {
 		t.Fatal("corrupt static credentials must fail safely")
+	}
+}
+
+func TestMigrationRemovesServerCredentialConnections(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upgrade.db")
+	db, e := store.Open(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = db.Writer.Exec(`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'One','One','one@example.test',1),(2,'Two','Two','two@example.test',1);
+		DROP TABLE brand_aws_settings;
+		CREATE TABLE brand_aws_settings (brand_id INTEGER PRIMARY KEY REFERENCES brands(id) ON DELETE CASCADE, mode TEXT NOT NULL CHECK(mode IN ('static','instance_role')), region TEXT NOT NULL, credentials BLOB NOT NULL, revision INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL) STRICT;
+		INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'instance_role','us-east-1',x'00',1),(2,'static','eu-west-1',x'01',1);
+		INSERT INTO suppressions(brand_id,kind,value,reason,created_at) VALUES(1,'email','old@example.test','ses_sync',1),(2,'email','keep@example.test','ses_sync',1);
+		DELETE FROM schema_migrations WHERE name='012_brand_keys_only.sql'`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	db.Close()
+	db, e = store.Open(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	var count int
+	if e = db.Reader.QueryRow("SELECT count(*) FROM brand_aws_settings WHERE mode='instance_role'").Scan(&count); e != nil || count != 0 {
+		t.Fatalf("legacy server connection retained: %d %v", count, e)
+	}
+	if e = db.Reader.QueryRow("SELECT count(*) FROM brand_aws_settings WHERE brand_id=2 AND mode='static'").Scan(&count); e != nil || count != 1 {
+		t.Fatalf("brand keys removed: %d %v", count, e)
+	}
+	if e = db.Reader.QueryRow("SELECT count(*) FROM suppressions WHERE brand_id=1 AND reason='ses_sync'").Scan(&count); e != nil || count != 0 {
+		t.Fatalf("legacy imported suppression retained: %d %v", count, e)
+	}
+	if _, e = db.Writer.Exec("INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'instance_role','us-east-1',x'00',1)"); e == nil {
+		t.Fatal("schema still accepts server credential mode")
 	}
 }
 
@@ -297,7 +327,7 @@ func TestConnectionChangesResetOnlyImportedSuppressions(t *testing.T) {
 	if count != 1 {
 		t.Fatal("same credential values cleared imports")
 	}
-	for _, change := range []Update{{Mode: "static", Region: "us-east-1", SecretAccessKey: "new-secret"}, {Mode: "static", Region: "eu-west-1"}, {Mode: "static", Region: "eu-west-1", ClearSessionToken: true}, {Mode: "instance_role", Region: "eu-west-1"}} {
+	for _, change := range []Update{{Mode: "static", Region: "us-east-1", SecretAccessKey: "new-secret"}, {Mode: "static", Region: "eu-west-1"}, {Mode: "static", Region: "eu-west-1", ClearSessionToken: true}} {
 		seed()
 		if e := p.Save(ctx, 1, change); e != nil {
 			t.Fatal(e)
@@ -309,7 +339,7 @@ func TestConnectionChangesResetOnlyImportedSuppressions(t *testing.T) {
 		t.Fatal(e)
 	}
 	assertReset()
-	// A new static override clears imports inherited from server credentials.
+	// Reconfiguring a deleted brand clears old imported suppressions.
 	seed()
 	if e := p.Save(ctx, 1, u); e != nil {
 		t.Fatal(e)
@@ -418,20 +448,6 @@ func TestSnapshotGuardRejectsRotationAndDeleteRecreate(t *testing.T) {
 	}
 	if recreated == rotated || check(rotated) == nil {
 		t.Fatal("delete/recreate reused previous credential fingerprint")
-	}
-	// Legacy fallback snapshots use the default server region and mode.
-	if e = p.Delete(ctx, 1); e != nil {
-		t.Fatal(e)
-	}
-	legacy := fingerprint(record{Settings: Settings{Mode: "server", Region: "us-east-1"}})
-	if e = check(legacy); e != nil {
-		t.Fatal(e)
-	}
-	if e = p.Save(ctx, 1, Update{Mode: "instance_role", Region: "us-east-1"}); e != nil {
-		t.Fatal(e)
-	}
-	if e = check(legacy); e == nil {
-		t.Fatal("legacy snapshot accepted following explicit override")
 	}
 }
 

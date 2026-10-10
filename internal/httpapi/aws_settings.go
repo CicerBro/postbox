@@ -102,7 +102,7 @@ func (a *API) awsSettings(w http.ResponseWriter, r *http.Request) {
 
 func safeAWSSettingsError(err error) error {
 	switch err.Error() {
-	case "AWS mode must be static or instance_role", "an explicit AWS region is required", "a new access key requires its secret access key", "access key ID and secret access key are required":
+	case "AWS mode must be static", "an explicit AWS region is required", "a new access key requires its secret access key", "access key ID and secret access key are required":
 		return err
 	default:
 		return errors.New("AWS settings could not be saved")

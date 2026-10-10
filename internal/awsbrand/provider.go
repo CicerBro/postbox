@@ -133,7 +133,7 @@ func read(ctx context.Context, q interface {
 func (p *Provider) Settings(ctx context.Context, id int64) (Settings, error) {
 	r, e := read(ctx, p.db.Reader, id)
 	if errors.Is(e, sql.ErrNoRows) {
-		return Settings{Mode: "server", Region: p.region}, nil
+		return Settings{Mode: "static", Region: p.region}, nil
 	}
 	if e != nil {
 		return Settings{}, e
@@ -152,8 +152,8 @@ var regionPattern = regexp.MustCompile(`^[a-z]{2}(?:-[a-z]+)+-\d+$`)
 func (p *Provider) Save(ctx context.Context, id int64, u Update) error {
 	u.Mode = strings.TrimSpace(u.Mode)
 	u.Region = strings.TrimSpace(u.Region)
-	if u.Mode != "static" && u.Mode != "instance_role" {
-		return errors.New("AWS mode must be static or instance_role")
+	if u.Mode != "static" {
+		return errors.New("AWS mode must be static")
 	}
 	if !regionPattern.MatchString(u.Region) {
 		return errors.New("an explicit AWS region is required")
@@ -161,7 +161,7 @@ func (p *Provider) Save(ctx context.Context, id int64, u Update) error {
 	e := p.db.Immediate(ctx, func(c *sql.Conn) error {
 		old, e := read(ctx, c, id)
 		var m material
-		if e == nil && old.Mode == "static" && u.Mode == "static" {
+		if e == nil && old.Mode == "static" {
 			m, e = p.open(id, old.encrypted)
 			if e != nil {
 				return e
@@ -170,25 +170,23 @@ func (p *Provider) Save(ctx context.Context, id int64, u Update) error {
 			return e
 		}
 		previous := m
-		if u.Mode == "static" {
-			if u.AccessKeyID != "" {
-				if m.AccessKeyID != "" && u.AccessKeyID != m.AccessKeyID && u.SecretAccessKey == "" {
-					return errors.New("a new access key requires its secret access key")
-				}
-				m.AccessKeyID = u.AccessKeyID
+		if u.AccessKeyID != "" {
+			if m.AccessKeyID != "" && u.AccessKeyID != m.AccessKeyID && u.SecretAccessKey == "" {
+				return errors.New("a new access key requires its secret access key")
 			}
-			if u.SecretAccessKey != "" {
-				m.SecretAccessKey = u.SecretAccessKey
-			}
-			if u.SessionToken != "" {
-				m.SessionToken = u.SessionToken
-			}
-			if u.ClearSessionToken {
-				m.SessionToken = ""
-			}
-			if m.AccessKeyID == "" || m.SecretAccessKey == "" {
-				return errors.New("access key ID and secret access key are required")
-			}
+			m.AccessKeyID = u.AccessKeyID
+		}
+		if u.SecretAccessKey != "" {
+			m.SecretAccessKey = u.SecretAccessKey
+		}
+		if u.SessionToken != "" {
+			m.SessionToken = u.SessionToken
+		}
+		if u.ClearSessionToken {
+			m.SessionToken = ""
+		}
+		if m.AccessKeyID == "" || m.SecretAccessKey == "" {
+			return errors.New("access key ID and secret access key are required")
 		}
 		b, e := p.seal(id, m)
 		if e != nil {
@@ -241,9 +239,13 @@ func (p *Provider) resolve(ctx context.Context, id int64) (cached, error) {
 	defer p.mu.Unlock()
 	r, e := read(ctx, p.db.Reader, id)
 	if errors.Is(e, sql.ErrNoRows) {
-		r = record{Settings: Settings{Mode: "server", Region: p.region}}
-	} else if e != nil {
+		return cached{}, errors.New("brand AWS access keys are not configured")
+	}
+	if e != nil {
 		return cached{}, e
+	}
+	if r.Mode != "static" {
+		return cached{}, errors.New("brand AWS access keys are not configured")
 	}
 	if old, ok := p.clients[id]; ok && old.revision == r.revision {
 		if old.fingerprint == fingerprint(r) {
@@ -253,13 +255,14 @@ func (p *Provider) resolve(ctx context.Context, id int64) (cached, error) {
 	opts := []func(*config.LoadOptions) error{config.WithRegion(r.Region), config.WithHTTPClient(p.http), config.WithRetryer(func() aws.Retryer {
 		return retry.NewStandard(func(o *retry.StandardOptions) { o.MaxAttempts = 1; o.RateLimiter = ratelimit.None })
 	})}
-	if r.Mode == "static" {
-		m, e := p.open(id, r.encrypted)
-		if e != nil {
-			return cached{}, e
-		}
-		opts = append(opts, config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(m.AccessKeyID, m.SecretAccessKey, m.SessionToken)))
+	m, e := p.open(id, r.encrypted)
+	if e != nil {
+		return cached{}, e
 	}
+	if m.AccessKeyID == "" || m.SecretAccessKey == "" {
+		return cached{}, errors.New("brand AWS access keys are not configured")
+	}
+	opts = append(opts, config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(m.AccessKeyID, m.SecretAccessKey, m.SessionToken)))
 	cfg, e := config.LoadDefaultConfig(ctx, opts...)
 	if e != nil {
 		return cached{}, errors.New("AWS configuration could not be loaded")
@@ -304,8 +307,9 @@ func fingerprint(r record) string {
 func (p *Provider) CheckSnapshot(ctx context.Context, c *sql.Conn, id int64, snapshot string) error {
 	r, e := read(ctx, c, id)
 	if errors.Is(e, sql.ErrNoRows) {
-		r = record{Settings: Settings{Mode: "server", Region: p.region}}
-	} else if e != nil {
+		return errors.New("brand AWS access keys are not configured")
+	}
+	if e != nil {
 		return e
 	}
 	if fingerprint(r) != snapshot {

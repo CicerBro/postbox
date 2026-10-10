@@ -7,9 +7,8 @@ import { Checkbox } from "../ui/checkbox";
 import { SelectField } from "../ui/select";
 import { Field, Section, useAction } from "./Common";
 
-type Mode = "static" | "instance_role";
 type Settings = {
-  mode: Mode | "server";
+  mode: "static";
   region: string;
   configured: boolean;
   has_credentials: boolean;
@@ -73,7 +72,6 @@ export function AmazonSES({ brandId }: { brandId: number }) {
   const { session } = useApp();
   const id = useId();
   const action = useAction();
-  const [mode, setMode] = useState<Mode>("instance_role");
   const [region, setRegion] = useState("");
   const [accessKey, setAccessKey] = useState("");
   const [secretKey, setSecretKey] = useState("");
@@ -87,11 +85,10 @@ export function AmazonSES({ brandId }: { brandId: number }) {
   });
   useEffect(() => {
     if (q.data) {
-      setMode(q.data.mode === "server" ? "instance_role" : q.data.mode);
       setRegion(q.data.region);
     }
   }, [q.data]);
-  const dirty = mode !== (q.data?.mode === "server" ? "instance_role" : q.data?.mode) || region !== q.data?.region ||
+  const dirty = region !== q.data?.region ||
     !!accessKey || !!secretKey || !!token || clearToken;
   const error = action.error || q.error;
 
@@ -108,7 +105,7 @@ export function AmazonSES({ brandId }: { brandId: number }) {
         q.data ? <>
           <Section title="Connection" description="Amazon SES sends from the AWS account and region configured for this brand.">
             <p className="text-sm text-muted-foreground">
-              {q.data.configured ? "This brand has its own AWS configuration." : "This brand currently uses the server AWS configuration."}
+              {q.data.configured ? "Access keys are configured for this brand." : "Add this brand's AWS access keys before sending."}
             </p>
             {session.admin ? (
               <form className="space-y-4" autoComplete="off" onSubmit={(e) => {
@@ -117,13 +114,11 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                   await api("/aws-settings", {
                     method: "PATCH", brandId,
                     body: {
-                      mode, region,
-                      ...(mode === "static" ? {
-                        ...(accessKey ? { access_key_id: accessKey } : {}),
-                        ...(secretKey ? { secret_access_key: secretKey } : {}),
-                        ...(token ? { session_token: token } : {}),
-                        ...(clearToken ? { clear_session_token: true } : {}),
-                      } : {}),
+                      mode: "static", region,
+                      ...(accessKey ? { access_key_id: accessKey } : {}),
+                      ...(secretKey ? { secret_access_key: secretKey } : {}),
+                      ...(token ? { session_token: token } : {}),
+                      ...(clearToken ? { clear_session_token: true } : {}),
                     },
                   });
                   setAccessKey(""); setSecretKey(""); setToken(""); setClearToken(false);
@@ -132,16 +127,6 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                 }, "Amazon SES settings saved. Test the connection to refresh the quota.");
               }}>
                 <div className="space-y-2">
-                  <label htmlFor={`${id}-mode`} className="text-sm font-medium">Authentication</label>
-                  <SelectField id={`${id}-mode`} value={mode} disabled={action.busy}
-                    onValueChange={(value) => {
-                      setMode(value as Mode); setAccessKey(""); setSecretKey(""); setToken(""); setClearToken(false);
-                    }} options={[
-                      { value: "static", label: "Static access keys" },
-                      { value: "instance_role", label: "Server AWS credentials (IAM role)" },
-                    ]} />
-                </div>
-                <div className="space-y-2">
                   <label htmlFor={`${id}-region`} className="text-sm font-medium">AWS region</label>
                   <SelectField id={`${id}-region`} value={region} required disabled={action.busy}
                     onValueChange={setRegion} placeholder="Select an AWS region"
@@ -149,17 +134,17 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                       ? [...regions, { value: region, label: region }] : regions} />
                   <p className="text-sm text-muted-foreground">SES quotas and verified identities belong to a region.</p>
                 </div>
-                {mode === "static" ? <div className="space-y-4">
+                <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    {q.data.mode === "static" && q.data.has_credentials
+                    {q.data.has_credentials
                       ? "Access keys are saved. Leave these fields blank to keep them, or enter both keys to replace them."
                       : "Enter an AWS access key ID and secret access key. Use IAM access keys, not SES SMTP credentials."}
                   </p>
                   <Field label="Access key ID" type="password" autoComplete="new-password" value={accessKey}
-                    required={!q.data.has_credentials || q.data.mode !== "static" || !!secretKey}
+                    required={!q.data.has_credentials || !!secretKey}
                     disabled={action.busy} onChange={(e) => setAccessKey(e.target.value)} />
                   <Field label="Secret access key" type="password" autoComplete="new-password" value={secretKey}
-                    required={!q.data.has_credentials || q.data.mode !== "static" || !!accessKey}
+                    required={!q.data.has_credentials || !!accessKey}
                     disabled={action.busy} onChange={(e) => setSecretKey(e.target.value)} />
                   <Field label="Session token (optional)" type="password" autoComplete="new-password" value={token}
                     disabled={action.busy || clearToken} onChange={(e) => setToken(e.target.value)} />
@@ -171,18 +156,16 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                       onCheckedChange={(value) => { setClearToken(value === true); setToken(""); }} />
                     Remove saved session token
                   </label>}
-                </div> : <p className="text-sm text-muted-foreground">
-                  The server uses its configured AWS credentials, such as an IAM role, to access Amazon SES. No access keys are needed here.
-                </p>}
+                </div>
                 <Button disabled={action.busy || !region}>Save Amazon SES settings</Button>
               </form>
             ) : <dl className="grid gap-3 text-sm sm:grid-cols-2">
-              <div><dt className="text-muted-foreground">Authentication</dt><dd>{q.data.mode === "static" ? "Static access keys" : q.data.mode === "server" ? "Server AWS configuration" : "Server AWS credentials (IAM role)"}</dd></div>
+              <div><dt className="text-muted-foreground">Access keys</dt><dd>{q.data.has_credentials ? "Configured" : "Not configured"}</dd></div>
               <div><dt className="text-muted-foreground">AWS region</dt><dd>{q.data.region || "Not configured"}</dd></div>
             </dl>}
           </Section>
           <Section title="Sending status" description="Live account statistics reported by AWS for the saved connection. Quotas are shared by all senders in this AWS account and region.">
-            <Button variant="outline" disabled={action.busy || (session.admin && dirty)} onClick={() => {
+            <Button variant="outline" disabled={action.busy || !q.data.has_credentials || (session.admin && dirty)} onClick={() => {
               void action.run(async () => {
                 const result = await api<Status>("/aws-settings/check", { method: "POST", brandId });
                 setStatus(result);
@@ -190,7 +173,7 @@ export function AmazonSES({ brandId }: { brandId: number }) {
             }}>{action.busy ? "Working…" : status ? "Refresh quota" : "Test connection"}</Button>
             {session.admin && dirty && <p className="text-sm text-muted-foreground">Save your changes before testing the connection.</p>}
             {status?.custom_endpoint && <p role="status" className="rounded-lg border p-3 text-sm">A custom AWS endpoint is active. These figures are reported by that endpoint.</p>}
-            {!status ? <p className="text-sm text-muted-foreground">Test the saved connection to fetch current AWS sending limits and account status.</p> : <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            {!status ? <p className="text-sm text-muted-foreground">{q.data.has_credentials ? "Test the saved connection to fetch current AWS sending limits and account status." : "Save this brand's access keys to test the connection."}</p> : <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
               {[
                 ["AWS region", status.region],
                 ["AWS account", status.account_id || "Unavailable"],

@@ -116,8 +116,8 @@ func TestAWSSettingsSecretsAndAuthorization(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	json.Unmarshal(w.Body.Bytes(), &saved)
-	if saved.Mode != "server" || saved.Configured || saved.HasCredentials {
-		t.Fatal("override not removed", saved)
+	if saved.Mode != "static" || saved.Configured || saved.HasCredentials {
+		t.Fatal("brand keys not removed", saved)
 	}
 	if w = request(m, "GET", "/api/v1/aws-settings?brand_id=999", "", &c, ""); w.Code != 404 {
 		t.Fatal("missing brand", w.Code)
