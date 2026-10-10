@@ -48,7 +48,7 @@ The tracking HMAC key is generated once using cryptographic randomness at `DB.se
 
 Choose one AWS region for SES, SNS and SQS. Verify sending identities with SES Easy DKIM, configure SPF/DMARC and request production access when the account is in the sandbox. SES quotas are fetched from `GetAccount` at runtime. The app sends raw MIME through SES v2 `SendEmail`, including explicit recipient destinations, configuration set and brand/campaign tags. It does not use SMTP or SES templates.
 
-Replace `REGION`, `ACCOUNT` and `example.com` in [runtime IAM policy](deploy/iam-runtime.json). Restrict the SQS ARN to the event queue. The plan includes `ses:SendRawEmail` permission for compatibility, although the implemented sender calls `ses:SendEmail`. Attach [setup IAM policy](deploy/iam-setup.json) only to the operator performing configuration set setup. Creating SNS/SQS infrastructure is a separate deployment responsibility.
+Replace `REGION`, `ACCOUNT` and `example.com` in [runtime IAM policy](deploy/iam-runtime.json). Restrict the SQS ARN to the event queue. The policy includes `ses:SendRawEmail` permission for compatibility, although the implemented sender calls `ses:SendEmail`. Attach [setup IAM policy](deploy/iam-setup.json) only to the operator performing configuration set setup. Creating SNS/SQS infrastructure is a separate deployment responsibility.
 
 1. Create an SNS topic `postbox-events` and an SQS queue `postbox-events` with a dead-letter queue. Configure a sensible redrive maximum (for example 5 receives), message retention and alarms for the dead-letter queue.
 2. Allow SES to publish to SNS, scoped to your account and SES configuration set. Allow only that SNS topic to send to SQS, using the queue resource policy below.
@@ -129,11 +129,11 @@ POSTBOX_SENDY_SOURCE_ID=sendy-production POSTBOX_SENDY_DUMP=/safe/sendy.sql post
 # Alternatively provide POSTBOX_SENDY_DSN through a protected environment.
 ```
 
-Migration reports imported records, source statuses, suppressions and warnings as JSON. Dry-run does not commit imported data. Suppressed, bounced, complained, unsubscribed and unconfirmed Sendy subscribers are preserved with their appropriate states. Review totals and status counts before enabling sending. SQL dumps are parsed as data and are never executed against SQLite.
+Migration reports imported records, source statuses, suppressions and warnings as JSON. Dry-run does not commit imported data. Suppressed, bounced, complained, unsubscribed and unconfirmed Sendy subscribers are preserved with their appropriate states. Review totals and status counts before enabling sending. SQL dumps are parsed as data and are never executed against SQLite. See [Sendy migration](docs/migration.md) for source mappings, rerun behavior and importer limits.
 
 ## Delivery proof
 
-Use `go test ./...` and race checks for correctness, `make bench` for MIME/rendering performance, and `cmd/fakeses` plus `cmd/loadtest` for reproducible fake delivery runs. The fake sender is explicit tooling and is never selected by the production service. The load tool reports achieved rate, request latency, process resource use and SQLite writer latency. Run the full 350,000-recipient scenarios at both 175/sec and 1,000/sec before relying on a new deployment for a send day. A fast short test does not prove a 33-minute run.
+Use `go test ./...` and race checks for correctness, `make bench` for MIME/rendering performance, and `cmd/fakeses` plus `cmd/loadtest` for reproducible fake delivery runs. The fake sender is explicit tooling and is never selected by the production service. The load tool reports achieved rate, request latency, process resource use and SQLite writer latency. Run the full 350,000-recipient scenarios at both 175/sec and 1,000/sec before relying on a new deployment for a send day. A fast short test does not prove a 33-minute run. See [sender profiling and pacing](docs/performance-profile.md) for recorded full-run results, raw artifacts and their limitations.
 
 Full fake-server scenarios run through the HTTP SES v2 adapter, without live credentials:
 
@@ -145,4 +145,4 @@ go run ./cmd/fakeses --listen 127.0.0.1:9001 --rate 175 --throttle-every 50 --se
 
 Set `POSTBOX_NOTIFICATION_FROM` to a verified sender and `POSTBOX_NOTIFICATION_TO` to comma-separated admin addresses to receive campaign start/finish notifications. These durable email jobs share the account limiter and sending switch. Double opt-in confirmations and optional goodbye messages use the same transactional email queue. CSV job payload files are private basenames under the database directory’s `jobs` subdirectory; imports stream and exports create mode-0600 files.
 
-The raw HTML editor is authoritative. Email templates remain full documents including their head, styles and MSO comments. WYSIWYG conversions must be reviewed as a source diff; see [research](docs/research.md) for the editor round-trip evaluation. Architecture and integration contracts are in [docs](docs/contracts.md).
+The raw HTML editor is authoritative. Email templates remain full documents including their head, styles and MSO comments. Review WYSIWYG conversions as a source diff to check that the email markup is preserved.
