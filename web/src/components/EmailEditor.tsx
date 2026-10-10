@@ -442,7 +442,7 @@ export function EmailEditor({
                 referrerPolicy="no-referrer"
                 srcDoc={(recipientReady && previewSource === value ? samplePreview.data?.html : undefined) ?? ""}
                 className="mx-auto h-[480px] border-0 bg-white"
-                style={{ width: mobile ? 375 : "100%", maxWidth: "100%" }}
+                style={{ width: mobile ? "var(--newsletter-mobile-width)" : "100%", maxWidth: "100%" }}
               />
               {recipientReady && samplePreview.data && (
                 <div className="mt-2 text-sm">

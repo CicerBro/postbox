@@ -263,7 +263,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           </CardHeader>
           <CardContent>
             <ErrorMessage error={preview.error} />
-            {preview.isPending ? <p role="status">Loading newsletter preview…</p> : preview.data && <div className="overflow-hidden rounded-md border bg-muted p-2"><iframe title="Sent newsletter preview" sandbox="" referrerPolicy="no-referrer" srcDoc={previewHTML} className={`mx-auto block h-[460px] w-full rounded bg-white ${previewWidth === "mobile" ? "max-w-[375px]" : ""}`} /></div>}
+            {preview.isPending ? <p role="status">Loading newsletter preview…</p> : preview.data && <div className="overflow-hidden rounded-md border bg-muted p-2"><iframe title="Sent newsletter preview" sandbox="" referrerPolicy="no-referrer" srcDoc={previewHTML} className="mx-auto block h-[460px] rounded bg-white" style={{ width: previewWidth === "mobile" ? "var(--newsletter-mobile-width)" : "100%", maxWidth: "100%" }} /></div>}
             <p className="mt-3 text-xs text-muted-foreground">Saved newsletter with sample personalization. Scripts and navigation are disabled in the preview.</p>
           </CardContent>
         </Card>
