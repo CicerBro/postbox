@@ -141,7 +141,7 @@ func (a *API) subscribers(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		if id == 0 {
 			after, limit := page(r)
-			filter := subscribers.SearchFilter{EmailPrefix: r.URL.Query().Get("q"), Status: r.URL.Query().Get("status"), MembershipStatus: r.URL.Query().Get("membership_status")}
+			filter := subscribers.SearchFilter{EmailPrefix: r.URL.Query().Get("q"), Status: r.URL.Query().Get("status"), MembershipStatus: r.URL.Query().Get("membership_status"), Sort: r.URL.Query().Get("sort"), Direction: r.URL.Query().Get("direction")}
 			if raw := r.URL.Query().Get("list_id"); raw != "" {
 				var e error
 				filter.ListID, e = strconv.ParseInt(raw, 10, 64)

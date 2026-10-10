@@ -74,3 +74,40 @@ func (e *Engine) EditorPreview(ctx context.Context, brandID, subscriberID int64,
 	}
 	return p.Render(r)
 }
+
+// AudienceTarget identifies one included or excluded campaign audience.
+type AudienceTarget struct {
+	Type string `json:"target_type"`
+	ID   int64  `json:"target_id"`
+	Mode string `json:"mode"`
+}
+
+type PreviewRecipient struct {
+	ID    int64  `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
+// EditorRecipients uses the same eligibility predicate as sending without
+// persisting unsaved targets or creating a recipient snapshot.
+func (e *Engine) EditorRecipients(ctx context.Context, brandID int64, targets []AudienceTarget, after int64) ([]PreviewRecipient, error) {
+	query, args, err := e.audienceTargetsSQL(ctx, brandID, targets)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, after)
+	rows, err := e.db.Reader.QueryContext(ctx, `SELECT s.id,s.email,s.name `+query+` AND s.id>? ORDER BY s.id LIMIT 2`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PreviewRecipient{}
+	for rows.Next() {
+		var recipient PreviewRecipient
+		if err := rows.Scan(&recipient.ID, &recipient.Email, &recipient.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, recipient)
+	}
+	return out, rows.Err()
+}

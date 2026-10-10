@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"postbox/internal/render"
+	"postbox/internal/send"
 )
 
 func (a *API) editorPreview(w http.ResponseWriter, r *http.Request) {
@@ -35,4 +36,24 @@ func (a *API) editorPreview(w http.ResponseWriter, r *http.Request) {
 	}
 	subject, body, text, err := a.engine.EditorPreview(r.Context(), brand, input.SubscriberID, render.Options{CampaignID: input.CampaignID, Subject: input.Subject, HTML: input.HTML, Text: input.Text, InlineCSS: input.InlineCSS})
 	result(w, map[string]string{"subject": subject, "html": body, "text": text}, err)
+}
+
+func (a *API) editorRecipients(w http.ResponseWriter, r *http.Request) {
+	brand, ok := a.scoped(w, r)
+	if !ok {
+		return
+	}
+	var input struct {
+		Targets []send.AudienceTarget `json:"targets"`
+		After   int64                 `json:"after"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	if input.After < 0 || len(input.Targets) > 1000 {
+		fail(w, 400, errors.New("invalid audience pagination request"))
+		return
+	}
+	recipients, err := a.engine.EditorRecipients(r.Context(), brand, input.Targets, input.After)
+	result(w, recipients, err)
 }

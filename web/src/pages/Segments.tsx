@@ -1,3 +1,5 @@
+import { SortableTableHead } from "../components/SortableTableHead";
+import { useTableSort } from "../lib/use-table-sort";
 import { SelectField } from "../components/ui/select";
 import { useEffect, useState } from "react";
 import { Plus, Search, Filter } from "lucide-react";
@@ -293,6 +295,7 @@ function segmentRuleSummary(rules: Rule | string): string {
   }
 }
 function SegmentsWorkspace({ brandId }: { brandId: number }) {
+  const sorting = useTableSort<"name" | "rules">("name");
   const [searchParams, setSearchParams] = useSearchParams();
   const [editing, setEditing] = useState<Segment | null>(null);
   const [search, setSearch] = useState("");
@@ -328,8 +331,12 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
     queryFn: ({ signal }) => allPages<Campaign>("/campaigns", brandId, signal),
     enabled: brandId > 0,
   });
-  const visibleSegments = (segments.data || []).filter((segment) =>
-    segment.name.toLowerCase().includes(search.trim().toLowerCase()),
+  const visibleSegments = sorting.sort(
+    (segments.data || []).filter((segment) =>
+      segment.name.toLowerCase().includes(search.trim().toLowerCase()),
+    ),
+    (segment, key) =>
+      key === "name" ? segment.name : segmentRuleSummary(segment.rules),
   );
   const previewKey = `${brandId}:${JSON.stringify(rule)}`;
   useEffect(() => {
@@ -441,8 +448,8 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
             <table className={tableClass}>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Rules</th>
+                  <SortableTableHead label="Name" {...sorting.header("name")} />
+                  <SortableTableHead label="Rules" {...sorting.header("rules")} />
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -483,14 +490,14 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
                       <div className="flex gap-2">
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="default"
                           onClick={() => edit(s)}
                         >
                           Edit
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="destructive"
                           onClick={() => {
                             action.reset();
                             setDeleteRow(s);

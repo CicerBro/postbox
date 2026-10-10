@@ -379,7 +379,6 @@ export default function App() {
                 <strong>
                   {session.data.admin ? "Administrator" : "Team member"}
                 </strong>
-                <small>Account #{session.data.user_id}</small>
               </span>
               <ChevronsUpDown size={15} className="sidebar-label" />
             </button>

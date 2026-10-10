@@ -83,14 +83,14 @@ export function Users() {
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="default"
                   onClick={() => setEditing(u)}
                 >
                   Edit / access
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="destructive"
                   disabled={a.busy}
                   onClick={() => {
                     if (
@@ -321,7 +321,7 @@ function BrandAccess({ userId }: { userId: number }) {
                 {g.daily_send_limit ?? "Unlimited"}
               </span>
               <Button
-                variant="outline"
+                variant="destructive"
                 size="sm"
                 disabled={a.busy}
                 onClick={() => {

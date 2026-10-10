@@ -102,6 +102,10 @@ func requestSchema(path string) map[string]any {
 	required := []string{}
 	add := func(name, typ string) { props[name] = map[string]any{"type": typ} }
 	switch {
+	case path == "/api/v1/email-preview/recipients":
+		props["after"] = map[string]any{"type": "integer", "minimum": 0}
+		props["targets"] = requestSchema("/api/v1/campaigns/{id}/targets")
+		required = []string{"targets"}
 	case path == "/api/v1/email-preview":
 		add("html", "string")
 		add("subject", "string")

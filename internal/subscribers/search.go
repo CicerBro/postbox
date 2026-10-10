@@ -6,12 +6,14 @@ import (
 	"strings"
 )
 
-// SearchFilter filters the entire scoped audience before applying ID pagination.
+// SearchFilter filters the entire scoped audience before applying cursor pagination.
 type SearchFilter struct {
 	EmailPrefix      string
 	ListID           int64
 	Status           string
 	MembershipStatus string
+	Sort             string
+	Direction        string
 }
 
 func subscriberSearchQuery(brandID, afterID int64, limit int, f SearchFilter) (string, []any, error) {
@@ -23,6 +25,26 @@ func subscriberSearchQuery(brandID, afterID int64, limit int, f SearchFilter) (s
 	}
 	if f.MembershipStatus != "" && f.MembershipStatus != "subscribed" && f.MembershipStatus != "unsubscribed" && f.MembershipStatus != "unconfirmed" {
 		return "", nil, errors.New("membership_status must be subscribed, unsubscribed or unconfirmed")
+	}
+	sortColumn := "id"
+	if f.Sort != "" {
+		sortColumn = f.Sort
+	}
+	switch sortColumn {
+	case "id", "email", "name", "status", "gdpr_consent_at", "created_at":
+	default:
+		return "", nil, errors.New("unsupported subscriber sort column")
+	}
+	direction, comparison := "ASC", ">"
+	if f.Direction == "desc" {
+		direction, comparison = "DESC", "<"
+	} else if f.Direction != "" && f.Direction != "asc" {
+		return "", nil, errors.New("sort direction must be asc or desc")
+	}
+	customSort := sortColumn != "id" || direction != "ASC"
+	sortValue := "s." + sortColumn
+	if sortColumn == "gdpr_consent_at" {
+		sortValue = "coalesce(s.gdpr_consent_at, 0)"
 	}
 	f.EmailPrefix = strings.ToLower(strings.TrimSpace(f.EmailPrefix))
 	for _, c := range f.EmailPrefix {
@@ -45,8 +67,22 @@ func subscriberSearchQuery(brandID, afterID int64, limit int, f SearchFilter) (s
 	} else if f.Status != "" {
 		from = "subscribers s INDEXED BY subscribers_brand_status_id"
 	}
-	q := "SELECT " + columns + " FROM " + from + " WHERE s.brand_id=? AND s.id>?"
-	args := []any{brandID, afterID}
+	if customSort && f.EmailPrefix == "" && f.ListID == 0 {
+		// Let SQLite choose the appropriate ordering index for a sorted audience.
+		from = "subscribers s"
+	}
+	q := "SELECT " + columns + " FROM " + from + " WHERE s.brand_id=?"
+	args := []any{brandID}
+	if !customSort {
+		q += " AND s.id>?"
+		args = append(args, afterID)
+	} else if afterID > 0 {
+		// Use the last row's sort value and ID together so duplicate values never
+		// skip or repeat recipients. The cursor lookup stays inside the brand.
+		value := strings.ReplaceAll(sortValue, "s.", "")
+		q += " AND (" + sortValue + ",s.id) " + comparison + " (SELECT " + value + ",id FROM subscribers WHERE brand_id=? AND id=?)"
+		args = append(args, brandID, afterID)
+	}
 	if f.EmailPrefix != "" {
 		upper := []byte(f.EmailPrefix)
 		upper[len(upper)-1]++
@@ -61,10 +97,13 @@ func subscriberSearchQuery(brandID, afterID int64, limit int, f SearchFilter) (s
 		if f.EmailPrefix != "" {
 			q += " AND EXISTS (SELECT 1 FROM list_subscribers ls WHERE ls.list_id=? AND ls.subscriber_id=s.id"
 		} else {
-			q += " AND ls.list_id=? AND ls.subscriber_id>?"
+			q += " AND ls.list_id=?"
+			if !customSort {
+				q += " AND ls.subscriber_id>?"
+			}
 		}
 		args = append(args, f.ListID)
-		if f.EmailPrefix == "" {
+		if f.EmailPrefix == "" && !customSort {
 			args = append(args, afterID)
 		}
 		if f.MembershipStatus != "" {
@@ -75,7 +114,9 @@ func subscriberSearchQuery(brandID, afterID int64, limit int, f SearchFilter) (s
 			q += ")"
 		}
 	}
-	if f.ListID != 0 && f.EmailPrefix == "" {
+	if customSort {
+		q += " ORDER BY " + sortValue + " " + direction + ",s.id " + direction + " LIMIT ?"
+	} else if f.ListID != 0 && f.EmailPrefix == "" {
 		q += " ORDER BY ls.subscriber_id LIMIT ?"
 	} else {
 		q += " ORDER BY s.id LIMIT ?"

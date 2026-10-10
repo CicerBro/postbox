@@ -141,7 +141,7 @@ export function Webhooks({ brandId }: { brandId: number }) {
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="default"
                   disabled={a.busy}
                   onClick={() => {
                     setEdit(h);
@@ -194,7 +194,7 @@ export function Webhooks({ brandId }: { brandId: number }) {
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="destructive"
                   disabled={a.busy}
                   onClick={() => {
                     if (window.confirm("Delete this webhook?"))

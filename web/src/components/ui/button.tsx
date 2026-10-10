@@ -6,6 +6,7 @@ const buttonVariants = cva("button", {
   variants: {
     variant: {
       default: "button-primary",
+      info: "button-info",
       outline: "button-outline",
       ghost: "button-ghost",
       destructive: "button-destructive",

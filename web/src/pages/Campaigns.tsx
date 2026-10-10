@@ -22,6 +22,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "../components/ui/dialog";
+import { SortableTableHead } from "../components/SortableTableHead";
 import { EmailEditor } from "../components/EmailEditor";
 import {
   StatusBadge,
@@ -72,22 +73,43 @@ type Checklist = {
   };
 };
 export function CampaignsPage({ brandId }: { brandId: number }) {
-  const [after, setAfter] = useState(0),
-    [history, setHistory] = useState<number[]>([]);
+  const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all");
+  const [sort, setSort] = useState("priority"),
+    [direction, setDirection] = useState<"asc" | "desc">("desc");
   useEffect(() => {
     setSearch("");
     setFilter("all");
-    setAfter(0);
-    setHistory([]);
+    setOffset(0);
+    setSort("priority");
+    setDirection("desc");
   }, [brandId]);
   const query = useQuery({
-    queryKey: ["campaigns", brandId, after],
-    queryFn: () =>
-      api<Campaign[]>(`/campaigns?after=${after}&limit=50`, { brandId }),
+    queryKey: ["campaigns", brandId, offset, sort, direction, filter, search],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        offset: String(offset), limit: "50", sort, direction, status: filter, search,
+      });
+      return api<Campaign[]>(`/campaigns?${params}`, { brandId });
+    },
     enabled: brandId > 0,
   });
+  function sortBy(column: string) {
+    setDirection(sort === column && direction === "asc" ? "desc" : "asc");
+    setSort(column);
+    setOffset(0);
+  }
+  function sortHeader(label: string, column: string) {
+    return (
+      <SortableTableHead
+        label={label}
+        active={sort === column}
+        direction={direction}
+        onSort={() => sortBy(column)}
+      />
+    );
+  }
   return (
     <div className="space-y-6">
       <div className="page-header flex flex-wrap items-end justify-between gap-2">
@@ -103,14 +125,17 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
           </Link>
         </Button>
       </div>
-      <div className="page-tabs" aria-label="Filter campaigns on this page">
+      <div className="page-tabs" aria-label="Filter campaigns">
         {["all", "draft", "scheduled", "sending", "sent"].map((tab) => (
           <button
             key={tab}
             type="button"
             className={filter === tab ? "active" : ""}
             aria-pressed={filter === tab}
-            onClick={() => setFilter(tab)}
+            onClick={() => {
+              setFilter(tab);
+              setOffset(0);
+            }}
           >
             {tab === "all"
               ? "All campaigns"
@@ -133,10 +158,13 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
             <div className="toolbar-search">
               <Search size={16} aria-hidden="true" />
               <Input
-                aria-label="Search campaigns on this page"
-                placeholder="Search this page…"
+                aria-label="Search campaigns"
+                placeholder="Search campaigns…"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setOffset(0);
+                }}
               />
             </div>
           </div>
@@ -144,23 +172,17 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
             <table className={tableClass}>
               <thead>
                 <tr>
-                  <th>Campaign</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th>Scheduled</th>
+                  {sortHeader("Campaign", "subject")}
+                  {sortHeader("Status", "status")}
+                  {sortHeader("Created", "created_at")}
+                  {sortHeader("Scheduled", "scheduled_at")}
                   <th>
                     <span className="sr-only">Report</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {query.data
-                  ?.filter(
-                    (c) =>
-                      (filter === "all" || c.status === filter) &&
-                      c.subject.toLowerCase().includes(search.toLowerCase()),
-                  )
-                  .map((c) => (
+                {query.data?.map((c) => (
                     <tr key={c.id}>
                       <td>
                         <Link className="row-title" to={`/campaigns/${c.id}${c.status === "sent" ? "/report" : ""}`}>
@@ -190,17 +212,13 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                   ))}
               </tbody>
             </table>
-            {!query.data?.filter(
-              (c) =>
-                (filter === "all" || c.status === filter) &&
-                c.subject.toLowerCase().includes(search.toLowerCase()),
-            ).length && (
+            {!query.data?.length && (
               <div className="empty-panel">
                 <Mail size={28} />
                 <h3>No campaigns found</h3>
                 <p>
                   {search || filter !== "all"
-                    ? "Try another search or status on this page."
+                    ? "Try another search or status."
                     : "Create your first campaign to reach your audience."}
                 </p>
               </div>
@@ -209,13 +227,12 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
         </div>
       )}
       <div className="table-footer flex gap-2">
-        <span className="row-subtitle mr-auto">Page {history.length + 1}</span>
+        <span className="row-subtitle mr-auto">Page {offset / 50 + 1}</span>
         <Button
           variant="outline"
-          disabled={!history.length}
+          disabled={offset === 0}
           onClick={() => {
-            setAfter(history.at(-1) ?? 0);
-            setHistory(history.slice(0, -1));
+            setOffset(Math.max(0, offset - 50));
           }}
         >
           Previous
@@ -224,8 +241,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
           variant="outline"
           disabled={query.data?.length !== 50}
           onClick={() => {
-            setHistory([...history, after]);
-            setAfter(query.data!.at(-1)!.id);
+            setOffset(offset + 50);
           }}
         >
           Next
@@ -574,6 +590,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
             subject={subject}
             campaignId={draftID}
             text={text}
+            audienceTargets={targets}
           />
           <details>
             <summary className="cursor-pointer text-sm">
@@ -620,32 +637,22 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
                   </h3>
                   {choices.data?.[type === "list" ? "lists" : "segments"].map(
                     (row) => (
-                      <label
-                        key={row.id}
-                        htmlFor={`campaign-audience-${type}-${row.id}`}
-                        className="audience-option mb-2 flex items-center justify-between gap-3 rounded-md border p-3 text-sm"
-                      >
-                        <span>{row.name}</span>
-                        <SelectField
-                          id={`campaign-audience-${type}-${row.id}`}
-                          disabled={!editable}
-                          className="max-w-36"
-                          aria-label={`${row.name} audience mode`}
-                          value={
-                            targets.find(
-                              (t) =>
-                                t.target_type === type &&
-                                t.target_id === row.id,
-                            )?.mode ?? ""
-                          }
-                          onValueChange={(value) => targetMode(type, row.id, value)}
-                          options={[
-                            { value: "", label: "Not selected" },
-                            { value: "include", label: "Include" },
-                            { value: "exclude", label: "Exclude" },
-                          ]}
-                        />
-                      </label>
+                      <div key={row.id} className="audience-option mb-2 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                        <span className="font-medium">{row.name}</span>
+                        <div className="flex gap-4">
+                          {(["include", "exclude"] as const).map((mode) => (
+                            <label key={mode} className="flex items-center gap-2">
+                              <Checkbox
+                                aria-label={`${mode === "include" ? "Include" : "Exclude"} ${row.name}`}
+                                disabled={!editable}
+                                checked={targets.some((t) => t.target_type === type && t.target_id === row.id && t.mode === mode)}
+                                onCheckedChange={(checked) => targetMode(type, row.id, checked === true ? mode : "")}
+                              />
+                              {mode === "include" ? "Include" : "Exclude"}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                     ),
                   )}
                   {!choices.data?.[type === "list" ? "lists" : "segments"]
@@ -753,7 +760,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
                 campaign with a [Test] subject prefix. Each click sends again.
               </p>
               <Button
-                variant="outline"
+                variant="info"
                 disabled={busy || dirty || !canSend || !testEmails.trim()}
                 onClick={() =>
                   action("test-send", {
@@ -761,7 +768,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
                   })
                 }
               >
-                Send [Test] emails
+                <Send size={16} /> Send [Test] emails
               </Button>
             </div>
             {editable && (

@@ -1,3 +1,5 @@
+import { SortableTableHead } from "../components/SortableTableHead";
+import { useTableSort } from "../lib/use-table-sort";
 import { useEffect, useState } from "react";
 import { KeyRound, Plus, ShieldCheck } from "lucide-react";
 import { Badge } from "../components/ui/badge";
@@ -24,6 +26,7 @@ type Key = {
   revoked_at: number | null;
 };
 export function ApiKeysPage({ brandId }: { brandId: number }) {
+  const sorting = useTableSort<"name" | "scopes" | "used" | "status">("name");
   const { session } = useApp();
   const qc = useQueryClient();
   const [name, setName] = useState("");
@@ -39,6 +42,12 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
     queryKey: ["api-keys", brandId],
     queryFn: () => api<Key[]>("/api-keys", { brandId }),
     enabled: brandId > 0 && session.admin,
+  });
+  const keys = sorting.sort(q.data ?? [], (key, column) => {
+    if (column === "name") return key.name;
+    if (column === "scopes") return strings(key.scopes).join(", ");
+    if (column === "used") return key.last_used_at;
+    return key.revoked_at ? "Revoked" : "Active";
   });
   if (!brandId)
     return (
@@ -144,17 +153,17 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr>
-                  <th className="p-3">Name / prefix</th>
-                  <th>Scopes</th>
-                  <th>Last used</th>
-                  <th>Status</th>
+                  <SortableTableHead label="Name / prefix" {...sorting.header("name")} />
+                  <SortableTableHead label="Scopes" {...sorting.header("scopes")} />
+                  <SortableTableHead label="Last used" {...sorting.header("used")} />
+                  <SortableTableHead label="Status" {...sorting.header("status")} />
                   <th>
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {q.data.map((k) => (
+                {keys.map((k) => (
                   <tr className="border-t" key={k.id}>
                     <td className="p-3">
                       <span className="row-title">{k.name}</span>
@@ -177,7 +186,7 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
                     <td>
                       {!k.revoked_at && (
                         <Button
-                          variant="outline"
+                          variant="destructive"
                           size="sm"
                           disabled={a.busy}
                           onClick={() => {

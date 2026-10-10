@@ -441,14 +441,10 @@ func (e *Engine) audienceSQL(ctx context.Context, c campaign) (string, []any, er
 	if err != nil {
 		return "", nil, err
 	}
-	type target struct {
-		kind, mode string
-		id         int64
-	}
-	var targets []target
+	var targets []AudienceTarget
 	for rows.Next() {
-		var t target
-		if err = rows.Scan(&t.kind, &t.id, &t.mode); err != nil {
+		var t AudienceTarget
+		if err = rows.Scan(&t.Type, &t.ID, &t.Mode); err != nil {
 			rows.Close()
 			return "", nil, err
 		}
@@ -459,31 +455,39 @@ func (e *Engine) audienceSQL(ctx context.Context, c campaign) (string, []any, er
 	if err != nil {
 		return "", nil, err
 	}
+	return e.audienceTargetsSQL(ctx, c.brand, targets)
+}
+
+func (e *Engine) audienceTargetsSQL(ctx context.Context, brandID int64, targets []AudienceTarget) (string, []any, error) {
+	var err error
 	var includes, excludes []string
 	var incArgs, excArgs []any
 	for _, t := range targets {
+		if t.ID <= 0 || (t.Type != "list" && t.Type != "segment") || (t.Mode != "include" && t.Mode != "exclude") {
+			return "", nil, errors.New("invalid audience target")
+		}
 		predicate := ""
 		var args []any
-		if t.kind == "list" {
+		if t.Type == "list" {
 			var brand int64
-			if err = e.db.Reader.QueryRowContext(ctx, `SELECT brand_id FROM lists WHERE id=?`, t.id).Scan(&brand); err != nil {
+			if err = e.db.Reader.QueryRowContext(ctx, `SELECT brand_id FROM lists WHERE id=?`, t.ID).Scan(&brand); err != nil {
 				return "", nil, err
 			}
-			if brand != c.brand {
-				return "", nil, fmt.Errorf("list %d belongs to another brand", t.id)
+			if brand != brandID {
+				return "", nil, fmt.Errorf("list %d belongs to another brand", t.ID)
 			}
 			predicate = `EXISTS(SELECT 1 FROM list_subscribers ls WHERE ls.list_id=? AND ls.subscriber_id=s.id AND ls.status='subscribed')`
-			args = []any{t.id}
+			args = []any{t.ID}
 		} else {
 			var rules string
-			if err = e.db.Reader.QueryRowContext(ctx, `SELECT rules FROM segments WHERE id=? AND brand_id=?`, t.id, c.brand).Scan(&rules); err != nil {
+			if err = e.db.Reader.QueryRowContext(ctx, `SELECT rules FROM segments WHERE id=? AND brand_id=?`, t.ID, brandID).Scan(&rules); err != nil {
 				return "", nil, err
 			}
 			var rule subscribers.Rule
 			if err = json.Unmarshal([]byte(rules), &rule); err != nil {
 				return "", nil, err
 			}
-			if err = subscribers.New(e.db).ValidateSegment(ctx, c.brand, rule); err != nil {
+			if err = subscribers.New(e.db).ValidateSegment(ctx, brandID, rule); err != nil {
 				return "", nil, err
 			}
 			predicate, args, err = subscribers.CompileSegment(rule)
@@ -491,7 +495,7 @@ func (e *Engine) audienceSQL(ctx context.Context, c campaign) (string, []any, er
 				return "", nil, err
 			}
 		}
-		if t.mode == "include" {
+		if t.Mode == "include" {
 			includes = append(includes, predicate)
 			incArgs = append(incArgs, args...)
 		} else {
@@ -503,7 +507,7 @@ func (e *Engine) audienceSQL(ctx context.Context, c campaign) (string, []any, er
 		return "", nil, errors.New("campaign has no included lists or segments")
 	}
 	query := `FROM subscribers s WHERE s.brand_id=? AND s.status='active' AND (` + strings.Join(includes, " OR ") + `)`
-	args := []any{c.brand}
+	args := []any{brandID}
 	args = append(args, incArgs...)
 	if len(excludes) > 0 {
 		query += ` AND NOT (` + strings.Join(excludes, " OR ") + `)`

@@ -1,3 +1,5 @@
+import { SortableTableHead } from "../components/SortableTableHead";
+import { useTableSort } from "../lib/use-table-sort";
 import { Plus, Search, FileCode2, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -31,6 +33,7 @@ export function TemplatesPage({ brandId }: { brandId: number }) {
   return <TemplateLibrary key={brandId} brandId={brandId} />;
 }
 function TemplateLibrary({ brandId }: { brandId: number }) {
+  const sorting = useTableSort<"name" | "size" | "updated">("name");
   const [params, setParams] = useSearchParams();
   const client = useQueryClient(),
     [after, setAfter] = useState(0),
@@ -64,6 +67,17 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
       setHtml(editing?.html ?? initialHTML);
     }
   }, [editing]);
+  const visibleTemplates = sorting.sort(
+    (query.data ?? []).filter((t) =>
+      t.name.toLowerCase().includes(search.toLowerCase()),
+    ),
+    (t, key) =>
+      key === "name"
+        ? t.name
+        : key === "size"
+          ? new TextEncoder().encode(t.html).length
+          : t.updated_at,
+  );
   function edit(template: Template | null) {
     setError(null);
     setNotice("");
@@ -159,7 +173,8 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
             <div>
               <h2 className="section-heading">Template library</h2>
               <p className="row-subtitle">
-                {query.data?.length ?? 0} designs on this page
+                {query.data?.length ?? 0} designs on this page. Sorting applies
+                to this page.
               </p>
             </div>
             <div className="toolbar-search">
@@ -176,18 +191,14 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
             <table className={tableClass}>
               <thead>
                 <tr>
-                  <th>Template</th>
-                  <th>HTML size</th>
-                  <th>Updated</th>
+                  <SortableTableHead label="Template" {...sorting.header("name")} />
+                  <SortableTableHead label="HTML size" {...sorting.header("size")} />
+                  <SortableTableHead label="Updated" {...sorting.header("updated")} />
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {query.data
-                  ?.filter((t) =>
-                    t.name.toLowerCase().includes(search.toLowerCase()),
-                  )
-                  .map((t) => (
+                {visibleTemplates.map((t) => (
                     <tr key={t.id}>
                       <td>
                         <div className="flex items-center gap-3">
@@ -215,14 +226,14 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                       <td>
                         <div className="flex gap-2">
                           <Button
-                            variant="outline"
+                            variant="default"
                             size="sm"
                             onClick={() => edit(t)}
                           >
                             <Pencil size={14} /> Edit
                           </Button>
                           <Button
-                            variant="ghost"
+                            variant="destructive"
                             size="sm"
                             onClick={() => {
                               setError(null);

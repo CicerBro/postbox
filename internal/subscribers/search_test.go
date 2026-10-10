@@ -64,3 +64,58 @@ SELECT ?,printf('person%05d@example.org',i),CASE WHEN i%2=0 THEN 'bounced' ELSE 
 		t.Fatalf("filtered cursor: %+v, %v", rows, err)
 	}
 }
+
+func TestSubscriberSortedPagination(t *testing.T) {
+	s, brand, list := fixture(t)
+	_, err := s.db.Writer.Exec(`INSERT INTO subscribers(brand_id,email,name,status,gdpr_consent_at,created_at,updated_at) VALUES
+(?, 'z@example.org', 'Same', 'active', NULL, 30, 0),
+(?, 'a@example.org', 'Same', 'active', 10, 10, 0),
+(?, 'm@example.org', 'Alice', 'bounced', 20, 20, 0),
+(?, 'outside@example.org', 'Excluded', 'active', 40, 40, 0)`, brand.ID, brand.ID, brand.ID, brand.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Writer.Exec("INSERT INTO list_subscribers(list_id,subscriber_id,status,created_at,updated_at) SELECT ?,id,'subscribed',0,0 FROM subscribers WHERE email<>'outside@example.org'", list.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		column string
+		asc    []string
+	}{
+		{"email", []string{"a@example.org", "m@example.org", "z@example.org"}},
+		{"name", []string{"m@example.org", "z@example.org", "a@example.org"}},
+		{"status", []string{"z@example.org", "a@example.org", "m@example.org"}},
+		{"created_at", []string{"a@example.org", "m@example.org", "z@example.org"}},
+		{"gdpr_consent_at", []string{"z@example.org", "a@example.org", "m@example.org"}},
+	} {
+		for _, direction := range []string{"asc", "desc"} {
+			t.Run(tc.column+"/"+direction, func(t *testing.T) {
+				var after int64
+				for i := 0; i < len(tc.asc); i++ {
+					rows, err := s.SearchFiltered(context.Background(), brand.ID, after, 1, SearchFilter{ListID: list.ID, Sort: tc.column, Direction: direction})
+					position := i
+					if direction == "desc" {
+						position = len(tc.asc) - 1 - i
+					}
+					if err != nil || len(rows) != 1 || rows[0].Email != tc.asc[position] {
+						t.Fatalf("page %d: %+v, %v; want %s", i, rows, err, tc.asc[position])
+					}
+					after = rows[0].ID
+				}
+				rows, err := s.SearchFiltered(context.Background(), brand.ID, after, 1, SearchFilter{ListID: list.ID, Sort: tc.column, Direction: direction})
+				if err != nil || len(rows) != 0 {
+					t.Fatalf("end of audience: %+v, %v", rows, err)
+				}
+			})
+		}
+	}
+	rows, err := s.SearchFiltered(context.Background(), brand.ID, 0, 10, SearchFilter{EmailPrefix: "a@", Status: "active", ListID: list.ID, MembershipStatus: "subscribed", Sort: "name", Direction: "desc"})
+	if err != nil || len(rows) != 1 || rows[0].Email != "a@example.org" {
+		t.Fatalf("sorted filters: %+v, %v", rows, err)
+	}
+	for _, filter := range []SearchFilter{{Sort: "email; DROP TABLE subscribers"}, {Direction: "sideways"}} {
+		if _, err := s.SearchFiltered(context.Background(), brand.ID, 0, 10, filter); err == nil {
+			t.Fatalf("expected invalid sort to fail: %+v", filter)
+		}
+	}
+}

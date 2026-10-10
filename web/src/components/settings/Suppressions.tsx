@@ -1,3 +1,5 @@
+import { SortableTableHead } from "../SortableTableHead";
+import { useTableSort } from "../../lib/use-table-sort";
 import { useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { Badge } from "../ui/badge";
@@ -23,6 +25,7 @@ type Suppression = {
   reason: string;
 };
 export function Suppressions({ brandId }: { brandId: number }) {
+  const sorting = useTableSort<"value" | "kind" | "scope" | "reason">("value");
   const { session } = useApp();
   const qc = useQueryClient();
   const [scope, setScope] = useState("effective");
@@ -42,11 +45,17 @@ export function Suppressions({ brandId }: { brandId: number }) {
     getNextPageParam: (rows) =>
       rows.length === 100 ? rows.at(-1)?.id : undefined,
   });
+  const rows = sorting.sort(q.data?.pages.flat() ?? [], (row, column) =>
+    column === "scope"
+      ? row.brand_id === null ? "Global" : "Brand"
+      : row[column],
+  );
   return (
     <Section title="Suppressions">
       <p className="text-sm text-muted-foreground">
         Effective suppressions include brand and global entries. Removing an
-        entry does not reactivate bounced or complained subscribers.
+        entry does not reactivate bounced or complained subscribers. Sorting applies
+        to loaded rows.
       </p>
       <label htmlFor="suppression-scope" className="block text-sm space-y-2">
         Show
@@ -139,17 +148,17 @@ export function Suppressions({ brandId }: { brandId: number }) {
           <table className="w-full text-left text-sm">
             <thead>
               <tr>
-                <th className="p-3">Value</th>
-                <th>Kind</th>
-                <th>Scope</th>
-                <th>Reason</th>
+                <SortableTableHead label="Value" {...sorting.header("value")} />
+                <SortableTableHead label="Kind" {...sorting.header("kind")} />
+                <SortableTableHead label="Scope" {...sorting.header("scope")} />
+                <SortableTableHead label="Reason" {...sorting.header("reason")} />
                 <th>
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {q.data.pages.flat().map((s) => (
+              {rows.map((s) => (
                 <tr key={s.id} className="border-t">
                   <td className="p-3">
                     <span className="row-title">{s.value}</span>
@@ -168,7 +177,7 @@ export function Suppressions({ brandId }: { brandId: number }) {
                       <div className="flex items-center gap-1 pr-3">
                         <Button
                           size="icon"
-                          variant="ghost"
+                          variant="default"
                           aria-label={`Edit suppression for ${s.value}`}
                           title="Edit suppression"
                           disabled={a.busy}
@@ -178,8 +187,7 @@ export function Suppressions({ brandId }: { brandId: number }) {
                         </Button>
                         <Button
                           size="icon"
-                          variant="ghost"
-                          className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                          variant="destructive"
                           aria-label={`Remove suppression for ${s.value}`}
                           title="Remove suppression"
                           disabled={a.busy}

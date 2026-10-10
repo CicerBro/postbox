@@ -1,3 +1,5 @@
+import { SortableTableHead } from "../SortableTableHead";
+import { useTableSort } from "../../lib/use-table-sort";
 import { useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
@@ -12,6 +14,9 @@ type Job = {
   created_at: number;
 };
 export function Jobs() {
+  const sorting = useTableSort<
+    "id" | "queue" | "attempts" | "created_at" | "last_error"
+  >("id");
   const [queue, setQueue] = useState("");
   const q = useInfiniteQuery({
     queryKey: ["failed-jobs"],
@@ -22,12 +27,15 @@ export function Jobs() {
       rows.length === 100 ? rows.at(-1)?.id : undefined,
   });
   const rows = q.data?.pages.flat() ?? [];
-  const filtered = queue ? rows.filter((r) => r.queue === queue) : rows;
+  const filtered = sorting.sort(
+    queue ? rows.filter((r) => r.queue === queue) : rows,
+    (row, column) => row[column],
+  );
   return (
     <Section title="Failed jobs">
       <p className="text-sm text-muted-foreground">
         Global dead-letter jobs after retries are exhausted. Payloads and
-        webhook signing secrets are not displayed. Queue filtering applies to
+        webhook signing secrets are not displayed. Sorting and queue filtering apply to
         loaded rows.
       </p>
       <div className="toolbar">
@@ -67,11 +75,11 @@ export function Jobs() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr>
-                <th className="p-3">Job</th>
-                <th>Queue</th>
-                <th>Attempts</th>
-                <th>Created</th>
-                <th>Error</th>
+                <SortableTableHead label="Job" {...sorting.header("id")} />
+                <SortableTableHead label="Queue" {...sorting.header("queue")} />
+                <SortableTableHead label="Attempts" {...sorting.header("attempts")} />
+                <SortableTableHead label="Created" {...sorting.header("created_at")} />
+                <SortableTableHead label="Error" {...sorting.header("last_error")} />
               </tr>
             </thead>
             <tbody>

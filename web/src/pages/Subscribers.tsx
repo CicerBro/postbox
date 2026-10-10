@@ -1,3 +1,4 @@
+import { SortableTableHead } from "../components/SortableTableHead";
 import { SelectField } from "../components/ui/select";
 import { Checkbox } from "../components/ui/checkbox";
 import { useEffect, useState } from "react";
@@ -56,6 +57,33 @@ type Membership = {
 };
 type Activity = { id: number; kind: string; at: number; detail: string };
 const statuses = ["active", "bounced", "complained", "blocklisted"];
+
+function useTableSort<T>(rows: T[]) {
+  const [column, setColumn] = useState<keyof T | null>(null);
+  const [direction, setDirection] = useState<"asc" | "desc">("asc");
+  const sorted = column === null
+    ? rows
+    : [...rows].sort((a, b) => {
+        const av = a[column] ?? "";
+        const bv = b[column] ?? "";
+        const comparison = typeof av === "number" && typeof bv === "number"
+          ? av - bv
+          : String(av).localeCompare(String(bv), undefined, { numeric: true });
+        return direction === "asc" ? comparison : -comparison;
+      });
+  const head = (label: string, key: keyof T) => (
+    <SortableTableHead
+      label={label}
+      active={column === key}
+      direction={direction}
+      onSort={() => {
+        setDirection(column === key && direction === "asc" ? "desc" : "asc");
+        setColumn(key);
+      }}
+    />
+  );
+  return { sorted, head };
+}
 
 function SubscriberProfile({
   brandId,
@@ -644,6 +672,7 @@ function CustomFields({
   fields: CustomField[];
 }) {
   const [editing, setEditing] = useState<CustomField | null>(null);
+  const { sorted: sortedFields, head } = useTableSort(fields);
   const action = useSubscriberAction(brandId);
   const blank = {
     id: 0,
@@ -680,15 +709,15 @@ function CustomFields({
           <table className={tableClass}>
             <thead>
               <tr>
-                <th>Label</th>
-                <th>Key</th>
-                <th>Type</th>
-                <th>Filterable</th>
+                {head("Label", "label")}
+                {head("Key", "key")}
+                {head("Type", "type")}
+                {head("Filterable", "is_filterable")}
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {fields.map((f) => (
+              {sortedFields.map((f) => (
                 <tr key={f.id}>
                   <td>{f.label}</td>
                   <td>
@@ -700,7 +729,7 @@ function CustomFields({
                   <td>{f.is_filterable ? "Yes" : "No"}</td>
                   <td>
                     <Button
-                      variant="outline"
+                      variant="default"
                       size="sm"
                       onClick={() => {
                         action.reset();
@@ -1024,7 +1053,8 @@ function Lists({
   onCreatedRequest?: () => void;
 }) {
   const [listSearch, setListSearch] = useState("");
-  const visibleLists = lists.filter((list) =>
+  const { sorted: sortedLists, head } = useTableSort(lists);
+  const visibleLists = sortedLists.filter((list) =>
     list.name.toLowerCase().includes(listSearch.trim().toLowerCase()),
   );
   const [notifications, setNotifications] = useState<SubscriberList | null>(
@@ -1086,13 +1116,13 @@ function Lists({
           <table className={tableClass}>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Opt-in</th>
-                <th>Active</th>
-                <th>Subscribed</th>
-                <th>Unsubscribed</th>
-                <th>Bounced</th>
-                <th>Complained</th>
+                {head("Name", "name")}
+                {head("Opt-in", "opt_in")}
+                {head("Active", "active")}
+                {head("Subscribed", "subscribed")}
+                {head("Unsubscribed", "unsubscribed")}
+                {head("Bounced", "bounced")}
+                {head("Complained", "complained")}
                 <th>Actions</th>
               </tr>
             </thead>
@@ -1143,6 +1173,7 @@ function Lists({
                             List actions
                           </DropdownMenu.Label>
                           <DropdownMenu.Item
+                            className="text-amber-700 dark:text-amber-300"
                             onSelect={() => {
                               action.reset();
                               setEditing({ ...l });
@@ -1305,6 +1336,8 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
   const [createList, setCreateList] = useState(false);
   const [tab, setTab] = useState("subscribers");
   const [after, setAfter] = useState(0);
+  const [sort, setSort] = useState("id");
+  const [direction, setDirection] = useState<"asc" | "desc">("asc");
   const [history, setHistory] = useState<number[]>([]);
   const [q, setQ] = useState("");
   const [list, setList] = useState(0);
@@ -1342,6 +1375,8 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
     "/custom-fields",
   );
   const params = new URLSearchParams({ after: String(after), limit: "100" });
+  params.set("sort", sort);
+  params.set("direction", direction);
   if (q.trim()) params.set("q", q.trim());
   if (list) params.set("list_id", String(list));
   if (status) params.set("status", status);
@@ -1356,6 +1391,19 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
     setAfter(0);
     setHistory([]);
   };
+  const sortBy = (column: string) => {
+    setDirection(sort === column && direction === "asc" ? "desc" : "asc");
+    setSort(column);
+    resetPage();
+  };
+  const sortableHead = (label: string, column: string) => (
+    <SortableTableHead
+      label={label}
+      active={sort === column}
+      direction={direction}
+      onSort={() => sortBy(column)}
+    />
+  );
   return (
     <div className="space-y-6">
       <div className="page-header flex flex-wrap items-end justify-between gap-2">
@@ -1466,7 +1514,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                   onChange={(e) => setLookup(e.target.value)}
                 />
                 <Button
-                  variant="outline"
+                  variant="info"
                   disabled={!lookup.trim() || lookupBusy}
                   onClick={async () => {
                     setLookupBusy(true);
@@ -1484,12 +1532,17 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                     }
                   }}
                 >
-                  {lookupBusy ? "Finding…" : "Find email"}
+                  <Search size={15} />
+                  {lookupBusy ? "Searching…" : "Search"}
                 </Button>
               </div>
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger asChild>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="subscriber-view-options"
+                  >
                     <SlidersHorizontal size={15} />
                     View options
                   </Button>
@@ -1550,13 +1603,14 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className={tableClass}>
+                <table className={`${tableClass} whitespace-nowrap`}>
                   <thead>
                     <tr>
-                      <th>Subscriber</th>
-                      <th>Subscriber status</th>
-                      {showConsent && <th>Consent</th>}
-                      {showCreated && <th>Created</th>}
+                      {sortableHead("Subscriber", "name")}
+                      {sortableHead("Email", "email")}
+                      {sortableHead("Subscriber status", "status")}
+                      {showConsent && sortableHead("Consent", "gdpr_consent_at")}
+                      {showCreated && sortableHead("Created", "created_at")}
                     </tr>
                   </thead>
                   <tbody>
@@ -1590,13 +1644,19 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                             <span className="avatar" aria-hidden="true">
                               {subscriberInitials(s.name, s.email)}
                             </span>
-                            <div>
-                              <div className="row-title">
-                                {s.name || "Unnamed subscriber"}
-                              </div>
-                              <div className="row-subtitle">{s.email}</div>
-                            </div>
+                            <span
+                              className="row-title max-w-[20rem] truncate"
+                              title={s.name || "Unnamed subscriber"}
+                            >
+                              {s.name || "Unnamed subscriber"}
+                            </span>
                           </div>
+                        </td>
+                        <td
+                          className="max-w-[24rem] truncate text-muted-foreground"
+                          title={s.email}
+                        >
+                          {s.email}
                         </td>
                         <td>
                           <SubscriberStatusBadge status={s.status} />

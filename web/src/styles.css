@@ -174,18 +174,40 @@
     color: var(--on-primary);
     background: var(--primary);
   }
-  .button-outline {
-    border-color: var(--border);
-    background: var(--surface);
+  .button.button-outline {
+    border-color: color-mix(in srgb, var(--ink) 24%, var(--border));
+    background: var(--secondary);
     color: var(--ink);
   }
-  .button-ghost:hover,
-  .button-outline:hover {
-    background: var(--soft);
+  .button.subscriber-view-options {
+    background: var(--muted-background);
+    border-color: color-mix(in srgb, var(--ink) 24%, var(--border));
+    color: var(--ink);
   }
-  .button-destructive {
-    background: #b42330;
+  .button.subscriber-view-options:hover {
+    background: color-mix(in srgb, var(--ink) 8%, var(--muted-background));
+  }
+  .button.button-info {
+    border-color: #1d4ed8;
+    background: #1d4ed8;
     color: white;
+  }
+  .button.button-info:hover {
+    background: #1e40af;
+    border-color: #1e40af;
+  }
+  .button-ghost:hover,
+  .button.button-outline:hover {
+    background: color-mix(in srgb, var(--ink) 8%, var(--secondary));
+  }
+  .button.button-destructive {
+    background: #b42330;
+    border-color: #b42330;
+    color: white;
+  }
+  .button.button-destructive:hover {
+    background: #921b26;
+    border-color: #921b26;
   }
   .badge {
     display: inline-flex;
@@ -225,8 +247,9 @@
     right: 17px;
     top: 17px;
     color: var(--muted);
-    border: 0;
-    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--secondary);
     padding: 4px;
   }
   .eyebrow {
@@ -945,9 +968,9 @@
     place-items: center;
     width: 32px;
     height: 32px;
-    border: 0;
+    border: 1px solid var(--border);
     border-radius: 6px;
-    background: transparent;
+    background: var(--secondary);
     color: var(--muted);
   }
   .theme-option:hover,
@@ -991,7 +1014,8 @@
     box-shadow: 0 1px 2px #0000000d;
   }
   .button-ghost {
-    background: transparent;
+    background: var(--secondary);
+    border-color: color-mix(in srgb, var(--ink) 18%, var(--border));
     color: var(--ink);
     box-shadow: none;
   }
