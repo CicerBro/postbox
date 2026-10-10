@@ -275,7 +275,7 @@ func (a *API) sending(w http.ResponseWriter, r *http.Request) {
 	result(w, in, a.engine.SetEnabled(r.Context(), in.Enabled))
 }
 func (a *API) report(w http.ResponseWriter, r *http.Request) {
-	_, id, ok := a.campaignScope(w, r)
+	brand, id, ok := a.campaignScope(w, r)
 	if !ok {
 		return
 	}
@@ -351,7 +351,46 @@ func (a *API) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hourly, e := queryRows(r.Context(), a.db.Reader, "SELECT hour,opens,clicks,deliveries FROM engagement_hourly WHERE campaign_id=? ORDER BY hour", id)
-	result(w, map[string]any{"stats": stats, "links": links, "countries": countries, "hourly": hourly}, e)
+	if e != nil {
+		result(w, nil, e)
+		return
+	}
+	recent := map[string]any{}
+	for _, event := range campaignRecentEvents {
+		rows, err := queryRows(r.Context(), a.db.Reader, campaignRecentSQL(event.column), id, brand)
+		if err != nil {
+			result(w, nil, err)
+			return
+		}
+		recent[event.name] = rows
+	}
+	var firstSent, lastSent sql.NullInt64
+	var fromName, fromEmail string
+	var snapshotted bool
+	e = a.db.Reader.QueryRowContext(r.Context(), `SELECT
+		(SELECT sent_at FROM campaign_recipients WHERE campaign_id=c.id AND sent_at IS NOT NULL ORDER BY sent_at,subscriber_id LIMIT 1),
+		(SELECT sent_at FROM campaign_recipients WHERE campaign_id=c.id AND sent_at IS NOT NULL ORDER BY sent_at DESC,subscriber_id DESC LIMIT 1),
+		COALESCE(p.from_name,b.from_name),COALESCE(p.from_email,b.from_email),p.campaign_id IS NOT NULL
+		FROM campaigns c JOIN brands b ON b.id=c.brand_id LEFT JOIN campaign_preparations p ON p.campaign_id=c.id WHERE c.id=?`, id).Scan(&firstSent, &lastSent, &fromName, &fromEmail, &snapshotted)
+	if e != nil {
+		result(w, nil, e)
+		return
+	}
+	var firstAt, lastAt any
+	if firstSent.Valid {
+		firstAt = firstSent.Int64
+	}
+	if lastSent.Valid {
+		lastAt = lastSent.Int64
+	}
+	targets, e := queryRows(r.Context(), a.db.Reader, `SELECT t.target_type,t.target_id,t.mode,
+		CASE t.target_type WHEN 'list' THEN l.name ELSE s.name END AS name
+		FROM campaign_targets t
+		LEFT JOIN lists l ON t.target_type='list' AND l.id=t.target_id AND l.brand_id=?
+		LEFT JOIN segments s ON t.target_type='segment' AND s.id=t.target_id AND s.brand_id=?
+		WHERE t.campaign_id=? ORDER BY t.mode,t.target_type,t.target_id`, brand, brand, id)
+	result(w, map[string]any{"stats": stats, "links": links, "countries": countries, "hourly": hourly, "recent": recent, "targets": targets,
+		"delivery": map[string]any{"first_sent_at": firstAt, "last_sent_at": lastAt, "from_name": fromName, "from_email": fromEmail, "sender_snapshotted": snapshotted}}, e)
 }
 func (a *API) exportRecipients(w http.ResponseWriter, r *http.Request, id int64) {
 	w.Header().Set("Content-Type", "text/csv")
@@ -377,4 +416,21 @@ func (a *API) exportRecipients(w http.ResponseWriter, r *http.Request, id int64)
 		}
 	}
 	cw.Flush()
+}
+
+var campaignRecentEvents = []struct{ name, column string }{
+	{"opened", "first_opened_at"},
+	{"unsubscribed", "unsubscribed_at"},
+	{"bounced", "bounced_at"},
+	{"complained", "complained_at"},
+}
+
+// Columns are chosen only from campaignRecentEvents, never request input.
+// Recipient timestamps survive raw event retention and count each recipient once.
+func campaignRecentSQL(column string) string {
+	return `SELECT r.subscriber_id AS id,COALESCE(r.snapshot_email,s.email) AS email,
+		COALESCE(r.snapshot_name,s.name) AS name,r.` + column + ` AS at
+		FROM campaign_recipients r JOIN subscribers s ON s.id=r.subscriber_id
+		WHERE r.campaign_id=? AND s.brand_id=? AND r.` + column + ` IS NOT NULL
+		ORDER BY r.` + column + ` DESC,r.subscriber_id DESC LIMIT 10`
 }

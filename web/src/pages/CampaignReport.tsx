@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, download } from "../lib/api";
@@ -12,7 +12,11 @@ import {
 import {
   Download,
   Users,
-  Send,
+  Mail,
+  UserMinus,
+  ShieldAlert,
+  Monitor,
+  Smartphone,
   CheckCircle2,
   Eye,
   MousePointerClick,
@@ -49,7 +53,11 @@ type Report = {
   links: LinkStats[];
   countries: { country: string; opens: number; clicks: number }[];
   hourly: Hour[];
+  recent?: Record<"opened" | "unsubscribed" | "bounced" | "complained", RecentRecipient[]>;
+  delivery?: { first_sent_at: number | null; last_sent_at: number | null; from_name: string; from_email: string; sender_snapshotted: boolean };
+  targets?: { target_type: "list" | "segment"; target_id: number; mode: "include" | "exclude"; name: string | null }[];
 };
+type RecentRecipient = { id: number; email: string; name: string | null; at: number };
 type Recipient = {
   id: number;
   email: string;
@@ -71,7 +79,8 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     [history, setHistory] = useState<number[]>([]),
     [stream, setStream] = useState("Connecting live updates"),
     [exportError, setExportError] = useState<unknown>(null),
-    [exporting, setExporting] = useState(false);
+    [exporting, setExporting] = useState(false),
+    [previewWidth, setPreviewWidth] = useState<"desktop" | "mobile">("desktop");
   const valid = Number.isSafeInteger(id) && id > 0 && brandId > 0;
   const campaign = useQuery({
     queryKey: ["campaign", brandId, id],
@@ -85,6 +94,12 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     enabled: valid,
     refetchInterval: 15000,
   });
+  const preview = useQuery({
+    queryKey: ["campaign-preview", brandId, id],
+    queryFn: () => api<{ subject: string; html: string; text: string }>(`/campaigns/${id}/preview`, { brandId }),
+    enabled: valid && Boolean(campaign.data?.length),
+  });
+  const previewHTML = useMemo(() => inertPreview(preview.data?.html ?? ""), [preview.data?.html]);
   const recipients = useQuery({
     queryKey: ["campaign-recipients", brandId, id, status, after],
     queryFn: () =>
@@ -157,17 +172,29 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     ["complaints", "Complaints"],
     ["unsubscribes", "Unsubscribes"],
   ];
+  const sent = stats?.sent ?? 0;
+  const bounces = stats && stats.bounces_hard !== undefined && stats.bounces_soft !== undefined
+    ? stats.bounces_hard + stats.bounces_soft : undefined;
+  const highlights = [
+    { label: "Unique opens", count: stats?.opens_unique, denominator: sent, basis: "of sent", icon: Eye },
+    { label: "Unique clicks", count: stats?.clicks_unique, denominator: sent, basis: "of sent", icon: MousePointerClick },
+    { label: "Click-to-open rate", count: stats?.clicks_unique, denominator: stats?.opens_unique ?? 0, basis: "of unique opens", icon: Activity },
+    { label: "Unsubscribed", count: stats?.unsubscribes, denominator: sent, basis: "of sent", icon: UserMinus },
+    { label: "Bounced", count: bounces, denominator: sent, basis: "of sent", icon: CircleAlert },
+    { label: "Spam complaints", count: stats?.complaints, denominator: sent, basis: "of sent", icon: ShieldAlert },
+  ];
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
             className="inline-flex items-center gap-1 text-sm text-muted-foreground"
-            to={`/campaigns/${id}`}
+            to="/campaigns"
           >
-            <ArrowLeft size={14} /> Back to campaign
+            <ArrowLeft size={14} /> All campaigns
           </Link>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight">
+          <p className="mt-3 text-sm font-medium text-muted-foreground">Campaign report</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight">
             {campaign.data?.[0]?.subject ?? "Campaign report"}
           </h1>
           {campaign.data?.[0] && (
@@ -181,12 +208,25 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
             {stream}
           </p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        {campaign.data?.[0] && campaign.data[0].status !== "sent" && <Button variant="outline" asChild><Link to={`/campaigns/${id}`}>Manage campaign</Link></Button>}
         <Button variant="outline" disabled={exporting} onClick={exportCSV}>
           <Download size={16} />{" "}
           {exporting ? "Exporting…" : "Export recipients CSV"}
         </Button>
+        </div>
       </div>
       <ErrorMessage error={campaign.error ?? report.error ?? exportError} />
+      {report.data?.delivery && (
+        <Card><CardContent className="pt-5">
+          <dl className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            <div><dt className="row-subtitle">Sent</dt><dd className="mt-1 text-sm font-medium">{report.data.delivery.first_sent_at ? new Date(report.data.delivery.first_sent_at).toLocaleString() : "No send recorded"}</dd></div>
+            <div><dt className="row-subtitle">{report.data.delivery.sender_snapshotted ? "From" : "Current brand sender"}</dt><dd className="mt-1 break-words text-sm font-medium">{report.data.delivery.from_name}<span className="block text-muted-foreground">{report.data.delivery.from_email}</span></dd></div>
+            <div><dt className="row-subtitle">Audience</dt><dd className="mt-1 text-sm font-medium">{report.data.targets?.length ? report.data.targets.map(target => `${target.mode === "exclude" ? "Exclude: " : ""}${target.name ?? `${target.target_type} #${target.target_id}`}`).join(", ") : "No audience targets"}</dd></div>
+            <div><dt className="row-subtitle">Recipients</dt><dd className="mt-1 text-sm font-medium">{stats?.recipients === undefined ? "Unavailable" : number(stats.recipients)}<span className="block text-muted-foreground">{number(sent)} sent · {number(stats?.delivered ?? 0)} delivered</span></dd></div>
+          </dl>
+        </CardContent></Card>
+      )}
       {report.isPending ? (
         <p role="status">Loading report…</p>
       ) : !stats ? (
@@ -195,65 +235,49 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           prepared.
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
-          {metrics
-            .filter(([key]) =>
-              [
-                "recipients",
-                "sent",
-                "delivered",
-                "opens_human_unique",
-                "clicks_human_unique",
-                "failed",
-              ].includes(key),
-            )
-            .map(([key, label]) => (
-              <Card key={key} className="metric-card">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      {label}
-                    </p>
-                    <span className="metric-icon">
-                      {key === "recipients" ? (
-                        <Users size={16} />
-                      ) : key === "sent" ? (
-                        <Send size={16} />
-                      ) : key === "delivered" ? (
-                        <CheckCircle2 size={16} />
-                      ) : key === "opens_human_unique" ? (
-                        <Eye size={16} />
-                      ) : key === "clicks_human_unique" ? (
-                        <MousePointerClick size={16} />
-                      ) : (
-                        <CircleAlert size={16} />
-                      )}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xl font-semibold">
-                    {stats[key] === undefined
-                      ? "Unavailable"
-                      : number(stats[key])}
-                  </p>
-                  {[
-                    "delivered",
-                    "opens_human_unique",
-                    "clicks_human_unique",
-                    "complaints",
-                    "unsubscribes",
-                  ].includes(key) &&
-                    stats[key] !== undefined && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {stats.sent > 0
-                          ? `${((stats[key] / stats.sent) * 100).toFixed(2)}% of sent`
-                          : "No sent denominator"}
-                      </p>
-                    )}
-                </CardContent>
-              </Card>
-            ))}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {highlights.map(({ label, count, denominator, basis, icon: Icon }) => (
+            <Card key={label} className="metric-card">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-medium text-muted-foreground">{label}</p>
+                  <span className="metric-icon"><Icon size={16} /></span>
+                </div>
+                <p className="mt-3 text-2xl font-semibold tracking-tight">{count === undefined ? "Unavailable" : denominator > 0 ? `${((count / denominator) * 100).toFixed(2)}%` : "Unavailable"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{count === undefined ? "No counter recorded" : `${number(count)} recorded`}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{denominator > 0 ? basis : "No denominator available"}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
+      <p className="text-xs text-muted-foreground">Open and click rates include all recorded activity. Human engagement counters are available below.</p>
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <Card className="min-w-0">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2"><Mail size={18} /> Newsletter preview</CardTitle>
+            <div className="flex gap-1" role="group" aria-label="Preview width">
+              <Button size="sm" variant={previewWidth === "desktop" ? "outline" : "ghost"} aria-pressed={previewWidth === "desktop"} onClick={() => setPreviewWidth("desktop")}><Monitor size={15} /> Desktop</Button>
+              <Button size="sm" variant={previewWidth === "mobile" ? "outline" : "ghost"} aria-pressed={previewWidth === "mobile"} onClick={() => setPreviewWidth("mobile")}><Smartphone size={15} /> Mobile</Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ErrorMessage error={preview.error} />
+            {preview.isPending ? <p role="status">Loading newsletter preview…</p> : preview.data && <div className="overflow-hidden rounded-md border bg-muted p-2"><iframe title="Sent newsletter preview" sandbox="" referrerPolicy="no-referrer" srcDoc={previewHTML} className={`mx-auto block h-[460px] w-full rounded bg-white ${previewWidth === "mobile" ? "max-w-[375px]" : ""}`} /></div>}
+            <p className="mt-3 text-xs text-muted-foreground">Saved newsletter with sample personalization. Scripts and navigation are disabled in the preview.</p>
+          </CardContent>
+        </Card>
+        <Card className="min-w-0">
+          <CardHeader><CardTitle>Activity over time</CardTitle><p className="row-subtitle">Deliveries, opens, and clicks across the campaign timeline.</p></CardHeader>
+          <CardContent><ActivityChart rows={report.data?.hourly ?? []} /></CardContent>
+        </Card>
+      </div>
+      <div className="grid items-start gap-6 md:grid-cols-2">
+        <RecentActivity title="Recently opened" description="Last 10 recipients by their first recorded open, including automated activity." rows={report.data?.recent?.opened ?? []} loading={report.isPending} />
+        <RecentActivity title="Recent unsubscribes" description="Last 10 recipients who unsubscribed from this campaign." rows={report.data?.recent?.unsubscribed ?? []} loading={report.isPending} />
+        <RecentActivity title="Recent bounces" description="Last 10 recipients with a recorded bounce." rows={report.data?.recent?.bounced ?? []} loading={report.isPending} />
+        <RecentActivity title="Recent spam complaints" description="Last 10 recipients who reported this campaign as spam." rows={report.data?.recent?.complained ?? []} loading={report.isPending} />
+      </div>
       {stats && (
         <Card>
           <CardContent className="pt-5">
@@ -291,17 +315,6 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           </CardContent>
         </Card>
       )}
-      <Card>
-        <CardHeader>
-          <CardTitle>Activity over time</CardTitle>
-          <p className="row-subtitle">
-            Deliveries, opens, and clicks across the campaign timeline.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <ActivityChart rows={report.data?.hourly ?? []} />
-        </CardContent>
-      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Link clicks</CardTitle>
@@ -472,6 +485,25 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
       </Card>
     </div>
   );
+}
+function inertPreview(html: string) {
+  const document = new DOMParser().parseFromString(html, "text/html");
+  document.querySelectorAll("a, area").forEach(element => {
+    element.removeAttribute("href");
+    element.removeAttribute("target");
+    element.removeAttribute("ping");
+  });
+  document.querySelectorAll("script, iframe, object, embed, base, meta[http-equiv]").forEach(element => element.remove());
+  const policy = document.createElement("meta");
+  policy.httpEquiv = "Content-Security-Policy";
+  policy.content = "default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; font-src https: data:; form-action 'none'";
+  document.head.prepend(policy);
+  return `<!doctype html>${document.documentElement.outerHTML}`;
+}
+function RecentActivity({ title, description, rows, loading }: { title: string; description: string; rows: RecentRecipient[]; loading: boolean }) {
+  return <Card className="min-w-0"><CardHeader><CardTitle>{title}</CardTitle><p className="row-subtitle">{description}</p></CardHeader><CardContent>
+    {loading ? <p role="status" className="text-sm text-muted-foreground">Loading activity…</p> : rows.length ? <div className="overflow-auto"><table className={tableClass}><thead><tr><th>Recipient</th><th>When</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td className="break-all"><span className="row-title">{row.email || "Email unavailable"}</span>{row.name && <span className="row-subtitle block">{row.name}</span>}</td><td className="whitespace-nowrap text-muted-foreground">{new Date(row.at).toLocaleString()}</td></tr>)}</tbody></table></div> : <p className="py-4 text-sm text-muted-foreground">No activity recorded yet.</p>}
+  </CardContent></Card>;
 }
 function ActivityChart({ rows }: { rows: Hour[] }) {
   const interaction = useChartInteraction(rows.length, 50, 750);

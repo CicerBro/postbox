@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useApp } from "../lib/app-context";
@@ -163,7 +163,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                   .map((c) => (
                     <tr key={c.id}>
                       <td>
-                        <Link className="row-title" to={`/campaigns/${c.id}`}>
+                        <Link className="row-title" to={`/campaigns/${c.id}${c.status === "sent" ? "/report" : ""}`}>
                           {c.subject}
                         </Link>
                         <p className="row-subtitle max-w-sm truncate">
@@ -456,6 +456,8 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
   }
   if (routeID && (!Number.isSafeInteger(routeID) || routeID < 1))
     return <ErrorMessage error={new Error("Invalid campaign ID")} />;
+  if (routeID && campaign.data?.[0]?.status === "sent")
+    return <Navigate to={`/campaigns/${routeID}/report`} replace />;
   if (routeID && (campaign.isPending || targetQuery.isPending))
     return <p role="status">Loading campaign…</p>;
   if (routeID && (campaign.error || targetQuery.error))

@@ -26,6 +26,7 @@ import {
   DialogFooter,
 } from "./ui/dialog";
 import { allRows, ErrorMessage } from "../pages/campaign-shared";
+import { emailEditorTheme } from "./email-editor-theme";
 
 type Props = {
   value: string;
@@ -52,6 +53,7 @@ function HtmlChangeReview({
     const extensions = (label: string) => [
       lineNumbers(),
       html(),
+      emailEditorTheme,
       EditorView.contentAttributes.of({ "aria-label": label }),
       EditorState.readOnly.of(true),
       EditorView.editable.of(false),
@@ -166,6 +168,7 @@ export function EmailEditor({
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
           html(),
+          emailEditorTheme,
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({ "aria-label": "Full HTML source" }),
           EditorState.readOnly.of(readOnly),
