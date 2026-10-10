@@ -24,6 +24,24 @@ type Job struct {
 	LockedUntil int64
 }
 type Handler func(context.Context, Job) error
+
+type retrySafeError struct{ error }
+
+// RetrySafe marks a failure known to precede delivery or to be a definitive rejection.
+// Email handlers must never mark uncertain transport errors or partial deliveries safe.
+func RetrySafe(err error) error {
+	if err == nil {
+		return nil
+	}
+	return retrySafeError{err}
+}
+
+func (e retrySafeError) Unwrap() error { return e.error }
+
+func emailQueue(queue string) bool {
+	return queue == "transactional_email" || queue == "email_notification"
+}
+
 type Config struct {
 	Workers, MaxAttempts                     int
 	PollInterval, Lease, RetryBase, RetryMax time.Duration
@@ -107,7 +125,9 @@ func (r *Runner) Metrics() Metrics {
 }
 func (r *Runner) Recover(ctx context.Context) error {
 	return r.db.Immediate(ctx, func(c *sql.Conn) error {
-		res, err := c.ExecContext(ctx, "UPDATE jobs SET status='pending',locked_until=NULL WHERE status='running' AND (locked_until IS NULL OR locked_until<=?)", time.Now().UnixMilli())
+		// An expired mail lease may already have been accepted by SES. Recovery
+		// must not dispatch it again, even when the process lost its completion write.
+		res, err := c.ExecContext(ctx, `UPDATE jobs SET status=CASE WHEN queue IN ('transactional_email','email_notification') THEN 'failed' ELSE 'pending' END,locked_until=NULL,last_error=CASE WHEN queue IN ('transactional_email','email_notification') THEN 'delivery outcome unknown after worker interruption; automatic resend prohibited' ELSE last_error END WHERE status='running' AND (locked_until IS NULL OR locked_until<=?)`, time.Now().UnixMilli())
 		if err == nil {
 			n, _ := res.RowsAffected()
 			r.recovered.Add(n)
@@ -244,6 +264,10 @@ func (r *Runner) execute(parent context.Context, j Job, h Handler) {
 		if j.Attempts >= r.cfg.MaxAttempts {
 			status = "failed"
 		}
+		var safe retrySafeError
+		if emailQueue(j.Queue) && !errors.As(err, &safe) {
+			status = "failed"
+		}
 		runAt = time.Now().Add(r.backoff(j.Attempts)).UnixMilli()
 	}
 	finishErr := r.db.Immediate(finishCtx, func(c *sql.Conn) error {
@@ -301,7 +325,7 @@ func (r *Runner) backoff(attempt int) time.Duration {
 }
 
 // RegisterNotifications installs delivery of campaign start/finish email notifications.
-// The callback owns recipient configuration and mail delivery; retries are durable.
+// The callback owns recipient configuration and mail delivery; only RetrySafe failures retry.
 func (r *Runner) RegisterNotifications(h Handler) error { return r.Register("email_notification", h) }
 
 type Failure struct {

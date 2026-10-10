@@ -45,6 +45,19 @@ func (e *Engine) TestCampaign(ctx context.Context, id int64, addresses []string,
 	if len(addresses) == 0 || len(addresses) > 20 {
 		return fmt.Errorf("test sends require 1 to 20 addresses")
 	}
+	normalized := make([]string, 0, len(addresses))
+	seen := make(map[string]bool, len(addresses))
+	for _, address := range addresses {
+		email, err := render.NormalizeEmail(address)
+		if err != nil {
+			return err
+		}
+		if !seen[email] {
+			seen[email] = true
+			normalized = append(normalized, email)
+		}
+	}
+	addresses = normalized
 	c, err := e.prepare(ctx, id, false)
 	if err != nil {
 		return err
@@ -67,11 +80,8 @@ func (e *Engine) TestCampaign(ctx context.Context, id int64, addresses []string,
 		return err
 	}
 	for _, address := range addresses {
-		r.Email, err = render.NormalizeEmail(address)
-		if err != nil {
-			return err
-		}
-		raw, err := e.render(c, r)
+		r.Email = address
+		raw, err := e.renderWithSubjectPrefix(c, r, "[Test] ")
 		if err != nil {
 			return err
 		}
@@ -98,27 +108,33 @@ func (e *Engine) SendNotification(ctx context.Context, r Request) (string, error
 	return e.SendNotificationChecked(ctx, r, nil)
 }
 
+// NotificationNotSentError confirms that the notification never reached Sender.Send.
+type NotificationNotSentError struct{ Err error }
+
+func (e *NotificationNotSentError) Error() string { return e.Err.Error() }
+func (e *NotificationNotSentError) Unwrap() error { return e.Err }
+
 // SendNotificationChecked rechecks notification consent immediately after rate limiting.
 func (e *Engine) SendNotificationChecked(ctx context.Context, r Request, check func(context.Context) error) (string, error) {
 	if !e.enabled.Load() {
-		return "", fmt.Errorf("global sending is disabled")
+		return "", &NotificationNotSentError{fmt.Errorf("global sending is disabled")}
 	}
 	q, err := e.sender.GetAccount(ctx)
 	if err != nil {
-		return "", err
+		return "", &NotificationNotSentError{err}
 	}
 	if err = e.setQuota(q); err != nil {
-		return "", err
+		return "", &NotificationNotSentError{err}
 	}
 	if err = e.waitToken(ctx); err != nil {
-		return "", err
+		return "", &NotificationNotSentError{err}
 	}
 	if !e.enabled.Load() {
-		return "", fmt.Errorf("global sending is disabled")
+		return "", &NotificationNotSentError{fmt.Errorf("global sending is disabled")}
 	}
 	if check != nil {
 		if err = check(ctx); err != nil {
-			return "", err
+			return "", &NotificationNotSentError{err}
 		}
 	}
 	start := time.Now()

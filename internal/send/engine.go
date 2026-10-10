@@ -20,6 +20,7 @@ import (
 )
 
 type Config struct {
+	EventHook                           func(context.Context, *sql.Conn, int64, string, any) error
 	MaxWorkers, ClaimBatch, ResultBatch int
 	FlushInterval, QuotaRefresh         time.Duration
 	RecoveryPolicy, BaseURL             string
@@ -56,6 +57,7 @@ type Engine struct {
 	latencyBuckets, writerBuckets                                                 [30001]uint64
 	latencyCount, writerCount                                                     uint64
 	firstRequestAt, lastRequestAt                                                 atomic.Int64
+	metricsOrigin                                                                 time.Time
 	db                                                                            *store.DB
 	sender                                                                        Sender
 	cfg                                                                           Config
@@ -92,7 +94,7 @@ func New(db *store.DB, sender Sender, cfg Config) *Engine {
 	if cfg.RecoveryPolicy == "" {
 		cfg.RecoveryPolicy = "unknown"
 	}
-	e := &Engine{db: db, sender: sender, cfg: cfg, running: map[int64]context.CancelFunc{}, limiter: rate.NewLimiter(1, 1), errorCounts: map[string]int64{}}
+	e := &Engine{db: db, sender: sender, cfg: cfg, running: map[int64]context.CancelFunc{}, limiter: rate.NewLimiter(1, 1), errorCounts: map[string]int64{}, metricsOrigin: time.Now()}
 	e.enabled.Store(true)
 	return e
 }
@@ -171,7 +173,7 @@ func (e *Engine) setQuota(q Quota) error {
 	if e.effective == 0 || e.effective == oldConfigured || e.effective > q.MaxSendRate {
 		e.effective = q.MaxSendRate
 	}
-	e.limiter.SetBurst(min(5, max(1, int(math.Floor(e.effective)))))
+	e.limiter.SetBurst(quotaBurst(e.effective))
 	e.limiter.SetLimit(rate.Limit(e.effective))
 	e.updateTargetLocked()
 	return nil
@@ -184,7 +186,7 @@ func (e *Engine) adjust(throttle bool) {
 	} else {
 		e.effective = math.Min(e.configured, e.effective+math.Max(.1, e.configured*.01))
 	}
-	e.limiter.SetBurst(min(5, max(1, int(math.Floor(e.effective)))))
+	e.limiter.SetBurst(quotaBurst(e.effective))
 	e.limiter.SetLimit(rate.Limit(e.effective))
 	e.updateTargetLocked()
 }
@@ -195,6 +197,13 @@ func (e *Engine) workerTarget() int {
 	}
 	return n
 }
+
+// quotaBurst retains a small allowance for scheduler delays without changing the
+// account's token refill rate. A 20ms allowance retains the existing five-token
+// minimum and is capped at one second of quota.
+func quotaBurst(sendRate float64) int {
+	return min(max(1, int(math.Floor(sendRate))), max(5, int(math.Ceil(sendRate*.020))))
+}
 func (e *Engine) updateTargetLocked() {
 	p99 := percentile(e.latencies, .99) / 1000
 	if p99 < .15 {
@@ -204,15 +213,14 @@ func (e *Engine) updateTargetLocked() {
 }
 
 func (e *Engine) Recover(ctx context.Context) error {
-	if e.cfg.RecoveryPolicy != "unknown" && e.cfg.RecoveryPolicy != "retry" {
+	if err := e.ensureDispatchLedger(ctx); err != nil {
+		return err
+	}
+	if e.cfg.RecoveryPolicy != "unknown" {
 		return fmt.Errorf("invalid recovery policy %q", e.cfg.RecoveryPolicy)
 	}
 	return e.db.Immediate(ctx, func(c *sql.Conn) error {
-		state := "unknown"
-		if e.cfg.RecoveryPolicy == "retry" {
-			state = "pending"
-		}
-		if _, err := c.ExecContext(ctx, `UPDATE campaign_recipients SET status=?,error='process stopped with an uncertain outcome' WHERE status='claimed'`, state); err != nil {
+		if _, err := c.ExecContext(ctx, `UPDATE campaign_recipients SET status=?,error='process stopped with an uncertain outcome' WHERE status='claimed'`, "unknown"); err != nil {
 			return err
 		}
 		if _, err := c.ExecContext(ctx, `UPDATE send_attempts SET outcome='unknown',finished_at=?,error='process stopped with an uncertain outcome' WHERE outcome='started'`, time.Now().UnixMilli()); err != nil {
@@ -269,26 +277,13 @@ func (e *Engine) control(ctx context.Context, id int64, state string) error {
 }
 func (e *Engine) Pause(ctx context.Context, id int64) error { return e.control(ctx, id, "paused") }
 func (e *Engine) Cancel(ctx context.Context, id int64) error {
-	if err := e.control(ctx, id, "cancelled"); err != nil {
-		return err
-	}
-	return e.db.Immediate(ctx, func(c *sql.Conn) error {
-		if _, err := c.ExecContext(ctx, `UPDATE campaign_recipients SET status='skipped' WHERE campaign_id=? AND status='pending'`, id); err != nil {
-			return err
-		}
-		_, err := c.ExecContext(ctx, `UPDATE campaign_stats SET skipped=(SELECT count(*) FROM campaign_recipients WHERE campaign_id=? AND status='skipped') WHERE campaign_id=?`, id, id)
-		return err
-	})
+	return e.cancelCampaign(ctx, id)
 }
 func (e *Engine) Resume(ctx context.Context, id int64) error {
 	e.runMu.Lock()
 	defer e.runMu.Unlock()
 	if err := e.db.Immediate(ctx, func(conn *sql.Conn) error {
-		state := "unknown"
-		if e.cfg.RecoveryPolicy == "retry" {
-			state = "pending"
-		}
-		if _, err := conn.ExecContext(ctx, `UPDATE campaign_recipients SET status=?,error='writer interrupted with uncertain outcome' WHERE campaign_id=? AND status='claimed'`, state, id); err != nil {
+		if _, err := conn.ExecContext(ctx, `UPDATE campaign_recipients SET status=?,error='writer interrupted with uncertain outcome' WHERE campaign_id=? AND status='claimed'`, "unknown", id); err != nil {
 			return err
 		}
 		if _, err := conn.ExecContext(ctx, `UPDATE send_attempts SET outcome='unknown',finished_at=? WHERE campaign_id=? AND outcome='started'`, time.Now().UnixMilli(), id); err != nil {
@@ -528,6 +523,13 @@ func (e *Engine) snapshot(ctx context.Context, c campaign) error {
 	}
 	args = append([]any{c.id}, args...)
 	return e.db.Immediate(ctx, func(conn *sql.Conn) error {
+		// Another engine may have completed the immutable snapshot while we waited.
+		if err := conn.QueryRowContext(ctx, `SELECT recipients_snapshotted FROM campaign_preparations WHERE campaign_id=?`, c.id).Scan(&complete); err != nil {
+			return err
+		}
+		if complete != 0 {
+			return nil
+		}
 		if _, err := conn.ExecContext(ctx, `INSERT INTO campaign_recipients(campaign_id,subscriber_id,snapshot_email,snapshot_name,snapshot_fields) SELECT ?,s.id,s.email,s.name,s.fields `+q+` ON CONFLICT(campaign_id,subscriber_id) DO NOTHING`, args...); err != nil {
 			return err
 		}
@@ -574,7 +576,7 @@ func (e *Engine) waitToken(ctx context.Context) error {
 }
 
 func (e *Engine) markRequest() {
-	now := time.Now().UnixNano()
+	now := time.Since(e.metricsOrigin).Nanoseconds() + 1
 	e.firstRequestAt.CompareAndSwap(0, now)
 	for {
 		last := e.lastRequestAt.Load()

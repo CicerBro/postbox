@@ -18,6 +18,7 @@ import (
 )
 
 var errNotSending = errors.New("campaign is no longer sending")
+var errUnsafeAttempt = errors.New("recipient already has a potentially accepted attempt")
 
 type recipient struct {
 	ID                  int64
@@ -32,6 +33,10 @@ type result struct {
 }
 
 func (e *Engine) render(c campaign, r recipient) ([]byte, error) {
+	return e.renderWithSubjectPrefix(c, r, "")
+}
+
+func (e *Engine) renderWithSubjectPrefix(c campaign, r recipient, prefix string) ([]byte, error) {
 	var fields map[string]any
 	if err := json.Unmarshal([]byte(r.Fields), &fields); err != nil {
 		return nil, err
@@ -46,7 +51,7 @@ func (e *Engine) render(c campaign, r recipient) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return render.BuildMIME(render.Message{FromName: c.fromName, FromEmail: c.fromEmail, ReplyTo: c.replyTo, ToName: r.Name, ToEmail: r.Email, Subject: subject, HTML: html, Text: text, UnsubscribeURL: unsubscribe, Date: c.date})
+	return render.BuildMIME(render.Message{FromName: c.fromName, FromEmail: c.fromEmail, ReplyTo: c.replyTo, ToName: r.Name, ToEmail: r.Email, Subject: prefix + subject, HTML: html, Text: text, UnsubscribeURL: unsubscribe, Date: c.date})
 }
 func (e *Engine) claim(ctx context.Context, id, last int64) ([]recipient, error) {
 	var items []recipient
@@ -110,19 +115,44 @@ func (e *Engine) beginAttempt(ctx context.Context, c campaign, r recipient, atte
 		if valid == 0 {
 			return nil
 		}
-		if _, err = conn.ExecContext(ctx, `UPDATE campaign_recipients SET attempts=? WHERE campaign_id=? AND subscriber_id=?`, attempt, c.id, r.ID); err != nil {
+		res, err := conn.ExecContext(ctx, `UPDATE campaign_recipients SET attempts=? WHERE campaign_id=? AND subscriber_id=? AND status='claimed' AND attempts=? AND NOT EXISTS(SELECT 1 FROM send_attempts WHERE campaign_id=? AND subscriber_id=? AND outcome IN ('started','unknown','sent'))`, attempt, c.id, r.ID, attempt-1, c.id, r.ID)
+		if err != nil {
 			return err
 		}
-		_, err = conn.ExecContext(ctx, `INSERT INTO send_attempts(campaign_id,subscriber_id,attempt,started_at,outcome) VALUES(?,?,?,?,'started')`, c.id, r.ID, attempt, time.Now().UnixMilli())
-		started = err == nil
-		return err
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return errUnsafeAttempt
+		}
+		if _, err = conn.ExecContext(ctx, `INSERT INTO send_attempts(campaign_id,subscriber_id,attempt,started_at,outcome) VALUES(?,?,?,?,'started')`, c.id, r.ID, attempt, time.Now().UnixMilli()); err != nil {
+			return err
+		}
+		started, err = e.beginDispatchTx(ctx, conn, c.id, r.ID, attempt, r.Email)
+		if err != nil {
+			return err
+		}
+		if !started {
+			return errUnsafeAttempt
+		}
+		return nil
 	})
 	return started, err
 }
 func (e *Engine) finishAttempt(ctx context.Context, cid, sid int64, attempt int, outcome, messageID, detail string) error {
-	_, err := e.db.Writer.ExecContext(ctx, `UPDATE send_attempts SET finished_at=?,outcome=?,message_id=nullif(?,''),error=nullif(?,'') WHERE campaign_id=? AND subscriber_id=? AND attempt=?`, time.Now().UnixMilli(), outcome, messageID, detail, cid, sid, attempt)
-	return err
+	return e.db.Immediate(ctx, func(conn *sql.Conn) error {
+		if _, err := conn.ExecContext(ctx, `UPDATE send_attempts SET finished_at=?,outcome=?,message_id=nullif(?,''),error=nullif(?,'') WHERE campaign_id=? AND subscriber_id=? AND attempt=? AND outcome='started'`, time.Now().UnixMilli(), outcome, messageID, detail, cid, sid, attempt); err != nil {
+			return err
+		}
+		ledgerOutcome := outcome
+		if outcome == "retry" || outcome == "failed" {
+			ledgerOutcome = "rejected"
+		}
+		return e.finishDispatchTx(ctx, conn, cid, sid, attempt, ledgerOutcome)
+	})
 }
+
 func waitBackoff(ctx context.Context, attempt int) error {
 	base := time.Duration(1<<min(attempt, 6)) * 100 * time.Millisecond
 	d := base/2 + time.Duration(rand.Int64N(int64(base/2)+1))
@@ -135,8 +165,8 @@ func waitBackoff(ctx context.Context, attempt int) error {
 		return nil
 	}
 }
-func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) result {
-	out := result{id: r.ID, at: time.Now().UnixMilli()}
+func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out result) {
+	out = result{id: r.ID, at: time.Now().UnixMilli()}
 	if claimCtx.Err() != nil || !e.enabled.Load() {
 		out.status = "pending"
 		return out
@@ -150,21 +180,6 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) resu
 	from := (&mail.Address{Name: c.fromName, Address: c.fromEmail}).String()
 	for try := 0; try < 6; try++ {
 		attempt := r.Attempts + try + 1
-		ok, err := e.beginAttempt(claimCtx, c, r, attempt)
-		if err != nil {
-			if claimCtx.Err() != nil || errors.Is(err, errNotSending) {
-				out.status = "pending"
-			} else {
-				out.status = "unknown"
-				out.err = err.Error()
-			}
-			return out
-		}
-		if !ok {
-			out.status = "skipped"
-			return out
-		}
-		out.attempt = attempt
 		if err = e.waitToken(claimCtx); err != nil || claimCtx.Err() != nil || !e.enabled.Load() {
 			out.status = "pending"
 			return out
@@ -185,6 +200,21 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) resu
 			out.status = "skipped"
 			return out
 		}
+		ok, err := e.beginAttempt(claimCtx, c, r, attempt)
+		if err != nil {
+			if claimCtx.Err() != nil || errors.Is(err, errNotSending) {
+				out.status = "pending"
+			} else {
+				out.status = "unknown"
+				out.err = err.Error()
+			}
+			return out
+		}
+		if !ok {
+			out.status = "skipped"
+			return out
+		}
+		out.attempt = attempt
 		e.inflight.Add(1)
 		start := time.Now()
 		requestCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -208,9 +238,17 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) resu
 		switch class {
 		case Permanent:
 			out.status = "failed"
+			if err = e.finishAttempt(context.Background(), c.id, r.ID, attempt, "failed", "", out.err); err != nil {
+				out.status = "unknown"
+				out.err = err.Error()
+			}
 			return out
 		case Ambiguous:
+			// SES may have accepted the request. Never dispatch this recipient again.
 			out.status = "unknown"
+			if err = e.finishAttempt(context.Background(), c.id, r.ID, attempt, "unknown", "", out.err); err != nil {
+				out.err = err.Error()
+			}
 			return out
 		case PauseAccount:
 			out.status = "pending"
@@ -288,6 +326,11 @@ func (e *Engine) writeResults(ctx context.Context, id int64, batch []result) err
 				if _, err = c.ExecContext(ctx, `UPDATE send_attempts SET outcome=?,finished_at=?,message_id=nullif(?,''),error=nullif(?,'') WHERE campaign_id=? AND subscriber_id=? AND attempt=? AND outcome='started'`, outcome, r.at, r.messageID, r.err, id, r.id, r.attempt); err != nil {
 					return err
 				}
+				if state == "sent" || state == "unknown" {
+					if err = e.finishDispatchTx(ctx, c, id, r.id, r.attempt, state); err != nil {
+						return err
+					}
+				}
 			}
 		}
 		if _, err = c.ExecContext(ctx, `UPDATE campaign_stats SET sent=sent+?,failed=failed+?,unknown=unknown+?,skipped=skipped+? WHERE campaign_id=?`, sent, failed, unknown, skipped, id); err != nil {
@@ -311,8 +354,14 @@ func (e *Engine) writeResults(ctx context.Context, id int64, batch []result) err
 	return err
 }
 func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
+	if err := e.ensureDispatchLedger(ctx); err != nil {
+		return err
+	}
 	e.runMu.Lock()
 	defer e.runMu.Unlock()
+	if e.cfg.RecoveryPolicy != "unknown" {
+		return errors.New("recovery retry is prohibited")
+	}
 	if !e.enabled.Load() {
 		return errors.New("global sending is disabled")
 	}
@@ -379,7 +428,7 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 		if n == 0 {
 			return errNotSending
 		}
-		return nil
+		return e.emitLifecycleTx(claimCtx, conn, id, "campaign_started")
 	})
 	if err != nil {
 		return err
@@ -541,6 +590,5 @@ claimLoop:
 	if ctx.Err() != nil {
 		return nil
 	}
-	_, err = e.db.Writer.ExecContext(context.Background(), `UPDATE campaigns SET status='sent',finished_at=?,updated_at=? WHERE id=? AND status='sending' AND NOT EXISTS(SELECT 1 FROM campaign_recipients WHERE campaign_id=? AND status IN ('pending','claimed'))`, time.Now().UnixMilli(), time.Now().UnixMilli(), id, id)
-	return err
+	return e.finishCampaign(context.Background(), id)
 }

@@ -76,7 +76,14 @@ func (s *AWS) Send(ctx context.Context, r Request) (string, error) {
 	if r.ConfigurationSet != "" {
 		in.ConfigurationSetName = aws.String(r.ConfigurationSet)
 	}
-	out, e := s.Client.SendEmail(ctx, in)
+	out, e := s.Client.SendEmail(ctx, in, func(o *sesv2.Options) {
+		// Every dispatch must have its own durable journal entry, even when a
+		// caller supplies an SES client configured with the SDK's default retries.
+		o.Retryer = retry.NewStandard(func(r *retry.StandardOptions) {
+			r.MaxAttempts = 1
+			r.RateLimiter = ratelimit.None
+		})
+	})
 	if e != nil {
 		return "", e
 	}
@@ -108,7 +115,7 @@ func Classify(err error) ErrorClass {
 			return PauseAccount
 		}
 		if a.ErrorFault() == smithy.FaultServer {
-			return Retryable
+			return Ambiguous
 		}
 		return Permanent
 	}

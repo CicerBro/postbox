@@ -20,6 +20,7 @@ import (
 	"postbox/internal/send"
 	"postbox/internal/store"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -101,6 +102,8 @@ func main() {
 	path := flag.String("db", "", "SQLite path, new temporary file by default")
 	output := flag.String("output", "", "optional JSON report path")
 	maxWorkers := flag.Int("workers", 1024, "concurrency cap")
+	cpuProfile := flag.String("cpu-profile", "", "optional send-phase CPU profile path")
+	heapProfile := flag.String("heap-profile", "", "optional completed live heap profile path")
 	flag.Parse()
 	if *n < 1 || *rate <= 0 {
 		log.Fatal("recipients and rate must be positive")
@@ -169,6 +172,16 @@ func main() {
 	}()
 
 	before, _ := cpuUsage()
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err = pprof.StartCPUProfile(f); err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+	}
 	start := time.Now()
 	if err = engine.RunCampaign(ctx, 1); err != nil {
 		log.Fatal(err)
@@ -176,6 +189,22 @@ func main() {
 	duration := time.Since(start).Seconds()
 	stopSample()
 	after, rss := cpuUsage()
+	if *cpuProfile != "" {
+		pprof.StopCPUProfile()
+	}
+	if *heapProfile != "" {
+		f, err := os.Create(*heapProfile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		runtime.GC()
+		if err = pprof.WriteHeapProfile(f); err != nil {
+			log.Fatal(err)
+		}
+		if err = f.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}
 	m := engine.Metrics()
 	duplicates := 0
 	for _, count := range fake.Recipients {
@@ -195,7 +224,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if ctx.Err() == nil && (!report.WithinTwoPercent || duplicates > 0 || report.Accepted != int64(*n)) {
+	if ctx.Err() != nil || !report.WithinTwoPercent || duplicates > 0 || report.Accepted != int64(*n) || report.Metrics.Sent != int64(*n) {
 		os.Exit(1)
 	}
 }
