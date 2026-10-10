@@ -335,29 +335,30 @@ export default function App() {
                 !sending.data
                   ? "Sending status unavailable"
                   : sending.data.enabled
-                    ? "Pause sending"
-                    : "Resume sending"
+                    ? "Sending live. Click to pause all sending"
+                    : "Sending paused. Click to resume all sending"
               }
               title={
                 !sending.data
                   ? "Sending status unavailable"
                   : sending.data.enabled
-                    ? "Pause sending"
-                    : "Resume sending"
+                    ? "Sending live. Click to pause all sending"
+                    : "Sending paused. Click to resume all sending"
               }
             >
-              {sending.data?.enabled ? (
-                <Pause size={16} aria-hidden="true" />
-              ) : (
-                <Play size={16} aria-hidden="true" />
-              )}
+              <span className={`sending-status-dot ${!sending.data ? "sending-status-unknown" : ""}`} aria-hidden="true" />
               <span className="sidebar-label">
                 {sending.data
                   ? sending.data.enabled
-                    ? "Pause sending"
-                    : "Resume sending"
+                    ? "Sending live"
+                    : "Sending paused"
                   : "Status unavailable"}
               </span>
+              {sending.data?.enabled ? (
+                <Pause className="sidebar-label sending-action-icon" size={14} aria-hidden="true" />
+              ) : (
+                <Play className="sidebar-label sending-action-icon" size={14} aria-hidden="true" />
+              )}
             </button>
             {(sending.error || changeSending.error) && (
               <p role="alert" className="error text-xs">

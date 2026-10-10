@@ -1,5 +1,5 @@
+import { useState } from "react";
 import {
-  CalendarDays,
   Send,
   CheckCheck,
   MailOpen,
@@ -19,13 +19,14 @@ import {
   CardContent,
 } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import { SelectField } from "../components/ui/select";
 import {
   ChartInstructions,
   ChartTooltip,
   useChartInteraction,
 } from "../components/chart-tooltip";
 interface Overview {
-  period: { end: number };
+  period: { days: number; end: number };
   current: Record<string, number | null>;
   change: Record<string, number | null>;
   growth: {
@@ -175,21 +176,58 @@ function Chart({
   );
 }
 export function OverviewPage({ brandId }: { brandId: number }) {
+  const [days, setDays] = useState("30");
   const query = useQuery({
-    queryKey: ["overview", brandId],
+    queryKey: ["overview", brandId, days],
     queryFn: ({ signal }) =>
-      api<Overview>("/overview?days=30", { brandId, signal }),
+      api<Overview>(`/overview?days=${days}`, { brandId, signal }),
     refetchInterval: 30000,
   });
-  if (query.isPending) return <p role="status">Loading overview…</p>;
-  if (query.isError)
-    return (
-      <div role="alert">
-        {query.error.message}{" "}
-        <Button variant="outline" onClick={() => query.refetch()}>
-          Retry
+  const heading = (
+    <div className="page-heading">
+      <div>
+        <h1>Overview</h1>
+        <p className="page-subtitle">
+          Monitor your audience and campaign performance.
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <SelectField
+          aria-label="Campaign performance period"
+          value={days}
+          onValueChange={setDays}
+          className="w-auto"
+          options={[7, 30, 90, 365].map((period) => ({
+            value: String(period),
+            label: `Last ${period} days`,
+          }))}
+        />
+        <Button asChild>
+          <Link to="/campaigns/new">
+            <Send size={14} /> Create campaign
+          </Link>
         </Button>
       </div>
+    </div>
+  );
+  if (query.isPending)
+    return (
+      <>
+        {heading}
+        <p role="status">Loading overview…</p>
+      </>
+    );
+  if (query.isError)
+    return (
+      <>
+        {heading}
+        <div role="alert">
+          {query.error.message}{" "}
+          <Button variant="outline" onClick={() => query.refetch()}>
+            Retry
+          </Button>
+        </div>
+      </>
     );
   const data = query.data;
   const kpis = [
@@ -210,25 +248,7 @@ export function OverviewPage({ brandId }: { brandId: number }) {
     `${utcDate(todayStart - (previous ? 86400000 : 0))}, ${String(hour).padStart(2, "0")}:00 UTC`;
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <h1>Overview</h1>
-          <p className="page-subtitle">
-            Monitor your audience and campaign performance.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="period-label">
-            <CalendarDays size={14} />
-            Last 30 days
-          </span>
-          <Button asChild>
-            <Link to="/campaigns/new">
-              <Send size={14} /> Create campaign
-            </Link>
-          </Button>
-        </div>
-      </div>
+      {heading}
       <div className="kpi-strip">
         {kpis.map(([label, key, delta, Icon]) => (
           <div className="kpi" key={key}>
@@ -255,7 +275,7 @@ export function OverviewPage({ brandId }: { brandId: number }) {
                     {data.change[delta]!.toFixed(1)}
                     {key === "sent" ? "%" : " pp"}
                   </span>{" "}
-                  vs previous 30 days
+                  vs previous {data.period.days} days
                 </>
               )}
             </small>
@@ -263,8 +283,8 @@ export function OverviewPage({ brandId }: { brandId: number }) {
         ))}
       </div>
       <p className="muted text-sm mb-8">
-        Campaigns starting in the period. Engagement is attributed to those
-        campaigns. Rates use sent emails as denominator.
+        Campaigns starting in the last {data.period.days} days. Engagement is
+        attributed to those campaigns. Rates use sent emails as denominator.
       </p>
       <div className="chart-panels">
         <Card>

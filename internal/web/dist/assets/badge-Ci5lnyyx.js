@@ -1,0 +1,1 @@
+import{j as e,a2 as u}from"./index-DcKCfY2T.js";function c({className:t,variant:s,...a}){const n={success:"status-success",warning:"status-warning",destructive:"status-danger",secondary:"status-neutral",info:"status-info"};return e.jsx("span",{className:u("badge",s&&n[s],t),...a})}export{c as B};
