@@ -59,7 +59,7 @@ export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
         <span className="brand-mark">
           <Mail size={21} />
         </span>
-        <span>postbox</span>
+        <span>Postbox</span>
       </div>
       <div className="login-card">
         <p className="eyebrow">Your newsletter workspace</p>

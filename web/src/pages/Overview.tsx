@@ -19,7 +19,13 @@ import {
   CardContent,
 } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import {
+  ChartInstructions,
+  ChartTooltip,
+  useChartInteraction,
+} from "../components/chart-tooltip";
 interface Overview {
+  period: { end: number };
   current: Record<string, number | null>;
   change: Record<string, number | null>;
   growth: {
@@ -35,74 +41,130 @@ function Chart({
   b,
   labels,
   name,
+  bucketLabels,
+  comparisonLabels,
+  seriesNames,
 }: {
   a: number[];
   b: number[];
   labels: string[];
   name: string;
+  bucketLabels: string[];
+  comparisonLabels: string[];
+  seriesNames: [string, string];
 }) {
+  const interaction = useChartInteraction(a.length, 30, 690);
+  const selected = interaction.index;
   const max = Math.max(...a, ...b, 1);
   const points = (values: number[]) =>
     values
       .map(
         (v, i) =>
-          `${30 + (i * 690) / Math.max(values.length - 1, 1)},${185 - (v / max) * 155}`,
+          `${30 + (values.length === 1 ? 345 : (i * 690) / Math.max(values.length - 1, 1))},${185 - (v / max) * 155}`,
       )
       .join(" ");
   return (
     <div>
-      <svg role="img" aria-label={name} viewBox="0 0 740 220" className="chart">
-        <title>{name}</title>
-        {[0, 1, 2, 3].map((i) => (
-          <g key={i}>
-            <line
-              x1="30"
-              x2="720"
-              y1={185 - (i * 155) / 3}
-              y2={185 - (i * 155) / 3}
-              className="chart-grid"
+      <div className="relative">
+        <ChartInstructions id={interaction.id} />
+        <svg
+          {...interaction.svgProps}
+          role="group"
+          aria-label={name}
+          viewBox="0 0 740 220"
+          className="chart cursor-crosshair rounded focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
+        >
+          <title>{name}</title>
+          {[0, 1, 2, 3].map((i) => (
+            <g key={i}>
+              <line
+                x1="30"
+                x2="720"
+                y1={185 - (i * 155) / 3}
+                y2={185 - (i * 155) / 3}
+                className="chart-grid"
+              />
+              <text x="0" y={189 - (i * 155) / 3}>
+                {Math.round((max * i) / 3).toLocaleString()}
+              </text>
+            </g>
+          ))}
+          {a.length > 1 && (
+            <polygon
+              points={`30,185 ${points(a)} 720,185`}
+              className="chart-fill"
             />
-            <text x="0" y={189 - (i * 155) / 3}>
-              {Math.round((max * i) / 3).toLocaleString()}
+          )}
+          <polyline fill="none" points={points(b)} className="chart-previous" />
+          <polyline fill="none" points={points(a)} className="chart-current" />
+          {(selected !== null || a.length === 1) && (
+            <g pointerEvents="none">
+              {selected !== null && (
+                <line
+                  x1={interaction.x} x2={interaction.x} y1="30" y2="185"
+                  stroke="var(--muted-foreground)" strokeDasharray="3 4" opacity=".5"
+                />
+              )}
+              {[a, b].map((values, i) => (
+                <circle
+                  key={i}
+                  cx={selected === null ? 375 : interaction.x}
+                  cy={185 - ((values[selected ?? 0] ?? 0) / max) * 155}
+                  r="4"
+                  fill={`var(--chart-${i + 1})`}
+                  stroke="var(--background)"
+                  strokeWidth="2"
+                />
+              ))}
+            </g>
+          )}
+          {labels.map((l, i) => (
+            <text
+              key={i}
+              x={30 + (i * 690) / Math.max(labels.length - 1, 1)}
+              y="212"
+              textAnchor={
+                i === 0 ? "start" : i === labels.length - 1 ? "end" : "middle"
+              }
+            >
+              {l}
             </text>
-          </g>
-        ))}
-        {a.length > 1 && (
-          <polygon
-            points={`30,185 ${points(a)} 720,185`}
-            className="chart-fill"
+          ))}
+        </svg>
+        {selected !== null && (
+          <ChartTooltip
+          id={interaction.id}
+          position={interaction.x / 740 * 100}
+          title={bucketLabels[selected] ?? `Bucket ${selected + 1}`}
+          rows={[
+            { label: seriesNames[0], value: a[selected], color: "var(--chart-1)" },
+            {
+              label: seriesNames[1],
+              value: b[selected] ?? 0,
+              color: "var(--chart-2)",
+              detail: comparisonLabels[selected],
+            },
+          ]}
           />
         )}
-        <polyline fill="none" points={points(b)} className="chart-previous" />
-        <polyline fill="none" points={points(a)} className="chart-current" />
-        {labels.map((l, i) => (
-          <text
-            key={i}
-            x={30 + (i * 690) / Math.max(labels.length - 1, 1)}
-            y="212"
-            textAnchor={
-              i === 0 ? "start" : i === labels.length - 1 ? "end" : "middle"
-            }
-          >
-            {l}
-          </text>
-        ))}
-      </svg>
+      </div>
       <details className="chart-data">
         <summary>View chart data</summary>
         <table>
           <thead>
             <tr>
               <th>Bucket</th>
-              <th>Current</th>
-              <th>Previous</th>
+              <th>{seriesNames[0]}</th>
+              <th>Comparison bucket</th>
+              <th>{seriesNames[1]}</th>
             </tr>
           </thead>
           <tbody>
             {a.map((v, i) => (
               <tr key={i}>
-                <td>{i + 1}</td>
+                <td>{bucketLabels[i] ?? i + 1}</td>
                 <td>{v}</td>
+                <td>{comparisonLabels[i]}</td>
                 <td>{b[i] ?? 0}</td>
               </tr>
             ))}
@@ -139,6 +201,13 @@ export function OverviewPage({ brandId }: { brandId: number }) {
     ["Complaints", "complaints_percent", "complaints_points", ShieldAlert],
   ] as const;
   const growth = data.growth ?? [];
+  const utcDate = (timestamp: number) => new Date(timestamp).toLocaleDateString(
+    undefined, { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" },
+  );
+  const today = new Date(data.period.end);
+  const todayStart = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const hourLabel = (hour: number, previous = false) =>
+    `${utcDate(todayStart - (previous ? 86400000 : 0))}, ${String(hour).padStart(2, "0")}:00 UTC`;
   return (
     <>
       <div className="page-heading">
@@ -218,6 +287,9 @@ export function OverviewPage({ brandId }: { brandId: number }) {
               a={growth.slice(30).map((x) => x.active)}
               b={growth.slice(0, 30).map((x) => x.active)}
               labels={["Day 1", "Day 15", "Day 30"]}
+              bucketLabels={growth.slice(30).map((x) => `${utcDate(x.day)} UTC`)}
+              comparisonLabels={growth.slice(0, 30).map((x) => `${utcDate(x.day)} UTC`)}
+              seriesNames={["Last 30 days", "Previous 30 days"]}
             />
           </CardContent>
         </Card>
@@ -239,6 +311,9 @@ export function OverviewPage({ brandId }: { brandId: number }) {
               a={data.hourly_comparison.map((x) => x.today)}
               b={data.hourly_comparison.map((x) => x.yesterday)}
               labels={["00:00", "06:00", "12:00", "18:00", "23:00"]}
+              bucketLabels={data.hourly_comparison.map((x) => hourLabel(x.hour))}
+              comparisonLabels={data.hourly_comparison.map((x) => hourLabel(x.hour, true))}
+              seriesNames={["Today", "Yesterday"]}
             />
           </CardContent>
         </Card>

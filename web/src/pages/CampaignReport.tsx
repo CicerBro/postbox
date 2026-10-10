@@ -5,6 +5,11 @@ import { api, download } from "../lib/api";
 import { SelectField } from "../components/ui/select";
 import { Button } from "../components/ui/button";
 import {
+  ChartInstructions,
+  ChartTooltip,
+  useChartInteraction,
+} from "../components/chart-tooltip";
+import {
   Download,
   Users,
   Send,
@@ -469,6 +474,8 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
   );
 }
 function ActivityChart({ rows }: { rows: Hour[] }) {
+  const interaction = useChartInteraction(rows.length, 50, 750);
+  const selected = interaction.index;
   if (!rows.length)
     return (
       <p className="text-sm text-muted-foreground">No hourly engagement yet.</p>
@@ -487,74 +494,112 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto">
-        <svg
-          viewBox="0 0 850 280"
-          className="min-w-[500px] w-full text-foreground"
-          role="img"
-          aria-label="Hourly opens, clicks and deliveries. Full data is available below."
-        >
-          {[30, 80, 130, 180].map((y) => (
-            <line
-              key={y}
-              x1="50"
-              y1={y}
-              x2="800"
-              y2={y}
-              stroke="currentColor"
-              opacity=".06"
-            />
-          ))}
-          <line
-            x1="50"
-            y1="230"
-            x2="800"
-            y2="230"
-            stroke="currentColor"
-            opacity=".2"
-          />
-          <text x="0" y="35" fill="currentColor" fontSize="12">
-            {number(max)}
-          </text>
-          <text x="25" y="235" fill="currentColor" fontSize="12">
-            0
-          </text>
-          {(["deliveries", "opens", "clicks"] as const).map((key, i) => (
-            <g key={key}>
-              <polyline
-                points={points(key)}
-                fill="none"
-                stroke={
-                  ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)"][i]
-                }
-                strokeWidth="2.5"
-                strokeDasharray={i === 1 ? "6 3" : i === 2 ? "2 3" : undefined}
-                opacity="1"
+        <div className="relative min-w-[500px]">
+          <ChartInstructions id={interaction.id} />
+          <svg
+            {...interaction.svgProps}
+            viewBox="0 0 850 280"
+            className="w-full cursor-crosshair rounded text-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
+            role="group"
+            aria-label="Hourly opens, clicks and deliveries. Full data is available below."
+          >
+            {[30, 80, 130, 180].map((y) => (
+              <line
+                key={y}
+                x1="50"
+                y1={y}
+                x2="800"
+                y2={y}
+                stroke="currentColor"
+                opacity=".06"
               />
-              {rows.length === 1 && (
-                <circle
-                  cx="425"
-                  cy={230 - (rows[0][key] / max) * 200}
-                  r="3"
-                  fill={
+            ))}
+            <line
+              x1="50"
+              y1="230"
+              x2="800"
+              y2="230"
+              stroke="currentColor"
+              opacity=".2"
+            />
+            <text x="0" y="35" fill="currentColor" fontSize="12">
+              {number(max)}
+            </text>
+            <text x="25" y="235" fill="currentColor" fontSize="12">
+              0
+            </text>
+            {(["deliveries", "opens", "clicks"] as const).map((key, i) => (
+              <g key={key}>
+                <polyline
+                  points={points(key)}
+                  fill="none"
+                  stroke={
                     ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)"][i]
                   }
+                  strokeWidth="2.5"
+                  strokeDasharray={i === 1 ? "6 3" : i === 2 ? "2 3" : undefined}
+                  opacity="1"
                 />
-              )}
-            </g>
-          ))}
-          <text x="50" y="265" fill="currentColor" fontSize="12">
-            {new Date(rows[0].hour).toLocaleString()}
-          </text>
-          <text
-            x="800"
-            y="265"
-            textAnchor="end"
-            fill="currentColor"
-            fontSize="12"
-          >
-            {new Date(rows.at(-1)!.hour).toLocaleString()}
-          </text>
-        </svg>
+                {rows.length === 1 && (
+                  <circle
+                    cx="425"
+                    cy={230 - (rows[0][key] / max) * 200}
+                    r="3"
+                    fill={
+                      ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)"][i]
+                    }
+                  />
+                )}
+              </g>
+            ))}
+            {selected !== null && (
+              <g pointerEvents="none">
+                <line
+                  x1={interaction.x} x2={interaction.x} y1="30" y2="230"
+                  stroke="var(--muted-foreground)" strokeDasharray="3 4" opacity=".5"
+                />
+                {(["deliveries", "opens", "clicks"] as const).map((key, i) => (
+                  <circle
+                    key={key}
+                    cx={interaction.x}
+                    cy={230 - (rows[selected][key] / max) * 200}
+                    r="4"
+                    fill={`var(--chart-${i + 1})`}
+                    stroke="var(--background)"
+                    strokeWidth="2"
+                  />
+                ))}
+              </g>
+            )}
+            <text x="50" y="265" fill="currentColor" fontSize="12">
+              {new Date(rows[0].hour).toLocaleString()}
+            </text>
+            <text
+              x="800"
+              y="265"
+              textAnchor="end"
+              fill="currentColor"
+              fontSize="12"
+            >
+              {new Date(rows.at(-1)!.hour).toLocaleString()}
+            </text>
+          </svg>
+          {selected !== null && (
+            <ChartTooltip
+              id={interaction.id}
+              position={interaction.x / 850 * 100}
+              title={new Date(rows[selected].hour).toLocaleString(undefined, {
+                year: "numeric", month: "short", day: "numeric",
+                hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+              })}
+              rows={(["deliveries", "opens", "clicks"] as const).map((key, i) => ({
+                label: ["Deliveries", "Opens", "Clicks"][i],
+                value: rows[selected][key],
+                color: `var(--chart-${i + 1})`,
+              }))}
+            />
+          )}
+        </div>
       </div>
       <div className="activity-legend flex flex-wrap items-center gap-5 text-xs text-muted-foreground">
         {(["Deliveries", "Opens", "Clicks"] as const).map((label, i) => (
