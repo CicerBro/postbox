@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"postbox/internal/contacts"
+	"postbox/internal/subscribers"
 	"time"
 )
 
@@ -37,14 +37,14 @@ func (a *API) operations(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s := a.contacts()
+	s := a.subscriberService()
 	switch {
 	case has(r.URL.Path, "export"):
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=subscribers.csv")
 		_ = s.ExportCSV(r.Context(), w, brand, number(r.URL.Query().Get("list_id")))
 	case has(r.URL.Path, "import"), has(r.URL.Path, "preview"):
-		var opt contacts.ImportOptions
+		var opt subscribers.ImportOptions
 		raw := r.URL.Query().Get("options")
 		if raw != "" {
 			if e := json.Unmarshal([]byte(raw), &opt); e != nil {

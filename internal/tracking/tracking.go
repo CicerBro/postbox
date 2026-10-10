@@ -12,11 +12,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"postbox/internal/contacts"
 	"postbox/internal/events"
 	"postbox/internal/jobs"
 	"postbox/internal/render"
 	"postbox/internal/store"
+	"postbox/internal/subscribers"
 	"postbox/internal/tracking/token"
 	"strconv"
 	"strings"
@@ -430,7 +430,7 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	var brand int64
 	_ = s.db.Reader.QueryRowContext(r.Context(), "SELECT brand_id FROM subscribers WHERE id=?", u).Scan(&brand)
-	body, _ := contacts.NotificationSetting(r.Context(), s.db.Reader, brand, id, "goodbye_html")
+	body, _ := subscribers.NotificationSetting(r.Context(), s.db.Reader, brand, id, "goodbye_html")
 	if body == "" {
 		body = "You have been unsubscribed."
 	}
@@ -472,11 +472,11 @@ func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		if next == "unconfirmed" {
-			confirmation, err := contacts.CreateConfirmationTx(r.Context(), c, id, u)
+			confirmation, err := subscribers.CreateConfirmationTx(r.Context(), c, id, u)
 			if err != nil {
 				return err
 			}
-			return contacts.EnqueueConfirmationTx(r.Context(), c, brand, id, u, confirmation, s.cfg.BaseURL)
+			return subscribers.EnqueueConfirmationTx(r.Context(), c, brand, id, u, confirmation, s.cfg.BaseURL)
 		}
 		if _, err := c.ExecContext(r.Context(), `INSERT INTO list_counters(list_id,active,subscribed) VALUES(?,1,1) ON CONFLICT(list_id) DO UPDATE SET active=active+1,subscribed=subscribed+1`, id); err != nil {
 			return err
@@ -506,7 +506,7 @@ func stringFields(raw string) (map[string]string, error) {
 }
 
 func (s *Service) goodbyeEmail(ctx context.Context, c *sql.Conn, brand, subscriber, listID int64) error {
-	raw, e := contacts.NotificationSetting(ctx, c, brand, listID, "goodbye_email")
+	raw, e := subscribers.NotificationSetting(ctx, c, brand, listID, "goodbye_email")
 	if e == sql.ErrNoRows || raw == "" {
 		return nil
 	}

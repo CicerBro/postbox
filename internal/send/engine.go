@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
-	"postbox/internal/contacts"
 	"postbox/internal/render"
 	"postbox/internal/store"
+	"postbox/internal/subscribers"
 )
 
 type Config struct {
@@ -476,14 +476,14 @@ func (e *Engine) audienceSQL(ctx context.Context, c campaign) (string, []any, er
 			if err = e.db.Reader.QueryRowContext(ctx, `SELECT rules FROM segments WHERE id=? AND brand_id=?`, t.id, c.brand).Scan(&rules); err != nil {
 				return "", nil, err
 			}
-			var rule contacts.Rule
+			var rule subscribers.Rule
 			if err = json.Unmarshal([]byte(rules), &rule); err != nil {
 				return "", nil, err
 			}
-			if err = contacts.New(e.db).ValidateSegment(ctx, c.brand, rule); err != nil {
+			if err = subscribers.New(e.db).ValidateSegment(ctx, c.brand, rule); err != nil {
 				return "", nil, err
 			}
-			predicate, args, err = contacts.CompileSegment(rule)
+			predicate, args, err = subscribers.CompileSegment(rule)
 			if err != nil {
 				return "", nil, err
 			}

@@ -67,6 +67,12 @@ function Chart({
             </text>
           </g>
         ))}
+        {a.length > 1 && (
+          <polygon
+            points={`30,185 ${points(a)} 720,185`}
+            className="chart-fill"
+          />
+        )}
         <polyline fill="none" points={points(b)} className="chart-previous" />
         <polyline fill="none" points={points(a)} className="chart-current" />
         {labels.map((l, i) => (

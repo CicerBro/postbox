@@ -4,6 +4,7 @@ import { Badge } from "../ui/badge";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Section, Field, Message, useAction, Secret, Checks } from "./Common";
 type Hook = {
   id: number;
@@ -85,11 +86,11 @@ export function Webhooks({ brandId }: { brandId: number }) {
           <p className="text-sm font-medium">Events to send</p>
           <Checks values={events} selected={selected} onChange={setSelected} />
         </div>
-        <label className="flex gap-2 text-sm">
-          <input
-            type="checkbox"
+        <label htmlFor="webhook-active" className="flex items-center gap-3 text-sm">
+          <Checkbox
+            id="webhook-active"
             checked={active}
-            onChange={(e) => setActive(e.target.checked)}
+            onCheckedChange={(checked) => setActive(checked === true)}
           />
           Active
         </label>

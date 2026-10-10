@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"postbox/internal/contacts"
+	"postbox/internal/subscribers"
 	"strings"
 	"testing"
 )
@@ -16,16 +16,16 @@ func TestListSettingsScopeClearAndConsent(t *testing.T) {
 	a, m, db, cookie, csrf := setup(t)
 	a.cfg.BaseURL = "https://example.org"
 	ctx := context.Background()
-	service := contacts.New(db)
-	brand, e := service.CreateBrand(ctx, contacts.Brand{Name: "Messages", FromEmail: "sender@example.org"})
+	service := subscribers.New(db)
+	brand, e := service.CreateBrand(ctx, subscribers.Brand{Name: "Messages", FromEmail: "sender@example.org"})
 	if e != nil {
 		t.Fatal(e)
 	}
-	other, e := service.CreateBrand(ctx, contacts.Brand{Name: "Other", FromEmail: "other@example.org"})
+	other, e := service.CreateBrand(ctx, subscribers.Brand{Name: "Other", FromEmail: "other@example.org"})
 	if e != nil {
 		t.Fatal(e)
 	}
-	list, e := service.CreateList(ctx, contacts.List{BrandID: brand.ID, Name: "Readers", OptIn: "double"})
+	list, e := service.CreateList(ctx, subscribers.List{BrandID: brand.ID, Name: "Readers", OptIn: "double"})
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -5,6 +5,8 @@ import { api } from "../lib/api";
 import { useApp } from "../lib/app-context";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Checkbox } from "../components/ui/checkbox";
+import { SelectField } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { Plus, Search, ArrowUpRight, Mail, Users, Send } from "lucide-react";
 import {
@@ -31,7 +33,6 @@ import {
   initialHTML,
   Named,
   number,
-  selectClass,
   tableClass,
   Target,
   Template,
@@ -537,35 +538,28 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
             />
           </label>
           {editable && (
-            <label className="block text-sm">
+            <label htmlFor="campaign-template" className="block space-y-2 text-sm">
               Start from a template
-              <select
-                className={selectClass}
+              <SelectField
+                id="campaign-template"
                 value=""
-                onChange={(e) => {
-                  const t = choices.data?.templates.find(
-                    (t) => t.id === Number(e.target.value),
-                  );
+                onValueChange={(value) => {
+                  const t = choices.data?.templates.find((t) => t.id === Number(value));
                   if (t) setHtml(t.html);
                 }}
-              >
-                <option value="">
-                  Choose a template to replace the current HTML
-                </option>
-                {choices.data?.templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "Choose a template to replace the current HTML" },
+                  ...(choices.data?.templates.map((t) => ({ value: String(t.id), label: t.name })) ?? []),
+                ]}
+              />
             </label>
           )}
-          <label className="flex gap-2 text-sm">
-            <input
-              type="checkbox"
+          <label htmlFor="campaign-inline-css" className="flex items-center gap-3 text-sm">
+            <Checkbox
+              id="campaign-inline-css"
               checked={inline}
               disabled={!editable}
-              onChange={(e) => setInline(e.target.checked)}
+              onCheckedChange={(checked) => setInline(checked === true)}
             />
             Inline CSS during rendering
           </label>
@@ -617,7 +611,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
           <p className="text-sm text-muted-foreground">
             Include lists or segments, then exclude any audience you want to
             omit. Recipients are deduplicated and inactive or suppressed
-            contacts are skipped.
+            subscribers are skipped.
           </p>
           {choices.isPending ? (
             <p role="status">Loading audiences…</p>
@@ -632,12 +626,14 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
                     (row) => (
                       <label
                         key={row.id}
+                        htmlFor={`campaign-audience-${type}-${row.id}`}
                         className="audience-option mb-2 flex items-center justify-between gap-3 rounded-md border p-3 text-sm"
                       >
                         <span>{row.name}</span>
-                        <select
+                        <SelectField
+                          id={`campaign-audience-${type}-${row.id}`}
                           disabled={!editable}
-                          className={`${selectClass} max-w-36`}
+                          className="max-w-36"
                           aria-label={`${row.name} audience mode`}
                           value={
                             targets.find(
@@ -646,14 +642,13 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
                                 t.target_id === row.id,
                             )?.mode ?? ""
                           }
-                          onChange={(e) =>
-                            targetMode(type, row.id, e.target.value)
-                          }
-                        >
-                          <option value="">Not selected</option>
-                          <option value="include">Include</option>
-                          <option value="exclude">Exclude</option>
-                        </select>
+                          onValueChange={(value) => targetMode(type, row.id, value)}
+                          options={[
+                            { value: "", label: "Not selected" },
+                            { value: "include", label: "Include" },
+                            { value: "exclude", label: "Exclude" },
+                          ]}
+                        />
                       </label>
                     ),
                   )}

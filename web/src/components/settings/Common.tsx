@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { CheckCircle2, CircleAlert, Copy, KeyRound } from "lucide-react";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 export function Section({
   title,
@@ -133,20 +134,21 @@ export function Checks({
   selected: string[];
   onChange: (values: string[]) => void;
 }) {
+  const id = useId();
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-3">
       {values.map((v) => (
         <label
           key={v}
-          className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm"
+          htmlFor={`${id}-${v}`}
+          className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2 text-sm"
         >
-          <input
-            type="checkbox"
-            className="accent-primary"
+          <Checkbox
+            id={`${id}-${v}`}
             checked={selected.includes(v)}
-            onChange={(e) =>
+            onCheckedChange={(checked) =>
               onChange(
-                e.target.checked
+                checked === true
                   ? [...selected, v]
                   : selected.filter((x) => x !== v),
               )

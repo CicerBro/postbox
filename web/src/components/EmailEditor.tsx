@@ -15,6 +15,7 @@ import {
 import { api } from "../lib/api";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { SelectField } from "./ui/select";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +24,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "./ui/dialog";
-import { ErrorMessage, selectClass } from "../pages/campaign-shared";
+import { ErrorMessage } from "../pages/campaign-shared";
 
 type Props = {
   value: string;
@@ -332,32 +333,30 @@ export function EmailEditor({
           <div className="flex flex-wrap items-end gap-2">
             {!readOnly && (
               <>
-                <label className="text-sm">
+                <label htmlFor="editor-merge-tag" className="block space-y-2 text-sm">
                   Merge tag
-                  <select
-                    className={selectClass}
+                  <SelectField
+                    id="editor-merge-tag"
                     value={tag}
-                    onChange={(e) => setTag(e.target.value)}
-                  >
-                    {[
-                      "name",
-                      "email",
-                      "unsubscribe",
-                      "webversion",
-                      "currentdaydate",
-                      "currentmonth",
-                      "currentyear",
-                    ].map((t) => (
-                      <option key={t}>{t}</option>
-                    ))}
-                    {fields.data?.map((f) => (
-                      <option key={f.id} value={f.key}>
-                        {f.label} ({f.key})
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setTag}
+                    options={[
+                      ...[
+                        "name",
+                        "email",
+                        "unsubscribe",
+                        "webversion",
+                        "currentdaydate",
+                        "currentmonth",
+                        "currentyear",
+                      ].map((value) => ({ value, label: value })),
+                      ...(fields.data?.map((f) => ({
+                        value: f.key,
+                        label: `${f.label} (${f.key})`,
+                      })) ?? []),
+                    ]}
+                  />
                 </label>
-                <label className="text-sm">
+                <label className="block space-y-2 text-sm">
                   Fallback
                   <Input
                     value={fallback}

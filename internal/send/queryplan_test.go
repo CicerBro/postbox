@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"postbox/internal/contacts"
+	"postbox/internal/subscribers"
 )
 
 // Read the complete SQL concatenation from the running implementation, injecting
@@ -135,12 +135,12 @@ func TestProductionAudiencePlans(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := contacts.New(db)
-	_, err = service.SaveCustomField(context.Background(), contacts.CustomField{BrandID: 1, Key: "country", Label: "Country", Type: "text", Filterable: true})
+	service := subscribers.New(db)
+	_, err = service.SaveCustomField(context.Background(), subscribers.CustomField{BrandID: 1, Key: "country", Label: "Country", Type: "text", Filterable: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	segment, err := service.SaveSegment(context.Background(), contacts.Segment{BrandID: 1, Name: "NL", Rules: contacts.Rule{Field: "fields.country", Op: "eq", Value: "NL"}})
+	segment, err := service.SaveSegment(context.Background(), subscribers.Segment{BrandID: 1, Name: "NL", Rules: subscribers.Rule{Field: "fields.country", Op: "eq", Value: "NL"}})
 	if err != nil {
 		t.Fatal(err)
 	}

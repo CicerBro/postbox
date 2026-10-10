@@ -12,7 +12,7 @@ Validated on 10 October 2026 with Go 1.27.1 and Bun 1.4.2 on an Apple M1 Pro
 - CGO-free, statically linked Linux amd64 and arm64 builds with the final
   embedded frontend.
 - Query-plan tests inspect production SQL, including dispatch completion,
-  recipient claims, audience snapshots, contact search and suppression scopes.
+  recipient claims, audience snapshots, subscriber search and suppression scopes.
 - Authentication tests use a signed ES256 virtual authenticator and cover
   WebAuthn origin, RP, user verification, challenges, replay, counters,
   ownership and session revocation, alongside TOTP and CSRF checks.
@@ -31,7 +31,7 @@ The embedded Go application ran at `http://localhost:8080` with an isolated
 test database and a loopback fake SES endpoint. Browser checks covered:
 
 - TOTP sign-in, brand creation and sender identity settings.
-- Contact creation, recorded consent and explicit list subscription.
+- Subscriber creation, recorded consent and explicit list subscription.
 - CSV mapping, dry-run, import and authenticated export, including quoted names.
 - Segment creation and live count preview.
 - Campaign audience selection, personalized Go-rendered preview and preflight.
@@ -46,14 +46,14 @@ test database and a loopback fake SES endpoint. Browser checks covered:
   first paint and saved preferences; System subscribes to OS appearance changes.
 - Settings, account security and the API-key page load without browser errors.
 - The admin UI directly adapts shadcn-admin's inset layout, compact sidebar,
-  locally bundled Inter font and neutral OKLCH light/dark themes. The original
-  slate/indigo styling has been replaced.
+  locally bundled Inter font and warm amber OKLCH light/dark themes. The palette
+  adapts Amber Minimal while retaining the compact reference layout.
 - Reference comparison at 1762 by 1194 verifies the 256px sidebar, workspace
   button at (16,16) sized 224 by 48, first navigation row at (16,112) sized
   224 by 32, and main inset starting at x=256 with width 1498.
 - The brand dropdown selects the current brand; page search filters routes
   and opens a result on Enter. Control K opens the search dialog; Escape closes it.
-- Contact email-prefix filtering returns real backend results; list and campaign
+- Subscriber email-prefix filtering returns real backend results; list and campaign
   menus support keyboard dismissal, and campaign reports retain connected SSE.
 - At 390px mobile width, account navigation closes the focus-trapped sheet.
   At 640px by 360px, the sidebar scrolls to expose its account/theme controls.
@@ -62,4 +62,19 @@ test database and a loopback fake SES endpoint. Browser checks covered:
 Physical passkey enrollment and live AWS infrastructure were not exercised.
 The preview stays configured for loopback fake SES.
 
-![Reference-style sidebar and settings](screenshots/reference-settings.jpg)
+## Amber controls and subscriber terminology
+
+The latest UI pass verified regular 400-weight brand inputs, left-aligned settings
+navigation, Radix checkbox keyboard toggling, subscriber status filters including
+returning to the empty "All statuses" value, and Enter opening a subscriber profile.
+Native admin checkboxes and selects are replaced with shared Radix controls.
+The sending action has a Pause icon and explicit "Pause sending" text when enabled.
+The warm dark theme was inspected and the existing Light preference restored.
+
+Go package/API helper terminology now uses subscribers. Database tables and indexes
+already use subscriber names; all nine applied migration files are unchanged.
+The legacy `/contacts` route redirects to `/subscribers`, preserving query/hash.
+
+![Amber overview and sending control](screenshots/amber-overview.jpg)
+
+![Amber subscriber workspace](screenshots/amber-subscribers.jpg)

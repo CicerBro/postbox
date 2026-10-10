@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"postbox/internal/contacts"
+	"postbox/internal/subscribers"
 )
 
 func (a *API) settings(w http.ResponseWriter, r *http.Request) {
@@ -147,7 +147,7 @@ func (a *API) suppressions(w http.ResponseWriter, r *http.Request) {
 		result(w, map[string]bool{"deleted": true}, requireChanged(res, e))
 		return
 	}
-	var in contacts.Suppression
+	var in subscribers.Suppression
 	if !decode(w, r, &in) {
 		return
 	}
@@ -156,5 +156,5 @@ func (a *API) suppressions(w http.ResponseWriter, r *http.Request) {
 		in.BrandID = nil
 	}
 	in.Reason = "manual"
-	result(w, in, a.contacts().AddSuppression(r.Context(), in))
+	result(w, in, a.subscriberService().AddSuppression(r.Context(), in))
 }

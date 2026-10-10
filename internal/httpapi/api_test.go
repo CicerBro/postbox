@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"postbox/internal/contacts"
 	"postbox/internal/send"
 	"postbox/internal/store"
+	"postbox/internal/subscribers"
 	"strings"
 	"testing"
 	"time"
@@ -82,12 +82,12 @@ func TestAuthenticationCSRFAndSecretStorage(t *testing.T) {
 func TestAPIIsolationUpsertAndPagination(t *testing.T) {
 	_, m, db, c, csrf := setup(t)
 	ctx := context.Background()
-	s := contacts.New(db)
-	b1, e := s.CreateBrand(ctx, contacts.Brand{Name: "one", FromEmail: "from@example.org"})
+	s := subscribers.New(db)
+	b1, e := s.CreateBrand(ctx, subscribers.Brand{Name: "one", FromEmail: "from@example.org"})
 	if e != nil {
 		t.Fatal(e)
 	}
-	b2, e := s.CreateBrand(ctx, contacts.Brand{Name: "two", FromEmail: "from@example.org"})
+	b2, e := s.CreateBrand(ctx, subscribers.Brand{Name: "two", FromEmail: "from@example.org"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -109,19 +109,19 @@ func TestAPIIsolationUpsertAndPagination(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	var first contacts.Subscriber
+	var first subscribers.Subscriber
 	json.Unmarshal(w.Body.Bytes(), &first)
 	w = do("POST", "/api/v1/subscribers", `{"email":"first@example.org","name":"updated"}`)
-	var updated contacts.Subscriber
+	var updated subscribers.Subscriber
 	json.Unmarshal(w.Body.Bytes(), &updated)
 	if w.Code != 200 || updated.ID != first.ID || updated.Name != "updated" {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	_, e = s.Upsert(ctx, contacts.UpsertInput{BrandID: b1.ID, Email: "second@example.org"})
+	_, e = s.Upsert(ctx, subscribers.UpsertInput{BrandID: b1.ID, Email: "second@example.org"})
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = s.Upsert(ctx, contacts.UpsertInput{BrandID: b2.ID, Email: "private@example.org"})
+	_, e = s.Upsert(ctx, subscribers.UpsertInput{BrandID: b2.ID, Email: "private@example.org"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -130,7 +130,7 @@ func TestAPIIsolationUpsertAndPagination(t *testing.T) {
 		t.Fatal("cross brand leak", w.Code)
 	}
 	w = do("GET", "/api/v1/subscribers?limit=1", "")
-	var rows []contacts.Subscriber
+	var rows []subscribers.Subscriber
 	json.Unmarshal(w.Body.Bytes(), &rows)
 	if w.Code != 200 || len(rows) != 1 || rows[0].ID != first.ID {
 		t.Fatal(w.Code, w.Body.String())
@@ -144,16 +144,16 @@ func TestAPIIsolationUpsertAndPagination(t *testing.T) {
 func TestCampaignAPISendPipeline(t *testing.T) {
 	a, m, db, c, csrf := setup(t)
 	ctx := context.Background()
-	s := contacts.New(db)
-	b, e := s.CreateBrand(ctx, contacts.Brand{Name: "Brand", FromEmail: "from@example.org", TrackingDomain: "https://example.org"})
+	s := subscribers.New(db)
+	b, e := s.CreateBrand(ctx, subscribers.Brand{Name: "Brand", FromEmail: "from@example.org", TrackingDomain: "https://example.org"})
 	if e != nil {
 		t.Fatal(e)
 	}
-	l, e := s.CreateList(ctx, contacts.List{BrandID: b.ID, Name: "Newsletter", OptIn: "single"})
+	l, e := s.CreateList(ctx, subscribers.List{BrandID: b.ID, Name: "Newsletter", OptIn: "single"})
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = s.Upsert(ctx, contacts.UpsertInput{BrandID: b.ID, Email: "recipient@example.org", ListIDs: []int64{l.ID}})
+	_, e = s.Upsert(ctx, subscribers.UpsertInput{BrandID: b.ID, Email: "recipient@example.org", ListIDs: []int64{l.ID}})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -193,8 +193,8 @@ func TestCampaignAPISendPipeline(t *testing.T) {
 }
 func TestReadOnlyKeyAndRevocation(t *testing.T) {
 	_, m, db, c, csrf := setup(t)
-	s := contacts.New(db)
-	_, e := s.CreateBrand(context.Background(), contacts.Brand{Name: "one", FromEmail: "from@example.org"})
+	s := subscribers.New(db)
+	_, e := s.CreateBrand(context.Background(), subscribers.Brand{Name: "one", FromEmail: "from@example.org"})
 	if e != nil {
 		t.Fatal(e)
 	}

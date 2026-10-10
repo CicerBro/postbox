@@ -12,7 +12,7 @@ func TestRoutes(t *testing.T) {
 		path string
 		code int
 	}{
-		{"/", 200}, {"/api-keys", 200}, {"/settings", 200}, {"/campaigns/42/report", 200},
+		{"/", 200}, {"/subscribers", 200}, {"/contacts", 200}, {"/api-keys", 200}, {"/settings", 200}, {"/campaigns/42/report", 200},
 		{"/api", 404}, {"/api/v1/unknown", 404}, {"/unknown", 404}, {"/assets/missing.js", 404},
 		{"/../index.html", 404}, {"/assets/../index.html", 404}, {"/campaigns/not-an-id", 404},
 	} {

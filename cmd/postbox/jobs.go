@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"postbox/internal/config"
-	"postbox/internal/contacts"
 	"postbox/internal/events"
 	"postbox/internal/jobs"
 	"postbox/internal/render"
 	"postbox/internal/send"
 	"postbox/internal/store"
+	"postbox/internal/subscribers"
 )
 
 type transactionalEmail struct {
@@ -103,8 +103,8 @@ func registerJobs(db *store.DB, runner *jobs.Runner, engine *send.Engine, c conf
 	root := filepath.Join(filepath.Dir(c.DB), "jobs")
 	return runner.RegisterCSV(func(ctx context.Context, j jobs.Job) error {
 		var p struct {
-			InputFile string                 `json:"input_file"`
-			Options   contacts.ImportOptions `json:"options"`
+			InputFile string                    `json:"input_file"`
+			Options   subscribers.ImportOptions `json:"options"`
 		}
 		if err := json.Unmarshal(j.Payload, &p); err != nil {
 			return err
@@ -118,7 +118,7 @@ func registerJobs(db *store.DB, runner *jobs.Runner, engine *send.Engine, c conf
 			return err
 		}
 		defer f.Close()
-		_, err = contacts.New(db).ImportCSV(ctx, f, p.Options)
+		_, err = subscribers.New(db).ImportCSV(ctx, f, p.Options)
 		return err
 	}, func(ctx context.Context, j jobs.Job) error {
 		var p struct {
@@ -167,7 +167,7 @@ func registerJobs(db *store.DB, runner *jobs.Runner, engine *send.Engine, c conf
 				_ = os.Remove(stage)
 			}
 		}()
-		if err = contacts.New(db).ExportCSV(ctx, f, p.BrandID, p.ListID); err != nil {
+		if err = subscribers.New(db).ExportCSV(ctx, f, p.BrandID, p.ListID); err != nil {
 			return err
 		}
 		if err = f.Sync(); err != nil {

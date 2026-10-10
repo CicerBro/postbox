@@ -9,6 +9,7 @@ import {
 import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
+import { SelectField } from "../ui/select";
 import { Section, Field, Message, useAction, Checks, strings } from "./Common";
 type User = {
   id: number;
@@ -184,16 +185,17 @@ function UserEditor({
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <label className="block text-sm space-y-2">
+        <label htmlFor="user-role" className="block text-sm space-y-2">
           Role
-          <select
-            className="block rounded-md border bg-background p-2"
+          <SelectField
+            id="user-role"
             value={role}
-            onChange={(e) => setRole(e.target.value)}
-          >
-            <option value="brand_user">Brand user</option>
-            <option value="admin">Administrator</option>
-          </select>
+            onValueChange={setRole}
+            options={[
+              { value: "brand_user", label: "Brand user" },
+              { value: "admin", label: "Administrator" },
+            ]}
+          />
         </label>
         <div className="flex gap-2">
           <Button disabled={a.busy}>
@@ -351,21 +353,18 @@ function BrandAccess({ userId }: { userId: number }) {
           }, "Brand access saved.");
         }}
       >
-        <label className="block text-sm space-y-2">
+        <label htmlFor="user-brand" className="block text-sm space-y-2">
           Brand
-          <select
+          <SelectField
+            id="user-brand"
             required
-            className="block w-full rounded-md border bg-background p-2"
-            value={brandId}
-            onChange={(e) => setBrandId(Number(e.target.value))}
-          >
-            <option value={0}>Select a brand</option>
-            {brands.data?.pages.flat().map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+            value={String(brandId)}
+            onValueChange={(value) => setBrandId(Number(value))}
+            options={[
+              { value: "0", label: "Select a brand" },
+              ...(brands.data?.pages.flat().map((b) => ({ value: String(b.id), label: b.name })) ?? []),
+            ]}
+          />
         </label>
         {brands.hasNextPage && (
           <Button

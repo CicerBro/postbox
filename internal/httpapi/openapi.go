@@ -33,7 +33,7 @@ func (a *API) documentRoute(pattern string) {
 		}
 	}
 	op := map[string]any{"operationId": strings.ToLower(method) + strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_").Replace(path), "summary": method + " " + path, "parameters": parameters, "security": []map[string]any{{"bearerAuth": []string{}}, {"cookieAuth": []string{}}}, "responses": map[string]any{"200": map[string]any{"description": "Successful operation", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{}}}}, "400": map[string]any{"description": "Invalid request; JSON error contains actionable message"}, "401": map[string]any{"description": "Authentication required"}, "403": map[string]any{"description": "Brand, scope, or CSRF access denied"}, "404": map[string]any{"description": "Resource not found"}, "429": map[string]any{"description": "Rate limit exceeded"}}}
-	documentContactRead(method, path, op)
+	documentSubscriberRead(method, path, op)
 	if path == "/api/v1/auth/login" || path == "/api/v1/openapi.json" || strings.HasPrefix(path, "/subscribe/") || strings.HasPrefix(path, "/confirm/") {
 		op["security"] = []any{}
 	}
@@ -74,7 +74,7 @@ func (a *API) documentRoute(pattern string) {
 			defaultScope = "effective"
 		}
 		op["parameters"] = append(op["parameters"].([]map[string]any), map[string]any{"name": "scope", "in": "query", "schema": map[string]any{"type": "string", "enum": scopes, "default": defaultScope}})
-		op["description"] = "Brand scope returns or modifies only the selected brand's suppressions. Global scope requires an administrator session. GET defaults to effective: selected-brand rules plus global rules. For brand users and API keys, global rules are returned only when their email or domain matches a subscriber already in that brand. Administrator sessions see all global rules. Sending always applies all global rules, including to future contacts."
+		op["description"] = "Brand scope returns or modifies only the selected brand's suppressions. Global scope requires an administrator session. GET defaults to effective: selected-brand rules plus global rules. For brand users and API keys, global rules are returned only when their email or domain matches a subscriber already in that brand. Administrator sessions see all global rules. Sending always applies all global rules, including to future subscribers."
 	}
 	documentListSettings(method, path, op)
 	methods[strings.ToLower(method)] = op

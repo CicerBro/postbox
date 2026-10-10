@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"postbox/internal/contacts"
+	"postbox/internal/subscribers"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +13,7 @@ import (
 
 func TestOverviewPeriodCountersAndRollups(t *testing.T) {
 	_, m, db, c, _ := setup(t)
-	brand, err := contacts.New(db).CreateBrand(context.Background(), contacts.Brand{Name: "Overview", FromEmail: "from@example.org"})
+	brand, err := subscribers.New(db).CreateBrand(context.Background(), subscribers.Brand{Name: "Overview", FromEmail: "from@example.org"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestOverviewPeriodCountersAndRollups(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	list, err := contacts.New(db).CreateList(context.Background(), contacts.List{BrandID: brand.ID, Name: "Daily", OptIn: "single"})
+	list, err := subscribers.New(db).CreateList(context.Background(), subscribers.List{BrandID: brand.ID, Name: "Daily", OptIn: "single"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestOverviewPeriodCountersAndRollups(t *testing.T) {
 
 func TestOverviewEmptyAndDaysValidation(t *testing.T) {
 	_, m, db, c, _ := setup(t)
-	brand, err := contacts.New(db).CreateBrand(context.Background(), contacts.Brand{Name: "Empty", FromEmail: "from@example.org"})
+	brand, err := subscribers.New(db).CreateBrand(context.Background(), subscribers.Brand{Name: "Empty", FromEmail: "from@example.org"})
 	if err != nil {
 		t.Fatal(err)
 	}

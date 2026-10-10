@@ -78,7 +78,7 @@ func (a *API) Register(m *http.ServeMux) {
 	a.registerUsers(m)
 	a.registerPasskeys(m)
 	a.registerCampaigns(m)
-	a.registerContacts(m)
+	a.registerSubscribers(m)
 	a.registerOperations(m)
 	a.registerWebhooks(m)
 	a.registerPublic(m)

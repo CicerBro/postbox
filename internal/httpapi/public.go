@@ -10,7 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"postbox/internal/contacts"
+	"postbox/internal/subscribers"
 	"strings"
 	"time"
 )
@@ -45,7 +45,7 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 		fail(w, 429, errors.New("too many subscription requests"))
 		return
 	}
-	var list contacts.List
+	var list subscribers.List
 	e := a.db.Reader.QueryRowContext(r.Context(), "SELECT id,brand_id,name,opt_in FROM lists WHERE uuid=?", r.PathValue("uuid")).Scan(&list.ID, &list.BrandID, &list.Name, &list.OptIn)
 	if e != nil {
 		result(w, nil, e)
@@ -76,7 +76,7 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	v, e := a.contacts().Upsert(r.Context(), contacts.UpsertInput{BrandID: list.BrandID, Email: r.FormValue("email"), Name: r.FormValue("name"), ListIDs: []int64{list.ID}, Consent: true, ConsentIP: host, Resubscribe: true})
+	v, e := a.subscriberService().Upsert(r.Context(), subscribers.UpsertInput{BrandID: list.BrandID, Email: r.FormValue("email"), Name: r.FormValue("name"), ListIDs: []int64{list.ID}, Consent: true, ConsentIP: host, Resubscribe: true})
 	if e != nil {
 		result(w, nil, e)
 		return
@@ -126,7 +126,7 @@ func (a *API) confirm(w http.ResponseWriter, r *http.Request) {
 		e = errors.New("confirmation token invalid or expired")
 	}
 	if e == nil {
-		e = a.contacts().Confirm(r.Context(), r.PathValue("token"))
+		e = a.subscriberService().Confirm(r.Context(), r.PathValue("token"))
 	}
 	if e != nil {
 		result(w, nil, e)
@@ -147,9 +147,9 @@ func (a *API) thankyou(w http.ResponseWriter, r *http.Request, brand, listID int
 	if status == "confirmation_pending" {
 		name = "confirmation_page_html"
 	}
-	body, e := contacts.NotificationSetting(r.Context(), a.db.Reader, brand, listID, name)
+	body, e := subscribers.NotificationSetting(r.Context(), a.db.Reader, brand, listID, name)
 	if name == "confirmation_page_html" && errors.Is(e, sql.ErrNoRows) {
-		body, e = contacts.NotificationSetting(r.Context(), a.db.Reader, brand, listID, "thankyou_html")
+		body, e = subscribers.NotificationSetting(r.Context(), a.db.Reader, brand, listID, "thankyou_html")
 	}
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		result(w, nil, e)

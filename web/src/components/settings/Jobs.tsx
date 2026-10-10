@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { Button } from "../ui/button";
+import { SelectField } from "../ui/select";
 import { Section, Message, date } from "./Common";
 type Job = {
   id: number;
@@ -30,18 +31,17 @@ export function Jobs() {
         loaded rows.
       </p>
       <div className="toolbar">
-        <label className="text-sm">
-          Queue{" "}
-          <select
-            className="rounded-md border bg-background p-2"
+        <label htmlFor="jobs-queue" className="block space-y-2 text-sm">
+          Queue
+          <SelectField
+            id="jobs-queue"
             value={queue}
-            onChange={(e) => setQueue(e.target.value)}
-          >
-            <option value="">All queues</option>
-            {[...new Set(rows.map((r) => r.queue))].map((v) => (
-              <option key={v}>{v}</option>
-            ))}
-          </select>
+            onValueChange={setQueue}
+            options={[
+              { value: "", label: "All queues" },
+              ...[...new Set(rows.map((r) => r.queue))].map((value) => ({ value, label: value })),
+            ]}
+          />
         </label>
         <Button
           variant="outline"

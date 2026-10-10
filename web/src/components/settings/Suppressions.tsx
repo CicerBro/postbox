@@ -4,6 +4,7 @@ import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
+import { SelectField } from "../ui/select";
 import { Section, Field, Message, useAction } from "./Common";
 type Suppression = {
   id: number;
@@ -35,19 +36,20 @@ export function Suppressions({ brandId }: { brandId: number }) {
     <Section title="Suppressions">
       <p className="text-sm text-muted-foreground">
         Effective suppressions include brand and global entries. Removing an
-        entry does not reactivate bounced or complained contacts.
+        entry does not reactivate bounced or complained subscribers.
       </p>
-      <label className="block text-sm space-y-2">
+      <label htmlFor="suppression-scope" className="block text-sm space-y-2">
         Show
-        <select
-          className="block rounded-md border bg-background p-2"
+        <SelectField
+          id="suppression-scope"
           value={scope}
-          onChange={(e) => setScope(e.target.value)}
-        >
-          <option value="effective">Effective: brand and global</option>
-          <option value="brand">Brand only</option>
-          {session.admin && <option value="global">Global only</option>}
-        </select>
+          onValueChange={setScope}
+          options={[
+            { value: "effective", label: "Effective: brand and global" },
+            { value: "brand", label: "Brand only" },
+            ...(session.admin ? [{ value: "global", label: "Global only" }] : []),
+          ]}
+        />
       </label>
       <form
         className="space-y-3"
@@ -65,28 +67,30 @@ export function Suppressions({ brandId }: { brandId: number }) {
         }}
       >
         <div className="flex flex-wrap gap-3">
-          <label className="text-sm space-y-2">
+          <label htmlFor="suppression-kind" className="text-sm space-y-2">
             Kind
-            <select
-              className="block rounded-md border bg-background p-2"
+            <SelectField
+              id="suppression-kind"
               value={kind}
-              onChange={(e) => setKind(e.target.value)}
-            >
-              <option value="email">Email</option>
-              <option value="domain">Domain</option>
-            </select>
+              onValueChange={setKind}
+              options={[
+                { value: "email", label: "Email" },
+                { value: "domain", label: "Domain" },
+              ]}
+            />
           </label>
           {session.admin && (
-            <label className="text-sm space-y-2">
+            <label htmlFor="suppression-target" className="text-sm space-y-2">
               Scope
-              <select
-                className="block rounded-md border bg-background p-2"
+              <SelectField
+                id="suppression-target"
                 value={target}
-                onChange={(e) => setTarget(e.target.value)}
-              >
-                <option value="brand">Selected brand</option>
-                <option value="global">All brands</option>
-              </select>
+                onValueChange={setTarget}
+                options={[
+                  { value: "brand", label: "Selected brand" },
+                  { value: "global", label: "All brands" },
+                ]}
+              />
             </label>
           )}
         </div>
@@ -152,7 +156,7 @@ export function Suppressions({ brandId }: { brandId: number }) {
                         onClick={() => {
                           if (
                             window.confirm(
-                              `Remove suppression for ${s.value}? Existing contact statuses will remain unchanged.`,
+                              `Remove suppression for ${s.value}? Existing subscriber statuses will remain unchanged.`,
                             )
                           )
                             void a.run(async () => {

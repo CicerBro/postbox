@@ -188,7 +188,7 @@ func TestHotQueryPlans(t *testing.T) {
 		"snapshot":         `INSERT OR IGNORE INTO campaign_recipients(campaign_id,subscriber_id,snapshot_email,snapshot_name,snapshot_fields) SELECT 1,s.id,s.email,s.name,s.fields FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE ls.list_id=1 AND ls.status='subscribed' AND s.brand_id=1 AND s.status='active' AND NOT EXISTS(SELECT 1 FROM suppressions p WHERE p.kind='email' AND p.value=s.email AND (p.brand_id=1 OR p.brand_id IS NULL)) AND NOT EXISTS(SELECT 1 FROM suppressions p WHERE p.kind='domain' AND p.value=s.domain AND (p.brand_id=1 OR p.brand_id IS NULL))`,
 		"message":          `SELECT campaign_id,subscriber_id FROM campaign_recipients WHERE message_id='msg'`,
 		"email":            `SELECT id FROM subscribers WHERE brand_id=1 AND email='person1@example.test'`,
-		"contacts_page":    `SELECT id,email FROM subscribers WHERE brand_id=1 AND id>100 ORDER BY id LIMIT 100`,
+		"subscribers_page": `SELECT id,email FROM subscribers WHERE brand_id=1 AND id>100 ORDER BY id LIMIT 100`,
 		"list_page":        `SELECT s.id,s.email FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE ls.list_id=1 AND ls.subscriber_id>100 ORDER BY ls.subscriber_id LIMIT 100`,
 		"segment_count":    `SELECT count(*) FROM subscribers INDEXED BY subscribers_country WHERE brand_id=1 AND (fields ->> '$.country')='NL'`,
 		"report":           `SELECT cs.* FROM campaigns c JOIN campaign_stats cs ON cs.campaign_id=c.id WHERE c.brand_id=1 AND c.id>0 ORDER BY c.id LIMIT 100`,

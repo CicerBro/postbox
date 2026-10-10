@@ -10,17 +10,17 @@ import (
 	"testing"
 	"time"
 
-	"postbox/internal/contacts"
+	"postbox/internal/subscribers"
 )
 
 func TestWebhooksCRUDValidationAndAuthorization(t *testing.T) {
 	_, m, db, c, csrf := setup(t)
-	service := contacts.New(db)
-	b, err := service.CreateBrand(context.Background(), contacts.Brand{Name: "Webhook", FromEmail: "from@example.org"})
+	service := subscribers.New(db)
+	b, err := service.CreateBrand(context.Background(), subscribers.Brand{Name: "Webhook", FromEmail: "from@example.org"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := service.CreateBrand(context.Background(), contacts.Brand{Name: "Other", FromEmail: "from@example.org"})
+	other, err := service.CreateBrand(context.Background(), subscribers.Brand{Name: "Other", FromEmail: "from@example.org"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"postbox/internal/contacts"
+	"postbox/internal/subscribers"
 )
 
 var listSettingNames = []string{"confirmation_email", "confirmation_page_html", "thankyou_email", "thankyou_html", "goodbye_email", "goodbye_html"}
@@ -127,9 +127,9 @@ func (a *API) listSettings(w http.ResponseWriter, r *http.Request) {
 			result(w, nil, e)
 			return
 		}
-		raw, e = contacts.NotificationSetting(r.Context(), a.db.Reader, brand, id, name)
+		raw, e = subscribers.NotificationSetting(r.Context(), a.db.Reader, brand, id, name)
 		if name == "confirmation_page_html" && errors.Is(e, sql.ErrNoRows) {
-			raw, e = contacts.NotificationSetting(r.Context(), a.db.Reader, brand, id, "thankyou_html")
+			raw, e = subscribers.NotificationSetting(r.Context(), a.db.Reader, brand, id, "thankyou_html")
 		}
 		if e == nil {
 			v, e := decodeValue(raw)

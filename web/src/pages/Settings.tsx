@@ -81,8 +81,8 @@ export function SettingsPage({ brandId }: { brandId: number }) {
                 variant="ghost"
                 className={
                   selected === id
-                    ? "justify-start bg-muted hover:bg-accent"
-                    : "justify-start hover:underline"
+                    ? "settings-nav-button justify-start bg-muted hover:bg-accent"
+                    : "settings-nav-button justify-start hover:underline"
                 }
                 size="default"
                 aria-current={selected === id ? "page" : undefined}

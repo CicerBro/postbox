@@ -715,7 +715,7 @@ func (i *importer) subscriber(r Row, id string) error {
 	return i.save("subscribers", id, sub)
 }
 
-// listBaseline creates the same persisted counter row as contacts.CreateList.
+// listBaseline creates the same persisted counter row as subscribers.CreateList.
 // An import-day active snapshot is useful even for empty and inactive lists.
 func (i *importer) listBaseline(list int64) error {
 	if e := i.exec("INSERT INTO list_counters(list_id) VALUES(?) ON CONFLICT DO NOTHING", list); e != nil {
@@ -726,7 +726,7 @@ SELECT list_id,?,active FROM list_counters WHERE list_id=?
 ON CONFLICT(list_id,day) DO UPDATE SET active=excluded.active`, i.now/86400000*86400000, list)
 }
 
-// membershipBaseline mirrors contacts' cumulative transition counters, but does
+// membershipBaseline mirrors subscribers' cumulative transition counters, but does
 // not claim the import was a signup/unsubscribe event today. Adjusting the prior
 // snapshot excludes imported history from Rollup's daily deltas while retaining
 // any real events that already occurred today. Everything commits with the row.

@@ -79,7 +79,7 @@ func TestImportStatusesArchiveAndIdempotency(t *testing.T) {
 		t.Fatal("unconfirmed status lost")
 	}
 	if scalar(t, db, `SELECT count(*) FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE ls.status='subscribed' AND s.status='active' AND NOT EXISTS(SELECT 1 FROM suppressions x WHERE x.value=s.email AND x.kind='email' AND (x.brand_id IS NULL OR x.brand_id=s.brand_id))`) != 1 {
-		t.Fatal("suppressed contact eligible")
+		t.Fatal("suppressed subscriber eligible")
 	}
 	if scalar(t, db, "SELECT count(*) FROM migration_identities WHERE entity='subscribers'") != 7 {
 		t.Fatal("source identities not preserved")

@@ -3,12 +3,12 @@ package tracking
 import (
 	"context"
 	"database/sql"
-	"postbox/internal/contacts"
+	"postbox/internal/subscribers"
 )
 
 func skipAfterUnsubscribe(ctx context.Context, c *sql.Conn, subscriber, list int64) error {
-	return contacts.SkipAfterUnsubscribeTx(ctx, c, subscriber, list)
+	return subscribers.SkipAfterUnsubscribeTx(ctx, c, subscriber, list)
 }
 func stillInAudience(ctx context.Context, c *sql.Conn, campaign, subscriber int64) (bool, error) {
-	return contacts.StillInAudienceTx(ctx, c, campaign, subscriber)
+	return subscribers.StillInAudienceTx(ctx, c, campaign, subscriber)
 }

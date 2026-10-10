@@ -12,7 +12,7 @@ complete string expressions and package constants used by named runtime methods.
 It rejects missing, ambiguous and unresolved query expressions. For conditional
 recipient reports and CSV list exports it reads the actual base, conditional and
 ordering fragments from the corresponding method. Segment predicates come from
-`contacts.CompileSegment`; custom fields and their expression indexes are created
+`subscribers.CompileSegment`; custom fields and their expression indexes are created
 through `SaveCustomField`, with the hint format read from `SegmentCount`. The
 custom count also runs the service method and requires the plan to constrain both
 brand and the indexed JSON expression.

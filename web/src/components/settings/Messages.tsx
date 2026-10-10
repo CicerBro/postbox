@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Textarea } from "../ui/textarea";
 import { Section, Field, Message, useAction } from "./Common";
 type Email = { subject: string; html: string; text?: string };
@@ -81,19 +82,18 @@ export function Messages({ brandId }: { brandId: number }) {
                 key={k}
                 className="rounded-xl border bg-muted/20 p-5 space-y-3"
               >
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    type="checkbox"
-                    className="accent-primary"
+                <label htmlFor={`message-${k}`} className="flex items-center gap-3 text-sm font-medium">
+                  <Checkbox
+                    id={`message-${k}`}
                     checked={active}
                     disabled={q.data?.[k] !== undefined}
-                    onChange={(e) => {
+                    onCheckedChange={(checked) => {
                       setEnabled(
-                        e.target.checked
+                        checked === true
                           ? [...enabled, k]
                           : enabled.filter((x) => x !== k),
                       );
-                      if (e.target.checked && k.endsWith("_email") && !form[k])
+                      if (checked === true && k.endsWith("_email") && !form[k])
                         setForm({
                           ...form,
                           [k]: { subject: "", html: "", text: "" },

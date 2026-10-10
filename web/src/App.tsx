@@ -4,12 +4,15 @@ import {
   Routes,
   Route,
   NavLink,
+  Navigate,
   Link,
   useNavigate,
   useLocation,
 } from "react-router-dom";
 import {
   Mail,
+  Play,
+  Pause,
   Search,
   LayoutDashboard,
   Send,
@@ -59,8 +62,8 @@ const CampaignReportPage = lazy(() =>
 const TemplatesPage = lazy(() =>
   import("./pages/Templates").then((m) => ({ default: m.TemplatesPage })),
 );
-const ContactsPage = lazy(() =>
-  import("./pages/Contacts").then((m) => ({ default: m.ContactsPage })),
+const SubscribersPage = lazy(() =>
+  import("./pages/Subscribers").then((m) => ({ default: m.SubscribersPage })),
 );
 const SegmentsPage = lazy(() =>
   import("./pages/Segments").then((m) => ({ default: m.SegmentsPage })),
@@ -77,7 +80,7 @@ const ApiKeysPage = lazy(() =>
 const navigation = [
   ["/", "Overview", LayoutDashboard],
   ["/campaigns", "Campaigns", Send],
-  ["/contacts", "Contacts / Lists", Users],
+  ["/subscribers", "Subscribers", Users],
   ["/templates", "Templates", FileCode],
   ["/segments", "Segments", Filter],
   ["/domains", "Domains", Globe],
@@ -217,7 +220,7 @@ export default function App() {
       </h1>
       <p className="muted">
         {session.data.admin
-          ? "A brand keeps your sender identity, contacts and campaigns together."
+          ? "A brand keeps your sender identity, subscribers and campaigns together."
           : "Ask your administrator to grant you access to a brand."}
       </p>
       {session.data.admin && (
@@ -329,18 +332,30 @@ export default function App() {
               disabled={changeSending.isPending || !sending.data}
               onClick={() => changeSending.mutate(!sending.data?.enabled)}
               aria-label={
-                sending.data?.enabled ? "Pause all sending" : "Enable sending"
+                !sending.data
+                  ? "Sending status unavailable"
+                  : sending.data.enabled
+                    ? "Pause sending"
+                    : "Resume sending"
               }
               title={
-                sending.data?.enabled ? "Pause all sending" : "Enable sending"
+                !sending.data
+                  ? "Sending status unavailable"
+                  : sending.data.enabled
+                    ? "Pause sending"
+                    : "Resume sending"
               }
             >
-              <span className="status-dot" />
+              {sending.data?.enabled ? (
+                <Pause size={16} aria-hidden="true" />
+              ) : (
+                <Play size={16} aria-hidden="true" />
+              )}
               <span className="sidebar-label">
                 {sending.data
                   ? sending.data.enabled
-                    ? "Sending enabled"
-                    : "Sending paused"
+                    ? "Pause sending"
+                    : "Resume sending"
                   : "Status unavailable"}
               </span>
             </button>
@@ -489,7 +504,7 @@ export default function App() {
                 {[
                   ["/", "Overview"],
                   ["/campaigns", "Campaigns"],
-                  ["/contacts", "Contacts"],
+                  ["/subscribers", "Subscribers"],
                   ["/settings", "Settings"],
                 ].map(([path, label]) => (
                   <NavLink
@@ -561,8 +576,8 @@ export default function App() {
                     {brandId > 0 &&
                       [
                         ["/campaigns/new", "Campaign", Send],
-                        ["/contacts?new=list", "List", Users],
-                        ["/contacts?new=contact", "Contact", Users],
+                        ["/subscribers?new=list", "List", Users],
+                        ["/subscribers?new=subscriber", "Subscriber", Users],
                         ["/templates?new=1", "Template", FileCode],
                         ["/segments?new=1", "Segment", Filter],
                       ].map(([path, label, Icon]) => {
@@ -634,7 +649,16 @@ export default function App() {
                       />
                       <Route
                         path="/contacts"
-                        element={<ContactsPage brandId={brandId} />}
+                        element={
+                          <Navigate
+                            to={`/subscribers${location.search}${location.hash}`}
+                            replace
+                          />
+                        }
+                      />
+                      <Route
+                        path="/subscribers"
+                        element={<SubscribersPage brandId={brandId} />}
                       />
                       <Route
                         path="/templates"

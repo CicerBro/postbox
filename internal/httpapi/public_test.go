@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"postbox/internal/contacts"
+	"postbox/internal/subscribers"
 	"strings"
 	"testing"
 )
@@ -14,12 +14,12 @@ import (
 func TestHostedThankyouAndJSONNegotiation(t *testing.T) {
 	_, m, db, cookie, csrf := setup(t)
 	ctx := context.Background()
-	service := contacts.New(db)
-	brand, e := service.CreateBrand(ctx, contacts.Brand{Name: "Hosted", FromEmail: "sender@example.org"})
+	service := subscribers.New(db)
+	brand, e := service.CreateBrand(ctx, subscribers.Brand{Name: "Hosted", FromEmail: "sender@example.org"})
 	if e != nil {
 		t.Fatal(e)
 	}
-	list, e := service.CreateList(ctx, contacts.List{BrandID: brand.ID, Name: "Readers", OptIn: "double"})
+	list, e := service.CreateList(ctx, subscribers.List{BrandID: brand.ID, Name: "Readers", OptIn: "double"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -54,7 +54,7 @@ func TestHostedThankyouAndJSONNegotiation(t *testing.T) {
 			t.Fatal("API response changed")
 		}
 	}
-	v, e := service.Upsert(ctx, contacts.UpsertInput{BrandID: brand.ID, Email: "confirm@example.org", ListIDs: []int64{list.ID}})
+	v, e := service.Upsert(ctx, subscribers.UpsertInput{BrandID: brand.ID, Email: "confirm@example.org", ListIDs: []int64{list.ID}})
 	if e != nil {
 		t.Fatal(e)
 	}

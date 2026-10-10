@@ -198,7 +198,7 @@ func TestCounterMaintenanceRollsBackWithFailedBatch(t *testing.T) {
 		t.Fatal("failed batch leaked baseline")
 	}
 	if scalar(t, db, "SELECT count(*) FROM subscribers") != 0 {
-		t.Fatal("failed batch leaked contact")
+		t.Fatal("failed batch leaked subscriber")
 	}
 	importCounters(t, db, counterLists+`INSERT INTO subscribers(id,list,email,status) VALUES(1,1,'valid@example.com','active');`, 1)
 	if got := readCounters(t, db, "list_counters", 1, 0); got != (counters{active: 1, subscribed: 1}) {

@@ -1,3 +1,4 @@
+import { SelectField } from "../components/ui/select";
 import { useEffect, useState } from "react";
 import { Plus, Search, Filter } from "lucide-react";
 import { Badge } from "../components/ui/badge";
@@ -15,14 +16,13 @@ import {
 } from "../components/ui/dialog";
 import {
   allPages,
-  type ContactList,
+  type SubscriberList,
   type CustomField,
   ErrorMessage,
   Field,
-  selectClass,
   tableClass,
-  useContactAction,
-} from "../components/contacts/shared";
+  useSubscriberAction,
+} from "../components/subscribers/shared";
 
 type Rule = {
   all?: Rule[];
@@ -62,7 +62,7 @@ function RuleEditor({
   rule: Rule;
   onChange: (v: Rule) => void;
   fields: CustomField[];
-  lists: ContactList[];
+  lists: SubscriberList[];
   campaigns: Campaign[];
   depth?: number;
 }) {
@@ -75,15 +75,16 @@ function RuleEditor({
       <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
         <div className="flex gap-3 items-center">
           <span className="text-sm">Match</span>
-          <select
+          <SelectField
             aria-label="Group matching"
-            className={selectClass + " max-w-44"}
+            className={" max-w-44"}
             value={mode}
-            onChange={(e) => onChange({ [e.target.value]: group })}
-          >
-            <option value="all">All conditions</option>
-            <option value="any">Any condition</option>
-          </select>
+            onValueChange={(value) => onChange({ [value]: group })}
+            options={[
+              { value: "all", label: "All conditions" },
+              { value: "any", label: "Any condition" },
+            ]}
+          />
         </div>
         {group.map((child, i) => (
           <div key={i} className="flex gap-2 items-start">
@@ -182,87 +183,74 @@ function RuleEditor({
   return (
     <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-3">
       <Field label="Field">
-        <select
-          className={selectClass}
+        <SelectField
           value={field}
-          onChange={(e) => changeField(e.target.value)}
-        >
-          {[
-            ["email", "Email"],
-            ["name", "Name"],
-            ["status", "Subscriber status"],
-            ["created_at", "Created date (UTC)"],
-            ["gdpr_consent", "GDPR consent date (UTC)"],
-            ["list", "List membership"],
-            ["opened", "Opened campaign"],
-            ["clicked", "Clicked campaign"],
-            ["inactive", "Inactive for N campaigns"],
-          ].map(([v, l]) => (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          ))}
-          {fields
-            .filter((f) => f.is_filterable)
-            .map((f) => (
-              <option key={f.id} value={`fields.${f.key}`}>
-                {f.label} ({f.type})
-              </option>
-            ))}
-        </select>
+          onValueChange={(value) => changeField(value)}
+          options={[
+            ...[
+              ["email", "Email"],
+              ["name", "Name"],
+              ["status", "Subscriber status"],
+              ["created_at", "Created date (UTC)"],
+              ["gdpr_consent", "GDPR consent date (UTC)"],
+              ["list", "List membership"],
+              ["opened", "Opened campaign"],
+              ["clicked", "Clicked campaign"],
+              ["inactive", "Inactive for N campaigns"],
+            ].map(([v, l]) => ({ value: v, label: l })),
+            ...fields
+              .filter((f) => f.is_filterable)
+              .map((f) => ({
+                value: `fields.${f.key}`,
+                label: `${f.label} (${f.type})`,
+              })),
+          ]}
+        />
       </Field>
       <Field label="Operation">
-        <select
-          className={selectClass}
+        <SelectField
           value={rule.op || "eq"}
-          onChange={(e) => onChange({ ...rule, op: e.target.value })}
-        >
-          {ops.map((op) => (
-            <option key={op} value={op}>
-              {operations[op]}
-            </option>
-          ))}
-        </select>
+          onValueChange={(value) => onChange({ ...rule, op: value })}
+          options={ops.map((op) => ({ value: op, label: operations[op] }))}
+        />
       </Field>
       {!["is_set", "not_set"].includes(rule.op || "") && (
         <Field label={field === "inactive" ? "Campaigns" : "Value"}>
           {membership ? (
-            <select
-              className={selectClass}
+            <SelectField
               value={String(val)}
-              onChange={(e) => changeValue(e.target.value)}
-            >
-              <option value="">
-                Choose {field === "list" ? "list" : "campaign"}
-              </option>
-              {(field === "list"
-                ? lists.map((l) => ({ id: l.id, label: l.name }))
-                : campaigns.map((c) => ({ id: c.id, label: c.subject }))
-              ).map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => changeValue(value)}
+              options={[
+                {
+                  value: "",
+                  label: [
+                    "Choose",
+                    field === "list" ? "list" : "campaign",
+                  ].join(" "),
+                },
+                ...(field === "list"
+                  ? lists.map((l) => ({ id: l.id, label: l.name }))
+                  : campaigns.map((c) => ({ id: c.id, label: c.subject }))
+                ).map((v) => ({ value: String(v.id), label: v.label })),
+              ]}
+            />
           ) : field === "status" ? (
-            <select
-              className={selectClass}
+            <SelectField
               value={String(val)}
-              onChange={(e) => changeValue(e.target.value)}
-            >
-              {["active", "bounced", "complained", "blocklisted"].map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
+              onValueChange={(value) => changeValue(value)}
+              options={["active", "bounced", "complained", "blocklisted"].map(
+                (s) => ({ value: s, label: s }),
+              )}
+            />
           ) : type === "boolean" ? (
-            <select
-              className={selectClass}
+            <SelectField
               value={String(val)}
-              onChange={(e) => changeValue(e.target.value)}
-            >
-              <option value="true">True</option>
-              <option value="false">False</option>
-            </select>
+              onValueChange={(value) => changeValue(value)}
+              options={[
+                { value: "true", label: "True" },
+                { value: "false", label: "False" },
+              ]}
+            />
           ) : (
             <Input
               type={type === "number" ? "number" : date ? "date" : "text"}
@@ -317,25 +305,26 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
   }>({ key: "" });
   const [deleteRow, setDeleteRow] = useState<Segment | null>(null);
   const [localError, setLocalError] = useState<unknown>();
-  const action = useContactAction(brandId);
+  const action = useSubscriberAction(brandId);
   const segments = useQuery({
-    queryKey: ["contacts", brandId, "segments"],
+    queryKey: ["subscribers", brandId, "segments"],
     queryFn: ({ signal }) => allPages<Segment>("/segments", brandId, signal),
     enabled: brandId > 0,
   });
   const fields = useQuery({
-    queryKey: ["contacts", brandId, "fields"],
+    queryKey: ["subscribers", brandId, "fields"],
     queryFn: ({ signal }) =>
       api<CustomField[]>("/custom-fields", { brandId, signal }),
     enabled: brandId > 0,
   });
   const lists = useQuery({
-    queryKey: ["contacts", brandId, "lists"],
-    queryFn: ({ signal }) => allPages<ContactList>("/lists", brandId, signal),
+    queryKey: ["subscribers", brandId, "lists"],
+    queryFn: ({ signal }) =>
+      allPages<SubscriberList>("/lists", brandId, signal),
     enabled: brandId > 0,
   });
   const campaigns = useQuery({
-    queryKey: ["contacts", brandId, "segment-campaigns"],
+    queryKey: ["subscribers", brandId, "segment-campaigns"],
     queryFn: ({ signal }) => allPages<Campaign>("/campaigns", brandId, signal),
     enabled: brandId > 0,
   });
@@ -520,7 +509,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
         <div className="table-footer text-xs text-muted-foreground">
           {visibleSegments.length}{" "}
           {visibleSegments.length === 1 ? "segment" : "segments"} shown.
-          Matching contacts are counted when you edit a segment.
+          Matching subscribers are counted when you edit a segment.
         </div>
       </div>
       <Dialog
@@ -549,7 +538,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
             ) : preview.error ? (
               <ErrorMessage error={preview.error} />
             ) : (
-              `${preview.count?.toLocaleString()} matching contacts. Sending also applies subscriber status and suppression checks.`
+              `${preview.count?.toLocaleString()} matching subscribers. Sending also applies subscriber status and suppression checks.`
             )}
           </div>
           <ErrorMessage error={localError || action.error} />
@@ -591,7 +580,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
             <DialogTitle>Delete {deleteRow?.name}?</DialogTitle>
           </DialogHeader>
           <p className="text-sm">
-            This removes the saved segment. Contacts remain in the brand.
+            This removes the saved segment. Subscribers remain in the brand.
           </p>
           <ErrorMessage error={action.error} />
           <DialogFooter>

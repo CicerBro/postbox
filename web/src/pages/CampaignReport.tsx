@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, download } from "../lib/api";
+import { SelectField } from "../components/ui/select";
 import { Button } from "../components/ui/button";
 import {
   Download,
@@ -25,7 +26,6 @@ import {
   Campaign,
   ErrorMessage,
   number,
-  selectClass,
   tableClass,
 } from "./campaign-shared";
 
@@ -376,27 +376,27 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           </p>
           <label className="block max-w-xs text-sm">
             Delivery status
-            <select
-              className={selectClass}
+            <SelectField
+              aria-label="Delivery status"
+              className="mt-2"
               value={status}
-              onChange={(e) => {
-                setStatus(e.target.value);
+              onValueChange={(value) => {
+                setStatus(value);
                 setAfter(0);
                 setHistory([]);
               }}
-            >
-              <option value="">All outcomes</option>
-              {[
-                "pending",
-                "claimed",
-                "sent",
-                "failed",
-                "unknown",
-                "skipped",
-              ].map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "All outcomes" },
+                ...[
+                  "pending",
+                  "claimed",
+                  "sent",
+                  "failed",
+                  "unknown",
+                  "skipped",
+                ].map((value) => ({ value, label: value })),
+              ]}
+            />
           </label>
           <ErrorMessage error={recipients.error} />
           {recipients.isPending ? (
@@ -523,17 +523,21 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
               <polyline
                 points={points(key)}
                 fill="none"
-                stroke={["#4f46e5", "#10b981", "#f59e0b"][i]}
+                stroke={
+                  ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)"][i]
+                }
                 strokeWidth="2.5"
                 strokeDasharray={i === 1 ? "6 3" : i === 2 ? "2 3" : undefined}
-                opacity={1 - i * 0.2}
+                opacity="1"
               />
               {rows.length === 1 && (
                 <circle
                   cx="425"
                   cy={230 - (rows[0][key] / max) * 200}
                   r="3"
-                  fill={["#4f46e5", "#10b981", "#f59e0b"][i]}
+                  fill={
+                    ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)"][i]
+                  }
                 />
               )}
             </g>
@@ -552,12 +556,18 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
           </text>
         </svg>
       </div>
-      <div className="chart-legend flex flex-wrap items-center gap-5 text-xs text-muted-foreground">
+      <div className="activity-legend flex flex-wrap items-center gap-5 text-xs text-muted-foreground">
         {(["Deliveries", "Opens", "Clicks"] as const).map((label, i) => (
           <span key={label} className="flex items-center gap-2">
             <span
               className="h-2 w-2 rounded-full"
-              style={{ background: ["#4f46e5", "#10b981", "#f59e0b"][i] }}
+              style={{
+                background: [
+                  "var(--chart-1)",
+                  "var(--chart-2)",
+                  "var(--chart-3)",
+                ][i],
+              }}
             />
             {label}
           </span>

@@ -29,12 +29,12 @@ AWS implementation in same package, fake implementation and HTTP fake SES comman
 Token utility owned by renderer agent at `internal/tracking/token`: `Encode(secret []byte,campaignID,subscriberID int64) string`, `Decode(secret []byte,value string) (campaignID,subscriberID int64,err error)`.
 Tracking/event package agent owns `internal/tracking` excluding token and `internal/events`. Expose `New(db,*Config)`, `Handler` route registration or `Register(mux)` and lifecycle methods. Communicate exact API before API agent starts. Unsubscribes must persist immediately before HTTP success. SNS signature validation fail closed. No circular send import; database used for queue skip.
 
-## Jobs and contacts
+## Jobs and subscribers
 
-`internal/jobs`: durable generic handler registry, claim/lease/retry, import/webhook/retention/backup tasks. `internal/contacts`: normalization uses render.NormalizeEmail, streamed CSV, segment rules compile safely, filterable custom field expression indexes, subscriptions/mass erase, suppression, Sendy migration in separate internal/migrate agent.
+`internal/jobs`: durable generic handler registry, claim/lease/retry, import/webhook/retention/backup tasks. `internal/subscribers`: normalization uses render.NormalizeEmail, streamed CSV, segment rules compile safely, filterable custom field expression indexes, subscriptions/mass erase, suppression, Sendy migration in separate internal/migrate agent.
 
 ## HTTP and UI
 
-`internal/httpapi`: standard net/http routing, auth/TOTP/CSRF, brand API keys, handlers, OpenAPI. Receives DB and engine via constructor, registers contacts/events implementations as dependencies. `internal/web` embeds UI assets. Bun React/Tailwind v4/shadcn style/TanStack Query/CodeMirror. UI work starts after sender proof. CLI handles config flags/env, initialization, setup admin, service lifecycle, importer, loadtest.
+`internal/httpapi`: standard net/http routing, auth/TOTP/CSRF, brand API keys, handlers, OpenAPI. Receives DB and engine via constructor, registers subscribers/events implementations as dependencies. `internal/web` embeds UI assets. Bun React/Tailwind v4/shadcn style/TanStack Query/CodeMirror. UI work starts after sender proof. CLI handles config flags/env, initialization, setup admin, service lifecycle, importer, loadtest.
 
 Avoid fake success and unimplemented placeholder endpoints. Errors must be actionable and propagated. No em dashes in user replies.

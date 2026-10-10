@@ -61,7 +61,7 @@ func Handler() http.Handler {
 }
 func spaPath(p string) bool {
 	switch p {
-	case "/", "/login", "/overview", "/campaigns", "/campaigns/new", "/contacts", "/templates", "/segments", "/domains", "/api-keys", "/settings":
+	case "/", "/login", "/overview", "/campaigns", "/campaigns/new", "/subscribers", "/contacts", "/templates", "/segments", "/domains", "/api-keys", "/settings":
 		return true
 	}
 	parts := strings.Split(strings.Trim(p, "/"), "/")
