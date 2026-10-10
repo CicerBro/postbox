@@ -129,7 +129,7 @@ export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
               <div className="login-divider">Or continue securely</div>
               <Button
                 variant="outline"
-                className="w-full"
+                className="w-full login-passkey-button"
                 disabled={busy}
                 onClick={passkey}
               >

@@ -1019,6 +1019,14 @@
     color: var(--ink);
     box-shadow: none;
   }
+  :root:not(.dark) .button-ghost,
+  :root:not(.dark) .button.button-outline {
+    background: oklch(0.985 0 0);
+  }
+  :root:not(.dark) .button-ghost:hover,
+  :root:not(.dark) .button.button-outline:hover {
+    background: var(--secondary);
+  }
   .button-ghost[aria-current="page"] {
     background: var(--soft);
   }
@@ -1679,6 +1687,38 @@ select,
 @layer components {
   .button.settings-nav-button {
     justify-content: flex-start;
+  }
+}
+
+@layer components {
+  :root:not(.dark) .button.page-search,
+  :root:not(.dark) .button.login-passkey-button {
+    background: var(--card);
+    border-color: var(--border);
+    box-shadow: none;
+  }
+  :root:not(.dark) .button.page-search:hover,
+  :root:not(.dark) .button.login-passkey-button:hover {
+    background: var(--accent);
+  }
+  :root:not(.dark) .button.settings-nav-button,
+  :root:not(.dark) .button.desktop-toggle {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  :root:not(.dark) .button.settings-nav-button[aria-current="page"],
+  :root:not(.dark) .button.settings-nav-button:hover,
+  :root:not(.dark) .button.desktop-toggle:hover {
+    background: var(--accent);
+  }
+  :root:not(.dark) .theme-option {
+    background: transparent;
+    border: 0;
+  }
+  :root:not(.dark) .theme-option:hover,
+  :root:not(.dark) .theme-option[aria-pressed="true"] {
+    background: var(--accent);
   }
 }
 
