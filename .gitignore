@@ -1,4 +1,5 @@
 /bin/
+/dist/
 /data/
 /node_modules/
 /web/node_modules/

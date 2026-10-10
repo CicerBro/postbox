@@ -1,0 +1,26 @@
+name: Checks
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: oven-sh/setup-bun@v2
+      - name: Build embedded frontend
+        working-directory: web
+        run: bun install --frozen-lockfile && bun run build
+      - name: Test and vet
+        run: go test -race ./... && go vet ./...
+      - name: Verify CGO-free deployment
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+        run: |
+          GOARCH=amd64 go build -trimpath -o bin/postbox-linux-amd64 ./cmd/postbox
+          GOARCH=arm64 go build -trimpath -o bin/postbox-linux-arm64 ./cmd/postbox

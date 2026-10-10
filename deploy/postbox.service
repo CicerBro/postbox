@@ -1,0 +1,32 @@
+[Unit]
+Description=Postbox newsletter service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=postbox
+Group=postbox
+WorkingDirectory=/var/lib/postbox
+EnvironmentFile=/etc/postbox/postbox.env
+ExecStart=/usr/local/bin/postbox serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=75
+KillSignal=SIGTERM
+UMask=0077
+StateDirectory=postbox
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/postbox
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
