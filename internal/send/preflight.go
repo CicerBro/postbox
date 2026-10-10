@@ -95,16 +95,17 @@ func (e *Engine) Checklist(ctx context.Context, id int64, opts PreflightOptions)
 	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) `+audience, args...).Scan(&out.Recipients); err != nil {
 		return out, err
 	}
-	// Remove only the engine's eligibility filters, retaining the exact include
-	// and exclude predicates, to count people skipped in the selected audience.
-	selected := strings.Split(audience, ` AND NOT EXISTS(SELECT 1 FROM suppressions`)[0]
-	selected = strings.Replace(selected, ` AND s.status='active'`, "", 1)
-	activeSelected := selected + ` AND s.status='active'`
-	var active int64
-	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) `+activeSelected, args...).Scan(&active); err != nil {
+	// Build the same selected targets without eligibility filters for counts.
+	selected, selectedArgs, err := e.audienceQuery(ctx, c, false)
+	if err != nil {
 		return out, err
 	}
-	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) `+selected+` AND s.status<>'active'`, args...).Scan(&out.Checks.Inactive); err != nil {
+	activeSelected := selected + ` AND s.status='active'`
+	var active int64
+	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) `+activeSelected, selectedArgs...).Scan(&active); err != nil {
+		return out, err
+	}
+	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) `+selected+` AND s.status<>'active'`, selectedArgs...).Scan(&out.Checks.Inactive); err != nil {
 		return out, err
 	}
 	out.Checks.Suppressed = active - out.Recipients

@@ -109,8 +109,7 @@ func (a *API) passkeyAvailable(w http.ResponseWriter, r *http.Request) bool {
 		fail(w, 403, errors.New("invalid request origin"))
 		return false
 	}
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if !a.allow("passkey:"+host, 20) {
+	if !a.allow(a.rateKey(r, "passkey", true), 20) {
 		fail(w, 429, errors.New("too many authentication attempts"))
 		return false
 	}
@@ -124,7 +123,7 @@ func (a *API) passkeyStepUp(w http.ResponseWriter, r *http.Request, password, co
 		fail(w, 403, errors.New("session authentication required"))
 		return nil, false
 	}
-	if !a.allow("passkey-stepup:"+string(digest(r.RemoteAddr)), 10) {
+	if !a.allow(a.rateKey(r, "passkey-stepup", true), 10) {
 		fail(w, 429, errors.New("too many authentication attempts"))
 		return nil, false
 	}
@@ -389,7 +388,8 @@ func (a *API) finishPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, errors.New("invalid credentials"))
 		return
 	}
-	token, csrf := secret(), secret()
+	token := secret()
+	csrf := sessionCSRF(token)
 	expires := time.Now().Add(a.cfg.SessionTTL)
 	var id int64
 	err = a.db.Immediate(r.Context(), func(c *sql.Conn) error {

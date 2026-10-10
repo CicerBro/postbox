@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"postbox/internal/csvexport"
 	"postbox/internal/render"
 	"strconv"
 	"strings"
 )
 
 // Mapping maps CSV header names to email, name, status, or fields.KEY.
+// Each destination may appear once. Mapped fields.KEY columns override the
+// JSON fields object, regardless of their position in the CSV header.
 type ImportOptions struct {
 	BrandID   int64             `json:"brand_id"`
 	ListIDs   []int64           `json:"list_ids"`
@@ -30,6 +33,9 @@ type ImportResult struct {
 	Preview  []UpsertInput `json:"preview,omitempty"`
 }
 
+// ImportCSV commits each full batch independently. A later read or database
+// error returns the committed count and discards the pending batch. Invalid
+// records are skipped, with at most 20 errors and preview records retained.
 func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOptions) (ImportResult, error) {
 	var result ImportResult
 	if opt.BatchSize <= 0 || opt.BatchSize > 20000 {
@@ -43,6 +49,7 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOpt
 	}
 	mapping := make([]string, len(header))
 	hasEmail := false
+	destinations := make(map[string]bool)
 	for i, h := range header {
 		dest := opt.Mapping[h]
 		if len(opt.Mapping) == 0 {
@@ -58,6 +65,12 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOpt
 		}
 		if dest != "" && dest != "email" && dest != "name" && dest != "status" && dest != "fields" && dest != "gdpr_consent_at" && (!strings.HasPrefix(dest, "fields.") || !fieldKey.MatchString(strings.TrimPrefix(dest, "fields."))) {
 			return result, fmt.Errorf("invalid mapping %q", dest)
+		}
+		if dest != "" {
+			if destinations[dest] {
+				return result, fmt.Errorf("duplicate CSV mapping %q", dest)
+			}
+			destinations[dest] = true
 		}
 		mapping[i] = dest
 	}
@@ -110,6 +123,10 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOpt
 		}
 		result.Rows++
 		if err != nil {
+			var parseErr *csv.ParseError
+			if !errors.As(err, &parseErr) {
+				return result, fmt.Errorf("read CSV row %d: %w", result.Rows+1, err)
+			}
 			result.Invalid++
 			if len(result.Errors) < 20 {
 				result.Errors = append(result.Errors, fmt.Sprintf("row %d: %v", result.Rows+1, err))
@@ -118,6 +135,8 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOpt
 		}
 		in := UpsertInput{BrandID: opt.BrandID, ListIDs: opt.ListIDs, Fields: map[string]any{}, SuppressNotifications: true}
 		validFields := true
+		fieldError := "invalid mapped field value"
+		mappedFields := map[string]any{}
 		for i, v := range record {
 			switch mapping[i] {
 			case "email":
@@ -127,8 +146,16 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOpt
 			case "status":
 				in.Status = v
 			case "fields":
-				if e := json.Unmarshal([]byte(v), &in.Fields); e != nil {
+				// Decode separately so null cannot clear the writable map, and
+				// JSON never replaces values from explicit field columns.
+				var fields map[string]any
+				if e := json.Unmarshal([]byte(v), &fields); e != nil {
 					validFields = false
+					fieldError = "fields must be a JSON object or null: " + e.Error()
+				} else {
+					for key, value := range fields {
+						in.Fields[key] = value
+					}
 				}
 			case "gdpr_consent_at":
 				if v != "" {
@@ -167,8 +194,11 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOpt
 						value = nil
 					}
 				}
-				in.Fields[key] = value
+				mappedFields[key] = value
 			}
+		}
+		for key, value := range mappedFields {
+			in.Fields[key] = value
 		}
 		if in.Status == "unsubscribed" || in.Status == "unconfirmed" {
 			in.SubscriptionStatus = in.Status
@@ -178,7 +208,11 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOpt
 		if !validFields || e != nil || (in.Status != "" && in.Status != "active" && in.Status != "bounced" && in.Status != "complained" && in.Status != "blocklisted") {
 			result.Invalid++
 			if len(result.Errors) < 20 {
-				result.Errors = append(result.Errors, fmt.Sprintf("row %d: invalid email or status", result.Rows+1))
+				reason := "invalid email or status"
+				if !validFields {
+					reason = fieldError
+				}
+				result.Errors = append(result.Errors, fmt.Sprintf("row %d: %s", result.Rows+1, reason))
 			}
 			continue
 		}
@@ -202,7 +236,7 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOpt
 	return result, e
 }
 func (s *Service) ExportCSV(ctx context.Context, w io.Writer, brandID, listID int64) error {
-	writer := csv.NewWriter(w)
+	writer := csvexport.NewWriter(w)
 	if e := writer.Write([]string{"email", "name", "status", "fields", "created_at", "gdpr_consent_at"}); e != nil {
 		return e
 	}

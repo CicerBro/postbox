@@ -201,6 +201,25 @@ func TestPasskeyCryptographicRegistrationAndLogin(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("login: %d %s", w.Code, w.Body.String())
 	}
+	var loggedIn LoginResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &loggedIn); err != nil {
+		t.Fatal(err)
+	}
+	var loginCookie *http.Cookie
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == "postbox_session" {
+			loginCookie = cookie
+		}
+	}
+	if loginCookie == nil {
+		t.Fatal("missing passkey login session cookie")
+	}
+	if loggedIn.CSRFToken != readSessionCSRF(t, m, loginCookie) {
+		t.Fatal("passkey login token changed on session read")
+	}
+	if saved := request(m, "POST", "/api/v1/brands", `{"name":"Passkey session","from_email":"from@example.org"}`, loginCookie, loggedIn.CSRFToken); saved.Code != 200 {
+		t.Fatal("passkey CSRF write rejected", saved.Code, saved.Body.String())
+	}
 	var raw string
 	if err = db.Reader.QueryRow(`SELECT credential FROM passkeys`).Scan(&raw); err != nil {
 		t.Fatal(err)

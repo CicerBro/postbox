@@ -400,6 +400,14 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 				return e
 			}
 		}
+		if id == 0 {
+			if _, e = conn.ExecContext(r.Context(), `UPDATE subscribers SET marketing_unsubscribed_at=coalesce(marketing_unsubscribed_at,?),updated_at=? WHERE id=? AND brand_id=?`, at, at, u, brand); e != nil {
+				return e
+			}
+			if _, e = conn.ExecContext(r.Context(), `DELETE FROM subscription_confirmations WHERE subscriber_id=?`, u); e != nil {
+				return e
+			}
+		}
 		if e = events.UnsubscribeMembershipsTx(r.Context(), conn, u, id, at, "unsubscribe"); e != nil {
 			return e
 		}
@@ -454,38 +462,18 @@ func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "list required", 400)
 		return
 	}
-	e = s.db.Immediate(r.Context(), func(c *sql.Conn) error {
-		var brand int64
-		var email, opt, previous string
-		if err := c.QueryRowContext(r.Context(), `SELECT s.brand_id,s.email,l.opt_in,ls.status FROM subscribers s JOIN lists l ON l.brand_id=s.brand_id JOIN list_subscribers ls ON ls.list_id=l.id AND ls.subscriber_id=s.id WHERE s.id=? AND l.id=? AND s.status='active' AND NOT EXISTS(SELECT 1 FROM suppressions WHERE (brand_id IS NULL OR brand_id=s.brand_id) AND ((kind='email' AND value=s.email) OR (kind='domain' AND value=s.domain)))`, u, id).Scan(&brand, &email, &opt, &previous); err != nil {
-			return err
+	var brand int64
+	var email string
+	e = s.db.Reader.QueryRowContext(r.Context(), `SELECT s.brand_id,s.email FROM subscribers s JOIN list_subscribers ls ON ls.subscriber_id=s.id JOIN lists l ON l.id=ls.list_id AND l.brand_id=s.brand_id WHERE s.id=? AND l.id=? AND s.status='active' AND NOT EXISTS(SELECT 1 FROM suppressions p WHERE (p.brand_id IS NULL OR p.brand_id=s.brand_id) AND ((p.kind='email' AND p.value=s.email) OR (p.kind='domain' AND p.value=s.domain)))`, u, id).Scan(&brand, &email)
+	if e == nil {
+		service := subscribers.New(s.db)
+		service.SetBaseURL(s.cfg.BaseURL)
+		var profile subscribers.Subscriber
+		profile, e = service.GetByEmail(r.Context(), brand, email)
+		if e == nil {
+			_, e = service.Upsert(r.Context(), subscribers.UpsertInput{BrandID: brand, Email: email, Name: profile.Name, Fields: profile.Fields, ListIDs: []int64{id}, Resubscribe: true, Consent: true})
 		}
-		if previous == "subscribed" {
-			return nil
-		}
-		next := "subscribed"
-		if opt == "double" {
-			next = "unconfirmed"
-		}
-		at := time.Now().UnixMilli()
-		if _, err := c.ExecContext(r.Context(), `UPDATE list_subscribers SET status=?,updated_at=? WHERE list_id=? AND subscriber_id=?`, next, at, id, u); err != nil {
-			return err
-		}
-		if next == "unconfirmed" {
-			confirmation, err := subscribers.CreateConfirmationTx(r.Context(), c, id, u)
-			if err != nil {
-				return err
-			}
-			return subscribers.EnqueueConfirmationTx(r.Context(), c, brand, id, u, confirmation, s.cfg.BaseURL)
-		}
-		if _, err := c.ExecContext(r.Context(), `INSERT INTO list_counters(list_id,active,subscribed) VALUES(?,1,1) ON CONFLICT(list_id) DO UPDATE SET active=active+1,subscribed=subscribed+1`, id); err != nil {
-			return err
-		}
-		if _, err := c.ExecContext(r.Context(), `INSERT INTO list_daily_stats(list_id,day,active,subscribed) SELECT ?,?,active,1 FROM list_counters WHERE list_id=? ON CONFLICT(list_id,day) DO UPDATE SET active=excluded.active,subscribed=subscribed+1`, id, at/86400000*86400000, id); err != nil {
-			return err
-		}
-		return jobs.EmitTx(r.Context(), c, brand, "subscribe", map[string]any{"subscriber_id": u, "list_id": id, "email": email})
-	})
+	}
 	if e != nil {
 		http.Error(w, "re-subscription unavailable", 400)
 		return

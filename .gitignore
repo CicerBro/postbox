@@ -13,3 +13,6 @@
 *.log
 /coverage.out
 /profiles/
+
+/web/test-results/
+/web/playwright-report/

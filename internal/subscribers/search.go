@@ -55,7 +55,7 @@ func subscriberSearchQuery(brandID, afterID int64, limit int, f SearchFilter) (s
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
-	columns := "s.id,s.brand_id,s.email,s.name,s.fields,s.status,s.gdpr_consent_at,coalesce(s.gdpr_consent_ip,''),s.created_at,s.updated_at"
+	columns := "s.id,s.brand_id,s.email,s.name,s.fields,s.status,s.gdpr_consent_at,coalesce(s.gdpr_consent_ip,''),s.created_at,s.updated_at,s.marketing_unsubscribed_at"
 	from := "subscribers s INDEXED BY subscribers_brand_id"
 	if f.EmailPrefix != "" {
 		// Pin the binary email range index: ordering by ID must not turn a
@@ -80,6 +80,13 @@ func subscriberSearchQuery(brandID, afterID int64, limit int, f SearchFilter) (s
 		// Use the last row's sort value and ID together so duplicate values never
 		// skip or repeat recipients. The cursor lookup stays inside the brand.
 		value := strings.ReplaceAll(sortValue, "s.", "")
+		if sortColumn == "gdpr_consent_at" {
+			// SQLite does not derive an expression-index range from the row
+			// comparison below. Supply the inclusive first-key bound explicitly;
+			// the tuple still handles equal consent values and the ID tie breaker.
+			q += " AND " + sortValue + " " + comparison + "= (SELECT " + value + " FROM subscribers WHERE brand_id=? AND id=?)"
+			args = append(args, brandID, afterID)
+		}
 		q += " AND (" + sortValue + ",s.id) " + comparison + " (SELECT " + value + ",id FROM subscribers WHERE brand_id=? AND id=?)"
 		args = append(args, brandID, afterID)
 	}

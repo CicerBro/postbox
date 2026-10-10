@@ -437,6 +437,9 @@ func (e *Engine) prepare(ctx context.Context, id int64, persist bool) (campaign,
 	return c, err
 }
 func (e *Engine) audienceSQL(ctx context.Context, c campaign) (string, []any, error) {
+	return e.audienceQuery(ctx, c, true)
+}
+func (e *Engine) audienceQuery(ctx context.Context, c campaign, eligible bool) (string, []any, error) {
 	rows, err := e.db.Reader.QueryContext(ctx, `SELECT target_type,target_id,mode FROM campaign_targets WHERE campaign_id=?`, c.id)
 	if err != nil {
 		return "", nil, err
@@ -455,10 +458,13 @@ func (e *Engine) audienceSQL(ctx context.Context, c campaign) (string, []any, er
 	if err != nil {
 		return "", nil, err
 	}
-	return e.audienceTargetsSQL(ctx, c.brand, targets)
+	return e.audienceTargetsQuery(ctx, c.brand, targets, eligible)
 }
 
 func (e *Engine) audienceTargetsSQL(ctx context.Context, brandID int64, targets []AudienceTarget) (string, []any, error) {
+	return e.audienceTargetsQuery(ctx, brandID, targets, true)
+}
+func (e *Engine) audienceTargetsQuery(ctx context.Context, brandID int64, targets []AudienceTarget, eligible bool) (string, []any, error) {
 	var err error
 	var includes, excludes []string
 	var incArgs, excArgs []any
@@ -506,14 +512,16 @@ func (e *Engine) audienceTargetsSQL(ctx context.Context, brandID int64, targets 
 	if len(includes) == 0 {
 		return "", nil, errors.New("campaign has no included lists or segments")
 	}
-	query := `FROM subscribers s WHERE s.brand_id=? AND s.status='active' AND (` + strings.Join(includes, " OR ") + `)`
+	query := `FROM subscribers s WHERE s.brand_id=? AND (` + strings.Join(includes, " OR ") + `)`
 	args := []any{brandID}
 	args = append(args, incArgs...)
 	if len(excludes) > 0 {
 		query += ` AND NOT (` + strings.Join(excludes, " OR ") + `)`
 		args = append(args, excArgs...)
 	}
-	query += ` AND NOT EXISTS(SELECT 1 FROM suppressions x WHERE x.kind='email' AND x.value=s.email AND (x.brand_id=s.brand_id OR x.brand_id IS NULL)) AND NOT EXISTS(SELECT 1 FROM suppressions x WHERE x.kind='domain' AND x.value=s.domain AND (x.brand_id=s.brand_id OR x.brand_id IS NULL))`
+	if eligible {
+		query += ` AND ` + subscribers.MarketingEligibilitySQL
+	}
 	return query, args, nil
 }
 func (e *Engine) snapshot(ctx context.Context, c campaign) error {

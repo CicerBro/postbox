@@ -43,6 +43,9 @@ type Report struct {
 	WithinTwoPercent  bool         `json:"within_two_percent"`
 	Database          string       `json:"database"`
 	Metrics           send.Metrics `json:"metrics"`
+	Synchronous       int          `json:"sqlite_synchronous"`
+	FullFSync         int          `json:"sqlite_fullfsync"`
+	BackgroundWrites  int64        `json:"background_writes"`
 }
 
 func seed(ctx context.Context, db *store.DB, n, size int) error {
@@ -104,6 +107,7 @@ func main() {
 	maxWorkers := flag.Int("workers", 1024, "concurrency cap")
 	cpuProfile := flag.String("cpu-profile", "", "optional send-phase CPU profile path")
 	heapProfile := flag.String("heap-profile", "", "optional completed live heap profile path")
+	writeInterval := flag.Duration("background-write-interval", 0, "optional concurrent settings commit interval, e.g. 10ms")
 	flag.Parse()
 	if *n < 1 || *rate <= 0 {
 		log.Fatal("recipients and rate must be positive")
@@ -183,11 +187,35 @@ func main() {
 		defer f.Close()
 	}
 	start := time.Now()
+	var backgroundWrites atomic.Int64
+	writerDone := make(chan struct{})
+	if *writeInterval > 0 {
+		go func() {
+			defer close(writerDone)
+			ticker := time.NewTicker(*writeInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-sampleCtx.Done():
+					return
+				case <-ticker.C:
+					if err := db.SetSetting(sampleCtx, "loadtest_background_writer", fmt.Sprint(backgroundWrites.Load())); err == nil {
+						backgroundWrites.Add(1)
+					} else if sampleCtx.Err() == nil {
+						log.Fatal(err)
+					}
+				}
+			}
+		}()
+	} else {
+		close(writerDone)
+	}
 	if err = engine.RunCampaign(ctx, 1); err != nil {
 		log.Fatal(err)
 	}
 	duration := time.Since(start).Seconds()
 	stopSample()
+	<-writerDone
 	after, rss := cpuUsage()
 	if *cpuProfile != "" {
 		pprof.StopCPUProfile()
@@ -213,7 +241,14 @@ func main() {
 		}
 	}
 	achieved := float64(m.Sent) / duration
-	report := Report{*n, *rate, achieved, duration, *size, peak.Load(), rss, after - before, (after - before) / duration * 100, fake.Accepted.Load(), duplicates, fake.MaxWindow, achieved >= *rate*.98 && achieved <= *rate*1.02, *path, m}
+	var synchronous, fullfsync int
+	if err = db.Writer.QueryRow("PRAGMA synchronous").Scan(&synchronous); err != nil {
+		log.Fatal(err)
+	}
+	if err = db.Writer.QueryRow("PRAGMA fullfsync").Scan(&fullfsync); err != nil {
+		log.Fatal(err)
+	}
+	report := Report{*n, *rate, achieved, duration, *size, peak.Load(), rss, after - before, (after - before) / duration * 100, fake.Accepted.Load(), duplicates, fake.MaxWindow, achieved >= *rate*.98 && achieved <= *rate*1.02, *path, m, synchronous, fullfsync, backgroundWrites.Load()}
 	data, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		log.Fatal(err)

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -23,6 +24,42 @@ func testDB(t *testing.T) *DB {
 	})
 	return db
 }
+
+// synchronous is connection-local. Retiring a connection must retain the
+// configured WAL mode, including after rollback or cancellation.
+func TestReplacementWriterKeepsConfiguredSync(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if err := db.Immediate(ctx, func(c *sql.Conn) error {
+			var mode, fullfsync int
+			if err := c.QueryRowContext(ctx, "PRAGMA synchronous").Scan(&mode); err != nil {
+				return err
+			}
+			if mode != 1 {
+				return fmt.Errorf("reservation connection synchronous=%d, want NORMAL (1)", mode)
+			}
+			if err := c.QueryRowContext(ctx, "PRAGMA fullfsync").Scan(&fullfsync); err != nil {
+				return err
+			}
+			if fullfsync != 0 {
+				return fmt.Errorf("reservation connection fullfsync=%d, want OFF (0)", fullfsync)
+			}
+			_, err := c.ExecContext(ctx, "INSERT INTO settings(key,value) VALUES('durability','normal') ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		c, err := db.Writer.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Raw(func(any) error { return driver.ErrBadConn }); !errors.Is(err, driver.ErrBadConn) {
+			t.Fatal(err)
+		}
+		c.Close()
+	}
+}
 func TestConnectionsAndTransactions(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
@@ -33,7 +70,7 @@ func TestConnectionsAndTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for p, want := range map[string]string{"journal_mode": "wal", "synchronous": "1", "foreign_keys": "1", "busy_timeout": "5000", "temp_store": "2", "cache_size": "-65536", "mmap_size": "268435456", "query_only": "0"} {
+	for p, want := range map[string]string{"journal_mode": "wal", "synchronous": "1", "fullfsync": "0", "foreign_keys": "1", "busy_timeout": "5000", "temp_store": "2", "cache_size": "-65536", "mmap_size": "268435456", "query_only": "0"} {
 		var got string
 		if err := writer.QueryRowContext(ctx, "PRAGMA "+p).Scan(&got); err != nil {
 			t.Fatal(err)
@@ -52,7 +89,7 @@ func TestConnectionsAndTransactions(t *testing.T) {
 		connections = append(connections, c)
 	}
 	for _, c := range connections {
-		for p, want := range map[string]string{"journal_mode": "wal", "synchronous": "1", "foreign_keys": "1", "busy_timeout": "5000", "temp_store": "2", "cache_size": "-65536", "mmap_size": "268435456", "query_only": "1"} {
+		for p, want := range map[string]string{"journal_mode": "wal", "synchronous": "1", "fullfsync": "0", "foreign_keys": "1", "busy_timeout": "5000", "temp_store": "2", "cache_size": "-65536", "mmap_size": "268435456", "query_only": "1"} {
 			var got string
 			if err := c.QueryRowContext(ctx, "PRAGMA "+p).Scan(&got); err != nil {
 				t.Fatal(err)

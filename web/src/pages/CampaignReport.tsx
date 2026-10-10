@@ -1,3 +1,4 @@
+import { onSessionExpired } from "../lib/session-lifecycle";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -131,9 +132,14 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     };
     source.addEventListener("stats", listener);
     source.onopen = () => setStream("Live updates connected");
-    source.onerror = () =>
-      setStream("Live updates reconnecting. Reports refresh automatically.");
-    return () => source.close();
+    source.onerror = () => {
+      source.close();
+      setStream("Live updates disconnected. Reports refresh automatically.");
+      // EventSource hides HTTP status. An authenticated request identifies expiry.
+      void api(`/campaigns/${id}/report`, { brandId }).catch(() => {});
+    };
+    const stop = onSessionExpired(() => source.close());
+    return () => { stop(); source.close(); };
   }, [brandId, id, client, valid]);
   async function exportCSV() {
     setExporting(true);

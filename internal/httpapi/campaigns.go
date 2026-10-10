@@ -3,12 +3,12 @@ package httpapi
 import (
 	"context"
 	"database/sql"
-	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"net/http"
+	"postbox/internal/csvexport"
 	"postbox/internal/send"
 	"strconv"
 	"strings"
@@ -427,7 +427,7 @@ func (a *API) report(w http.ResponseWriter, r *http.Request) {
 func (a *API) exportRecipients(w http.ResponseWriter, r *http.Request, id int64) {
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", "attachment; filename=recipients.csv")
-	cw := csv.NewWriter(w)
+	cw := csvexport.NewWriter(w)
 	_ = cw.Write([]string{"subscriber_id", "email", "status", "message_id", "error", "sent_at"})
 	after := int64(0)
 	for {

@@ -31,17 +31,18 @@ type List struct {
 	CreatedAt int64  `json:"created_at"`
 }
 type Subscriber struct {
-	ID                 int64            `json:"id"`
-	BrandID            int64            `json:"brand_id"`
-	Email              string           `json:"email"`
-	Name               string           `json:"name"`
-	Fields             map[string]any   `json:"fields"`
-	Status             string           `json:"status"`
-	ConsentAt          *int64           `json:"gdpr_consent_at,omitempty"`
-	ConsentIP          string           `json:"gdpr_consent_ip,omitempty"`
-	CreatedAt          int64            `json:"created_at"`
-	UpdatedAt          int64            `json:"updated_at"`
-	ConfirmationTokens map[int64]string `json:"confirmation_tokens,omitempty"`
+	ID                      int64            `json:"id"`
+	BrandID                 int64            `json:"brand_id"`
+	Email                   string           `json:"email"`
+	Name                    string           `json:"name"`
+	Fields                  map[string]any   `json:"fields"`
+	Status                  string           `json:"status"`
+	ConsentAt               *int64           `json:"gdpr_consent_at,omitempty"`
+	MarketingUnsubscribedAt *int64           `json:"marketing_unsubscribed_at,omitempty"`
+	ConsentIP               string           `json:"gdpr_consent_ip,omitempty"`
+	CreatedAt               int64            `json:"created_at"`
+	UpdatedAt               int64            `json:"updated_at"`
+	ConfirmationTokens      map[int64]string `json:"confirmation_tokens,omitempty"`
 }
 type UpsertInput struct {
 	SubscriptionStatus    string         `json:"subscription_status,omitempty"`

@@ -27,6 +27,10 @@ type DB struct {
 
 // Open creates a single writer and an independent, read-only connection pool.
 // URI pragmas apply on creation of every physical connection, including replacements.
+// WAL NORMAL preserves committed reservations across application-process crashes.
+// It does not guarantee a committed reservation survives a host crash or power
+// loss. That tradeoff is deliberate for campaign throughput; see the performance
+// profile. fullfsync is disabled because it is Apple-specific and costly there.
 func Open(path string) (*DB, error) {
 	if path == "" {
 		return nil, errors.New("SQLite path is empty")
@@ -40,7 +44,7 @@ func Open(path string) (*DB, error) {
 	}
 	u := url.URL{Scheme: "file", Path: abs}
 	q := u.Query()
-	for _, p := range []string{"journal_mode(WAL)", "synchronous(NORMAL)", "foreign_keys(ON)", "busy_timeout(5000)", "temp_store(MEMORY)", "cache_size(-65536)", "mmap_size(268435456)"} {
+	for _, p := range []string{"journal_mode(WAL)", "synchronous(NORMAL)", "fullfsync(OFF)", "foreign_keys(ON)", "busy_timeout(5000)", "temp_store(MEMORY)", "cache_size(-65536)", "mmap_size(268435456)"} {
 		q.Add("_pragma", p)
 	}
 	u.RawQuery = q.Encode()

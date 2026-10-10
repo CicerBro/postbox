@@ -209,7 +209,7 @@ func TestProductionHotQueryPlans(t *testing.T) {
 		{"message_id", "../events/events.go", "process", "SELECT cr.campaign_id,cr.subscriber_id FROM campaign_recipients cr JOIN campaigns", []any{"msg41", 1, 1}, nil},
 		{"email", "../subscribers/service.go", "GetByEmail", "SELECT ", []any{1, "person41@example.test"}, nil},
 		{"subscribers_page", "../subscribers/service.go", "Search", "SELECT ", []any{1, 40, 100}, nil},
-		{"memberships", "../httpapi/subscribers.go", "subscribers", "SELECT ls.*", []any{1, 41}, nil},
+		{"memberships", "../httpapi/subscribers.go", "subscribers", "SELECT ls.list_id", []any{1, 41}, nil},
 		{"recipient_export", "../httpapi/campaigns.go", "exportRecipients", "SELECT subscriber_id,snapshot_email", []any{1, 40}, nil},
 		{"campaign_stats", "../httpapi/campaigns.go", "report", "SELECT * FROM campaign_stats", []any{1}, nil},
 		{"link_rollups", "../httpapi/campaigns.go", "report", "SELECT l.id,l.url", []any{1}, nil},

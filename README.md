@@ -4,17 +4,22 @@ Postbox is a self-hosted newsletter service built around SES v2 and SQLite. The 
 
 ## Build and test
 
-Install Go matching `go.mod` and Bun. Build frontend assets before the binary:
+Install Go 1.27.2 or a newer supported security patch matching `go.mod`, and Bun 1.4.3. CI reads the Go version from `go.mod`; the Docker build uses Go 1.27.2. Build frontend assets before the binary:
 
 ```sh
 make build
 make test
 make race
+make security
 make bench
 make release
 ```
 
 `make release` produces CGO-free Linux amd64 and arm64 binaries. Frontend source is in `web`; `bun install --frozen-lockfile` and `bun run build` are the supported frontend commands. Never use npm, yarn or pnpm.
+
+Frontend API response types are generated from Go JSON response structs. After changing those structs, run `go run ./cmd/contractgen`; CI verifies the generated types are current with `go run ./cmd/contractgen -check` before building the frontend.
+
+`make security` runs `govulncheck` v1.8.0 against Go source and its build toolchain, then `bun audit` against every frontend lockfile dependency, including development tools. CI runs the same checks and fails on reachable Go vulnerabilities, any frontend advisory, or a scanner request error. Both checks require network access and leave dependency files unchanged. Run them before a release and after dependency or toolchain updates. When upgrading Go, update `go.mod` and the Dockerfile together and rebuild deployed binaries to include standard-library fixes. Go 1.27.2 includes the October 8, 2026 [security fixes](https://go.dev/doc/devel/release#go1.27.2) for TLS, HTTP, textproto, templates, OS support and the Go command.
 
 ## First run
 
@@ -158,9 +163,13 @@ The service logs structured JSON via `slog`. `/healthz` checks database availabi
 
 Passkeys provide passwordless login with required WebAuthn user verification. The authenticator may verify the user with a device PIN or biometrics, depending on the device. Adding or removing a passkey requires the signed-in user to confirm their password and, when enabled, their existing TOTP code. Removing a passkey revokes all of that user's sessions and pending passkey ceremonies. Passkey login creates the same protected session with CSRF protection. API credentials are brand-scoped and hashed.
 
+CSRF tokens remain stable for the lifetime of a session, including across browser tabs, reloads, and server restarts. Each password or passkey login creates a new session and token; logout, expiry, and session revocation invalidate writes using that session. The token is derived with SHA-256 and a domain prefix from the random 256-bit session cookie, and SQLite stores only the session and CSRF hashes. Migration `015_stable_session_csrf.sql` revokes pre-upgrade sessions once because their previous random CSRF tokens cannot be recovered from hashes. Users must sign in again after this upgrade.
+
 On SIGTERM the app stops claiming campaign recipients, drains in-flight delivery and batched results, stops jobs and SQS polling, drains tracking writes and runs `PRAGMA optimize`. Allow at least 75 seconds in the supervisor. After a crash, claimed recipients become `unknown` and cannot be resent. SES event reconciliation can confirm their outcomes later.
 
-Production campaign delivery uses at-most-once dispatch whenever SES acceptance is uncertain. Explicitly requested test sends are the deliberate exception: they use a `[Test]` subject prefix and deduplicate normalized addresses within each test request. Timeouts, dropped connections, EOF, server faults and interrupted attempts stay `unknown` permanently until an SES event confirms acceptance. There is no manual resend or retry override for unknown recipients; `--recovery-policy=retry` and `POSTBOX_AMBIGUOUS_POLICY=retry` are rejected. Only definitive nonacceptance, such as throttling or failure to establish a connection, permits bounded retries. A durable campaign ledger keyed by a normalized email HMAC blocks a second potentially accepted dispatch across resume, competing workers, email changes and subscriber erasure/recreation. The ledger contains no recipient address and survives subscriber deletion; its separate secret belongs to the database and must stay with backups. SES cannot guarantee exactly-once delivery, so this policy can omit an email when the first request actually failed but its outcome cannot be proven.
+Unsubscribe from all records a brand-wide marketing opt-out. It blocks list and segment campaigns at audience selection and before dispatch, including resumed campaigns. A one-list unsubscribe only changes that membership. Profile edits, imports and ordinary list additions cannot clear a brand opt-out. Explicit resubscription requires fresh consent and a list choice, and double opt-in lists remain ineligible until confirmation. Delivery suppressions still take precedence; confirmation email is a consent request, not a marketing campaign. Migration `014_brand_marketing_consent.sql` infers explicit historical unsubscribe-all events. Older events with empty details could mean one list or all lists, so it conservatively marks them opted out when no membership remains active and no later subscribe event exists. Review those records after upgrade and obtain fresh consent before restoring eligibility.
+
+Production campaign delivery uses at-most-once dispatch whenever SES acceptance is uncertain. Explicitly requested test sends are the deliberate exception: they use a `[Test]` subject prefix and deduplicate normalized addresses within each test request. Timeouts, dropped connections, EOF, server faults and interrupted attempts stay `unknown` permanently until an SES event confirms acceptance. There is no manual resend or retry override for unknown recipients; `--recovery-policy=retry` and `POSTBOX_AMBIGUOUS_POLICY=retry` are rejected. Only definitive nonacceptance, such as throttling or failure to establish a connection, permits bounded retries. A campaign ledger keyed by a normalized email HMAC blocks a second potentially accepted dispatch across resume, competing workers, email changes and subscriber erasure/recreation. The ledger contains no recipient address and survives subscriber deletion; its separate secret belongs to the database and must stay with backups. WAL `synchronous=NORMAL` preserves the ledger across application-process crashes, but a host crash or power loss can lose a committed reservation and permit a duplicate. SES cannot guarantee exactly-once delivery, so this policy can omit an email when the first request actually failed but its outcome cannot be proven. See [sender performance and durability](docs/performance-profile.md).
 
 Maintenance purges raw tracking/SES history in bounded batches, retains aggregates, refreshes reporting rollups, removes old unconfirmed subscriptions and schedules daily online backups. Tune raw retention using `POSTBOX_RETENTION_DAYS`; backups use `POSTBOX_BACKUP_DIR`.
 
@@ -197,5 +206,7 @@ go run ./cmd/fakeses --listen 127.0.0.1:9001 --rate 175 --throttle-every 50 --se
 ```
 
 Set `POSTBOX_NOTIFICATION_FROM` to a verified sender and `POSTBOX_NOTIFICATION_TO` to comma-separated admin addresses to receive campaign start/finish notifications. These durable email jobs share the account limiter and sending switch. Double opt-in confirmations and optional goodbye messages use the same transactional email queue. CSV job payload files are private basenames under the database directory’s `jobs` subdirectory; imports stream and exports create mode-0600 files.
+
+All CSV downloads, including subscriber export jobs and campaign recipient exports, use spreadsheet-safe cells. Values whose first non-whitespace, non-control, non-format character is `=`, `+`, `-`, or `@` (including their fullwidth forms) receive a leading apostrophe. CSV quoting still preserves commas, quotes, line breaks, and Unicode. The database and JSON API retain the original values. These CSV downloads are not lossless machine backups: reimporting them retains the safety apostrophe as data, because an importer cannot distinguish an added escape from an original apostrophe. Use the JSON API or database backups when exact values must roundtrip; there is no raw CSV download mode.
 
 The raw HTML editor is authoritative. Email templates remain full documents including their head, styles and MSO comments. Review WYSIWYG conversions as a source diff to check that the email markup is preserved.

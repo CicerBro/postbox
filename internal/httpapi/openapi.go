@@ -58,11 +58,11 @@ func (a *API) documentRoute(pattern string) {
 		op["responses"].(map[string]any)["200"] = map[string]any{"description": "SSE stream; stats event emitted once per second until disconnect", "content": map[string]any{"text/event-stream": map[string]any{"schema": map[string]any{"type": "string"}}}}
 	}
 	if strings.HasSuffix(path, "/export") {
-		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Streamed keyset CSV export", "content": map[string]any{"text/csv": map[string]any{"schema": map[string]any{"type": "string"}}}}
+		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Streamed keyset spreadsheet-safe CSV export. Formula prefixes (=, +, -, @ and fullwidth forms) after leading whitespace, controls or Unicode format characters receive an apostrophe. Reimports retain this apostrophe as data; use JSON or database backups for exact machine roundtrips. No raw CSV mode is exposed.", "content": map[string]any{"text/csv": map[string]any{"schema": map[string]any{"type": "string"}}}}
 	}
 	if strings.Contains(path, "/import") {
 		op["requestBody"] = map[string]any{"required": true, "content": map[string]any{"text/csv": map[string]any{"schema": map[string]any{"type": "string"}}}}
-		op["description"] = "Streams CSV in bounded transactions. Query options is JSON ImportOptions (mapping, list_ids, batch_size); preview performs no writes."
+		op["description"] = "Streams CSV in bounded transactions. Query options is JSON ImportOptions (mapping, list_ids, batch_size); preview performs no writes. The fields column accepts a JSON object or null (treated as empty); mapped fields.KEY columns override object keys regardless of column order. Invalid rows are reported with row numbers. Earlier committed batches remain if a later read or database batch fails; the pending batch is discarded."
 	}
 	if strings.HasPrefix(path, "/subscribe/") && method == "POST" {
 		op["requestBody"] = map[string]any{"required": true, "content": map[string]any{"application/x-www-form-urlencoded": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"email", "consent"}, "properties": map[string]any{"email": map[string]any{"type": "string", "format": "email"}, "name": map[string]any{"type": "string"}, "website": map[string]any{"type": "string", "description": "Honeypot, leave empty"}, "consent": map[string]any{"type": "string"}, "cf-turnstile-response": map[string]any{"type": "string"}}}}}}

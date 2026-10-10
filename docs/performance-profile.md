@@ -1,5 +1,10 @@
 # Sender profiling and pacing
 
+The historical runs below used WAL `synchronous=NORMAL`. They prove sender
+behavior and process interruption recovery for that configuration. They do not
+prove host or power interruption durability. The current configuration and
+comparable measurements are at the end of this document.
+
 The sender keeps the SES account quota as its token refill rate. Its burst is
 `min(max(1, floor(rate)), max(5, ceil(rate * 0.020)))`, allowing a bounded 20ms
 catch-up after a scheduler delay, with the existing five-token minimum. At 175 messages/s the allowance remains five
@@ -133,3 +138,86 @@ and throughput results reflect concurrent machine load. The fixture observed
 191 completions in its busiest wall-clock second; as with the 1,000/s run, this
 is a completion bucket affected by request latency and jitter, not the dispatch
 start rate.
+
+## Reservation ordering, sync choice and current throughput
+
+SQLite connections use WAL `synchronous=NORMAL` and `fullfsync=OFF` through
+URI connection initialization. Both the single writer and every replacement
+physical connection receive those settings before any transaction begins.
+Settings are never changed inside a transaction. NORMAL preserves committed
+transactions across an application-process crash, but a host crash or power
+failure can lose recent committed transactions. A lost dispatch reservation
+could permit a duplicate send after restart. This setting prioritizes delivery
+throughput over host-crash durability. `fullfsync` requests an Apple-specific stronger
+disk-cache flush and does not add a ZFS feature on Linux. See
+[SQLite's synchronous documentation](https://www.sqlite.org/pragma.html#pragma_synchronous)
+and [fullfsync documentation](https://www.sqlite.org/pragma.html#pragma_fullfsync).
+
+Campaign `beginAttempt` commits the attempt journal and dispatch ledger before
+calling `Sender.Send`. Transactional and notification jobs commit the running
+lease before invoking the handler, which may contact SES. Completion follows
+external acceptance in a separate transaction. An interrupted campaign attempt
+stays started or becomes unknown; interrupted mail jobs become failed with an
+unknown-delivery explanation. Neither can be automatically dispatched again.
+Existing campaign retry guards and the email job terminal-state rules remain
+in force. Do not manually reset unknown reservations or replay their payloads:
+SES may already have accepted them. A new request after an administrative reset
+cannot establish non-delivery.
+
+Tests verify NORMAL and fullfsync OFF on live pooled connections and forced writer
+replacements, independently observable committed campaign journals at fake send
+entry, and no send after an injected reservation-write failure. Separate
+campaign and transactional child-process tests interrupt execution after fake
+acceptance and before completion, reopen the database, and verify recovery does
+not resend. Those tests simulate a process crash, not a host crash or loss of
+power. They cannot establish host or power-loss durability. External deletion,
+restoration of an older database and bypassing reservation APIs can also lose
+the at-most-once guarantee. No real mail was sent in these tests or measurements.
+
+The load fixture now accepts `-background-write-interval`; a 10ms setting-update
+worker competes for the same serialized writer with attempt reservations,
+claim batches and completion batches. The reported background write count is
+successful commits, not the requested frequency, since the writer can be busy.
+Reports include effective `sqlite_synchronous` and `sqlite_fullfsync` values.
+Reproduce a representative run with:
+
+```sh
+go build -o /tmp/postbox-load ./cmd/loadtest
+/tmp/postbox-load -recipients 10000 -rate 300 \
+  -background-write-interval 10ms \
+  -output /tmp/postbox-normal-300.json
+```
+
+These runs use 100KB HTML, 100ms base fake HTTP SES latency plus 0-50ms
+jitter, real AWS SDK serialization, and concurrent setting commits on a
+development Mac. They include snapshot preparation and final persistence. They
+do not predict throughput on Linux ZFS, which needs its own measurement.
+
+| Configuration | Recipients | Configured rate | Complete rate | Duration | Writer p99 | Background commits | Accepted / sent | Duplicate / failed / unknown |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| FULL, fullfsync ON | 2,000 | 175/s | 50.39/s | 39.692s | 5,814ms | 64 | 2,000 / 2,000 | 0 / 0 / 0 |
+| FULL, fullfsync ON | 2,000 | 1,000/s | 54.73/s | 36.541s | 7,090ms | 35 | 2,000 / 2,000 | 0 / 0 / 0 |
+| FULL, fullfsync OFF | 10,000 | 300/s | 297.79/s | 33.580s | 10ms | 3,326 | 10,000 / 10,000 | 0 / 0 / 0 |
+| FULL, fullfsync OFF | 10,000 | 1,000/s | 977.19/s | 10.233s | 25ms | 982 | 10,000 / 10,000 | 0 / 0 / 0 |
+| NORMAL, fullfsync OFF | 10,000 | 300/s | 297.84/s | 33.575s | 12ms | 3,346 | 10,000 / 10,000 | 0 / 0 / 0 |
+| NORMAL, fullfsync OFF | 10,000 | 1,000/s | 965.14/s | 10.361s | 242ms | 970 | 10,000 / 10,000 | 0 / 0 / 0 |
+
+The 300/s NORMAL run met its configured rate within 2%. The 1,000/s NORMAL
+run reached 965/s over the full campaign and 989/s during requests; the total
+rate includes fixed setup and final persistence. FULL without fullfsync also
+cleared 250/s on this Mac. The much slower earlier FULL-only run below shows
+substantial run-to-run variation, so the table is evidence for this fixture,
+not a guarantee of a Linux ZFS deployment. Measure that host before capacity
+planning. Current NORMAL reports: [300/s](performance/normal-300-10000.json)
+and [1,000/s](performance/normal-1000-10000.json). Comparison reports:
+[FULL without fullfsync at 300/s](performance/full-no-fullfsync-300-10000.json),
+[FULL without fullfsync at 1,000/s](performance/full-no-fullfsync-1000-10000.json),
+[FULL with fullfsync at 175/s](performance/fullfsync-175-2000.json) and
+[FULL with fullfsync at 1,000/s](performance/fullfsync-1000-2000.json).
+
+An earlier FULL-only 10,000-recipient run, before enabling fullfsync,
+achieved 159.72/s at configured 1,000/s in 62.608s. Its writer p99 was 7,407ms,
+background commits 59, and all 10,000 were accepted/sent with zero duplicates,
+failures or unknowns. The difference from the later FULL-only run was not
+isolated, so these results should not be attributed solely to the sync pragma.
+[Intermediate report](performance/full-without-fullfsync-1000-10000.json).

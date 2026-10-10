@@ -1,13 +1,6 @@
 import { createContext, useContext } from "react";
-export interface Session {
-  user_id: number;
-  admin: boolean;
-  csrf_token: string;
-  totp_enabled: boolean;
-  passkeys_enabled: boolean;
-  passkeys_available: boolean;
-  passkey_count: number;
-}
+import type { SessionResponse } from "./generated-contracts";
+export type Session = SessionResponse;
 export interface Brand {
   id: number;
   name: string;

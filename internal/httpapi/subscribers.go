@@ -1,13 +1,38 @@
 package httpapi
 
 import (
-	"database/sql"
 	"errors"
 	"net/http"
 	"postbox/internal/subscribers"
 	"strconv"
 	"strings"
 )
+
+type subscriberMembershipResponse struct {
+	ListID       int64  `json:"list_id"`
+	SubscriberID int64  `json:"subscriber_id"`
+	Status       string `json:"status"`
+	CreatedAt    int64  `json:"created_at"`
+	UpdatedAt    int64  `json:"updated_at"`
+}
+
+// Preserve the detail endpoint's established array and raw fields JSON shape
+// while selecting its columns explicitly instead of coupling it to SELECT *.
+type subscriberDetailResponse struct {
+	ID                      int64   `json:"id"`
+	BrandID                 int64   `json:"brand_id"`
+	Email                   string  `json:"email"`
+	Domain                  string  `json:"domain"`
+	Name                    string  `json:"name"`
+	Fields                  string  `json:"fields"`
+	Status                  string  `json:"status"`
+	SoftBounceCount         int64   `json:"soft_bounce_count"`
+	ConsentAt               *int64  `json:"gdpr_consent_at"`
+	ConsentIP               *string `json:"gdpr_consent_ip"`
+	CreatedAt               int64   `json:"created_at"`
+	UpdatedAt               int64   `json:"updated_at"`
+	MarketingUnsubscribedAt *int64  `json:"marketing_unsubscribed_at"`
+}
 
 func (a *API) registerSubscribers(m *http.ServeMux) {
 	a.route(m, "GET /api/v1/lists/{id}/settings", a.listSettings)
@@ -99,7 +124,7 @@ func (a *API) subscribers(w http.ResponseWriter, r *http.Request) {
 			if membership.Status == "unsubscribed" {
 				e = s.Unsubscribe(r.Context(), brand, id, membership.ListID)
 			} else if membership.Status == "subscribed" {
-				_, e = s.Upsert(r.Context(), subscribers.UpsertInput{BrandID: brand, Email: v.Email, Name: v.Name, Fields: v.Fields, ListIDs: []int64{membership.ListID}, Resubscribe: true})
+				_, e = s.Upsert(r.Context(), subscribers.UpsertInput{BrandID: brand, Email: v.Email, Name: v.Name, Fields: v.Fields, ListIDs: []int64{membership.ListID}, Resubscribe: v.MarketingUnsubscribedAt == nil})
 			} else {
 				e = errors.New("membership status must be subscribed or unsubscribed")
 			}
@@ -157,15 +182,32 @@ func (a *API) subscribers(w http.ResponseWriter, r *http.Request) {
 			}
 			v, e := s.SearchFiltered(r.Context(), brand, after, limit, filter)
 			result(w, v, e)
+		} else if strings.HasSuffix(r.URL.Path, "/memberships") {
+			_, e := s.GetByID(r.Context(), brand, id)
+			if e != nil {
+				result(w, nil, e)
+				return
+			}
+			rows, e := a.db.Reader.QueryContext(r.Context(), "SELECT ls.list_id,ls.subscriber_id,ls.status,ls.created_at,ls.updated_at FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE s.brand_id=? AND s.id=? ORDER BY ls.list_id", brand, id)
+			if e != nil {
+				result(w, nil, e)
+				return
+			}
+			defer rows.Close()
+			out := []subscriberMembershipResponse{}
+			for rows.Next() {
+				var member subscriberMembershipResponse
+				if e = rows.Scan(&member.ListID, &member.SubscriberID, &member.Status, &member.CreatedAt, &member.UpdatedAt); e != nil {
+					result(w, nil, e)
+					return
+				}
+				out = append(out, member)
+			}
+			result(w, out, rows.Err())
 		} else {
-			v, e := queryRows(r.Context(), a.db.Reader, "SELECT * FROM subscribers WHERE brand_id=? AND id=?", brand, id)
-			if e == nil && len(v) == 0 {
-				e = sql.ErrNoRows
-			}
-			if e == nil && r.PathValue("id") != "" && strings.HasSuffix(r.URL.Path, "/memberships") {
-				v, e = queryRows(r.Context(), a.db.Reader, "SELECT ls.* FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE s.brand_id=? AND s.id=?", brand, id)
-			}
-			result(w, v, e)
+			var v subscriberDetailResponse
+			e := a.db.Reader.QueryRowContext(r.Context(), `SELECT id,brand_id,email,domain,name,fields,status,soft_bounce_count,gdpr_consent_at,gdpr_consent_ip,created_at,updated_at,marketing_unsubscribed_at FROM subscribers WHERE brand_id=? AND id=?`, brand, id).Scan(&v.ID, &v.BrandID, &v.Email, &v.Domain, &v.Name, &v.Fields, &v.Status, &v.SoftBounceCount, &v.ConsentAt, &v.ConsentIP, &v.CreatedAt, &v.UpdatedAt, &v.MarketingUnsubscribedAt)
+			result(w, []subscriberDetailResponse{v}, e)
 		}
 		return
 	}

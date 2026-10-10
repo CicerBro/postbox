@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
@@ -10,13 +11,32 @@ import (
 	"fmt"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/argon2"
-	"net"
 	"net/http"
 	"postbox/internal/store"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
+
+type SessionResponse struct {
+	UserID            int64  `json:"user_id"`
+	Admin             bool   `json:"admin"`
+	CSRFToken         string `json:"csrf_token"`
+	TOTPEnabled       bool   `json:"totp_enabled"`
+	PasskeysEnabled   bool   `json:"passkeys_enabled"`
+	PasskeysAvailable bool   `json:"passkeys_available"`
+	PasskeyCount      int    `json:"passkey_count"`
+}
+
+type LoginResponse struct {
+	UserID    int64  `json:"user_id"`
+	CSRFToken string `json:"csrf_token"`
+	ExpiresAt int64  `json:"expires_at"`
+}
+
+type LogoutResponse struct {
+	LoggedOut bool `json:"logged_out"`
+}
 
 func equal(a, b []byte) bool { return len(a) > 0 && subtle.ConstantTimeCompare(a, b) == 1 }
 func HashPassword(password string) (string, error) {
@@ -65,8 +85,7 @@ func CreateAdmin(ctx context.Context, db *store.DB, email, password, totpSecret 
 	})
 }
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if !a.allow("login:"+host, 10) {
+	if !a.allow(a.rateKey(r, "login", false), 10) {
 		fail(w, 429, errors.New("too many login attempts"))
 		return
 	}
@@ -82,7 +101,8 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, errors.New("invalid credentials"))
 		return
 	}
-	token, csrf := secret(), secret()
+	token := secret()
+	csrf := sessionCSRF(token)
 	expires := time.Now().Add(a.cfg.SessionTTL)
 	err = a.db.Immediate(r.Context(), func(c *sql.Conn) error {
 		return insertSession(r.Context(), c, id, token, csrf, expires)
@@ -99,20 +119,16 @@ func (a *API) session(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, errors.New("session authentication required"))
 		return
 	}
-	csrf := secret()
 	cookie, _ := r.Cookie("postbox_session")
-	_, err := a.db.Writer.ExecContext(r.Context(), "UPDATE sessions SET csrf_hash=? WHERE token_hash=?", digest(csrf), digest(cookie.Value))
-	if err != nil {
-		fail(w, 500, err)
-		return
-	}
+	csrf := sessionCSRF(cookie.Value)
 	var otp bool
 	var count int
-	if err = a.db.Reader.QueryRowContext(r.Context(), `SELECT totp_secret IS NOT NULL,(SELECT count(*) FROM passkeys WHERE user_id=users.id) FROM users WHERE id=?`, i.UserID).Scan(&otp, &count); err != nil {
+	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT totp_secret IS NOT NULL,(SELECT count(*) FROM passkeys WHERE user_id=users.id) FROM users WHERE id=?`, i.UserID).Scan(&otp, &count); err != nil {
 		fail(w, 500, err)
 		return
 	}
-	respond(w, 200, map[string]any{"user_id": i.UserID, "admin": i.Admin, "csrf_token": csrf, "totp_enabled": otp, "passkeys_enabled": count > 0, "passkeys_available": a.passkeys != nil, "passkey_count": count})
+	w.Header().Set("Cache-Control", "no-store")
+	respond(w, 200, SessionResponse{UserID: i.UserID, Admin: i.Admin, CSRFToken: csrf, TOTPEnabled: otp, PasskeysEnabled: count > 0, PasskeysAvailable: a.passkeys != nil, PasskeyCount: count})
 }
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie("postbox_session")
@@ -122,7 +138,15 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = a.db.Writer.ExecContext(r.Context(), "DELETE FROM sessions WHERE token_hash=?", digest(c.Value))
 	http.SetCookie(w, &http.Cookie{Name: "postbox_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: a.cfg.SecureCookies, SameSite: http.SameSiteStrictMode})
-	result(w, map[string]bool{"logged_out": true}, err)
+	result(w, LogoutResponse{LoggedOut: true}, err)
+}
+
+// sessionCSRF derives an independent token from the high entropy session secret.
+// The domain prefix separates it from the stored session hash. Reads in other
+// tabs or API restarts return the same token, and a new session rotates it.
+func sessionCSRF(token string) string {
+	value := sha256.Sum256([]byte("postbox:session-csrf:v1:" + token))
+	return base64.RawURLEncoding.EncodeToString(value[:])
 }
 
 func insertSession(ctx context.Context, c *sql.Conn, id int64, token, csrf string, expires time.Time) error {
@@ -131,5 +155,6 @@ func insertSession(ctx context.Context, c *sql.Conn, id int64, token, csrf strin
 }
 func (a *API) sessionResponse(w http.ResponseWriter, id int64, token, csrf string, expires time.Time) {
 	http.SetCookie(w, &http.Cookie{Name: "postbox_session", Value: token, Path: "/", HttpOnly: true, Secure: a.cfg.SecureCookies, SameSite: http.SameSiteStrictMode, Expires: expires})
-	respond(w, 200, map[string]any{"user_id": id, "csrf_token": csrf, "expires_at": expires.UnixMilli()})
+	w.Header().Set("Cache-Control", "no-store")
+	respond(w, 200, LoginResponse{UserID: id, CSRFToken: csrf, ExpiresAt: expires.UnixMilli()})
 }

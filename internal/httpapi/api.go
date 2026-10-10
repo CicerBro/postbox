@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,19 +25,21 @@ import (
 )
 
 type Config struct {
+	TrustedProxies                             []netip.Prefix
 	AWSProvider                                *awsbrand.Provider
 	SecureCookies                              bool
 	SessionTTL                                 time.Duration
 	BaseURL, TurnstileSecret, TurnstileSiteKey string
 }
 type API struct {
-	passkeys *webauthn.WebAuthn
-	db       *store.DB
-	engine   *send.Engine
-	cfg      Config
-	mu       sync.Mutex
-	limits   map[string]*bucket
-	paths    map[string]any
+	passkeys         *webauthn.WebAuthn
+	db               *store.DB
+	engine           *send.Engine
+	cfg              Config
+	mu               sync.Mutex
+	limits           map[string]*bucket
+	nextLimitCleanup time.Time
+	paths            map[string]any
 }
 type bucket struct {
 	n     int
@@ -124,28 +127,6 @@ func page(r *http.Request) (int64, int) {
 		n = 100
 	}
 	return number(r.URL.Query().Get("after")), int(n)
-}
-func (a *API) allow(key string, max int) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	now := time.Now()
-	b := a.limits[key]
-	if b == nil || now.After(b.until) {
-		b = &bucket{until: now.Add(time.Minute)}
-		a.limits[key] = b
-	}
-	if b.n >= max {
-		return false
-	}
-	b.n++
-	if len(a.limits) > 10000 {
-		for k, v := range a.limits {
-			if now.After(v.until) {
-				delete(a.limits, k)
-			}
-		}
-	}
-	return true
 }
 func (a *API) brandID(r *http.Request) (int64, error) {
 	id := number(r.URL.Query().Get("brand_id"))

@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense, type FormEvent } from "react";
+import { useEffect, useState, useRef, lazy, Suspense, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Routes,
@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { api, ApiError, setCsrfToken } from "./lib/api";
+import { beginSession, expireSession, onSessionExpired, discardSessionDrafts } from "./lib/session-lifecycle";
 import { AppContext, type Brand, type Session } from "./lib/app-context";
 import { useThemePreference } from "./lib/theme";
 import { Button } from "./components/ui/button";
@@ -52,7 +53,7 @@ const CampaignsPage = lazy(() =>
   import("./pages/Campaigns").then((m) => ({ default: m.CampaignsPage })),
 );
 const CampaignDetailPage = lazy(() =>
-  import("./pages/Campaigns").then((m) => ({ default: m.CampaignDetailPage })),
+  import("./pages/CampaignDetail").then((m) => ({ default: m.CampaignDetailPage })),
 );
 const CampaignReportPage = lazy(() =>
   import("./pages/CampaignReport").then((m) => ({
@@ -90,6 +91,27 @@ const navigation = [
 export default function App() {
   const client = useQueryClient();
   const navigate = useNavigate();
+  const [expired, setExpired] = useState(false);
+  const identity = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const stop = onSessionExpired(() => {
+      setCsrfToken("");
+      setExpired(true);
+      setNewBrand(false);
+      setMobile(false);
+      setSearchOpen(false);
+      void client.cancelQueries();
+      client.clear();
+    });
+    const changed = (event: StorageEvent) => {
+      if (event.key === "postbox-auth-change") {
+        expireSession();
+        if (event.newValue?.startsWith("logout:")) discardSessionDrafts();
+      }
+    };
+    window.addEventListener("storage", changed);
+    return () => { stop(); window.removeEventListener("storage", changed); };
+  }, [client]);
   const [selected, setSelected] = useState(() =>
     Number(localStorage.getItem("postbox-brand") || 0),
   );
@@ -125,23 +147,36 @@ export default function App() {
   const session = useQuery({
     queryKey: ["session"],
     queryFn: async () => {
-      const s = await api<Session>("/auth/session");
+      let s: Session;
+      try { s = await api<Session>("/auth/session"); }
+      catch (error) {
+        if (identity.current !== undefined && error instanceof ApiError && error.status === 401) expireSession();
+        throw error;
+      }
+      if (identity.current !== undefined && identity.current !== s.user_id) {
+        expireSession();
+        throw new Error("Your account changed. Sign in to continue.");
+      }
+      identity.current = s.user_id;
+      beginSession(s.user_id);
       setCsrfToken(s.csrf_token);
       return s;
     },
     retry: false,
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
+    enabled: !expired,
+    staleTime: 30000,
+    refetchInterval: expired ? false : 60000,
+    refetchOnWindowFocus: true,
   });
   const brands = useQuery({
     queryKey: ["brands"],
     queryFn: ({ signal }) => api<Brand[]>("/brands?limit=500", { signal }),
-    enabled: !!session.data,
+    enabled: !expired && !!session.data,
   });
   const sending = useQuery({
     queryKey: ["sending"],
     queryFn: () => api<{ enabled: boolean }>("/sending"),
-    enabled: !!session.data?.admin,
+    enabled: !expired && !!session.data?.admin,
     refetchInterval: 10000,
   });
   const changeSending = useMutation({
@@ -161,8 +196,9 @@ export default function App() {
     try {
       await api("/auth/logout", { method: "POST" });
     } finally {
-      setCsrfToken("");
-      client.clear();
+      expireSession();
+      discardSessionDrafts();
+      localStorage.setItem("postbox-auth-change", `logout:${crypto.randomUUID()}`);
       navigate("/");
     }
   }
@@ -187,16 +223,16 @@ export default function App() {
       setBrandError((e as Error).message);
     }
   }
-  if (session.isPending)
+  if (!expired && session.isPending)
     return (
       <main className="loading-screen" role="status">
         Loading Postbox…
       </main>
     );
-  if (!session.data) {
+  if (expired || !session.data) {
     if (
-      session.error instanceof ApiError &&
-      ![401, 403].includes(session.error.status)
+      !expired && session.error &&
+      (!(session.error instanceof ApiError) || session.error.status !== 401)
     )
       return (
         <main className="loading-screen">
@@ -206,8 +242,17 @@ export default function App() {
       );
     return (
       <Login
+        expired={expired}
         onLogin={async () => {
-          await client.invalidateQueries({ queryKey: ["session"] });
+          identity.current = undefined;
+          const fresh = await api<Session>("/auth/session");
+          beginSession(fresh.user_id);
+          identity.current = fresh.user_id;
+          setCsrfToken(fresh.csrf_token);
+          client.clear();
+          client.setQueryData(["session"], fresh);
+          setExpired(false);
+          localStorage.setItem("postbox-auth-change", `login:${crypto.randomUUID()}`);
         }}
       />
     );
@@ -616,7 +661,7 @@ export default function App() {
               </div>
             ) : (
               <Suspense fallback={<p role="status">Loading page…</p>}>
-                <Routes>
+                <Routes key={`${session.data.user_id}:${brandId}`}>
                   <Route
                     path="/settings"
                     element={<SettingsPage brandId={brandId} />}

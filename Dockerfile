@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
-ARG GO_VERSION=1.27.1
-ARG BUN_VERSION=1.4.2
+ARG GO_VERSION=1.27.2
+ARG BUN_VERSION=1.4.3
 
 FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION} AS frontend
 WORKDIR /src/web

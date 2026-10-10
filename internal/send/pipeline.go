@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"postbox/internal/render"
+	"postbox/internal/subscribers"
 	"postbox/internal/tracking/token"
 )
 
@@ -89,6 +90,7 @@ func (e *Engine) claim(ctx context.Context, id, last int64) ([]recipient, error)
 }
 
 // beginAttempt atomically checks current consent and records the uncertainty boundary.
+// Immediate returns only after the FULL WAL commit, before any external dispatch.
 func (e *Engine) beginAttempt(ctx context.Context, c campaign, r recipient, attempt int) (bool, error) {
 	started := false
 	err := e.db.Immediate(ctx, func(conn *sql.Conn) error {
@@ -106,7 +108,7 @@ func (e *Engine) beginAttempt(ctx context.Context, c campaign, r recipient, atte
 			args = append(args, r.ID)
 			err = conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 `+c.audience+` AND s.id=?)`, args...).Scan(&valid)
 		} else {
-			err = conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subscribers WHERE id=? AND status='active')`, r.ID).Scan(&valid)
+			err = conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subscribers s WHERE s.brand_id=? AND s.id=? AND `+subscribers.MarketingEligibilitySQL+`)`, c.brand, r.ID).Scan(&valid)
 		}
 		if err != nil {
 			return err
@@ -361,50 +363,9 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 	}
 	e.runMu.Lock()
 	defer e.runMu.Unlock()
-	if e.cfg.RecoveryPolicy != "unknown" {
-		return errors.New("recovery retry is prohibited")
-	}
-	if !e.enabled.Load() {
-		return errors.New("global sending is disabled")
-	}
-	if len(e.cfg.TokenSecret) < 16 {
-		return errors.New("tracking token secret must contain at least 16 bytes")
-	}
-	c, err := e.prepare(ctx, id, true)
+	c, err := e.prepareCampaignRun(ctx, id)
 	if err != nil {
 		return err
-	}
-	if c.status == "sent" || c.status == "cancelled" || c.status == "paused" {
-		return fmt.Errorf("campaign is %s", c.status)
-	}
-	if err = e.snapshot(ctx, c); err != nil {
-		return err
-	}
-	c.audience, c.audienceArgs, err = e.audienceSQL(ctx, c)
-	if err != nil {
-		return err
-	}
-	c.delivery, err = e.resolveBrand(ctx, c.brand)
-	if err != nil {
-		return err
-	}
-	q, err := c.delivery.sender.GetAccount(ctx)
-	if err != nil {
-		return err
-	}
-	if err = c.delivery.setQuota(q); err != nil {
-		return err
-	}
-	c.delivery.syncCampaignRate()
-	var remaining int64
-	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) FROM campaign_recipients WHERE campaign_id=? AND status='pending'`, id).Scan(&remaining); err != nil {
-		return err
-	}
-	if err = ReserveUserCampaign(ctx, e.db, id, remaining); err != nil {
-		return err
-	}
-	if float64(remaining) > q.Max24HourSend-q.SentLast24Hours {
-		return errors.New("campaign exceeds remaining SES daily quota; schedule later or split recipients")
 	}
 	claimCtx, stop := context.WithCancel(ctx)
 	defer stop()
@@ -412,82 +373,13 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 	e.running[id] = stop
 	e.mu.Unlock()
 	defer func() { e.mu.Lock(); delete(e.running, id); e.mu.Unlock() }()
-	err = e.db.Immediate(claimCtx, func(conn *sql.Conn) error {
-		if !e.enabled.Load() {
-			return errNotSending
-		}
-		var enabled string
-		err := conn.QueryRowContext(claimCtx, `SELECT value FROM settings WHERE key='sending_enabled'`).Scan(&enabled)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if enabled == "false" {
-			return errNotSending
-		}
-		res, err := conn.ExecContext(claimCtx, `UPDATE campaigns SET status='sending',started_at=coalesce(started_at,?),updated_at=? WHERE id=? AND status IN ('draft','scheduled','preparing','sending')`, time.Now().UnixMilli(), time.Now().UnixMilli(), id)
-		if err != nil {
-			return err
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return errNotSending
-		}
-		return e.emitLifecycleTx(claimCtx, conn, id, "campaign_started")
-	})
-	if err != nil {
+	if err := e.activateCampaignRun(claimCtx, id); err != nil {
 		return err
 	}
 
 	jobs := make(chan recipient, e.cfg.ClaimBatch)
 	results := make(chan result, e.cfg.ResultBatch)
-	writerDone := make(chan error, 1)
-	go func() {
-		t := time.NewTicker(e.cfg.FlushInterval)
-		defer t.Stop()
-		batch := make([]result, 0, e.cfg.ResultBatch)
-		var firstErr error
-		flush := func() {
-			if len(batch) == 0 || firstErr != nil {
-				return
-			}
-			var writeErr error
-			for attempt := 0; attempt < 8; attempt++ {
-				writeErr = e.writeResults(context.Background(), id, batch)
-				if writeErr == nil {
-					break
-				}
-				stop()
-				_ = waitBackoff(context.Background(), min(attempt, 3))
-			}
-			if writeErr != nil {
-				if firstErr == nil {
-					firstErr = writeErr
-				}
-				return
-			}
-			batch = batch[:0]
-		}
-		for {
-			select {
-			case r, ok := <-results:
-				if !ok {
-					firstErr = nil
-					flush()
-					writerDone <- firstErr
-					return
-				}
-				batch = append(batch, r)
-				if len(batch) >= e.cfg.ResultBatch {
-					flush()
-				}
-			case <-t.C:
-				flush()
-			}
-		}
-	}()
+	writerDone := e.startResultWriter(id, results, stop)
 	var workers sync.WaitGroup
 	var busy atomic.Int64
 	capacityChanged := make(chan struct{}, 1)
@@ -603,4 +495,135 @@ claimLoop:
 		return nil
 	}
 	return e.finishCampaign(context.Background(), id)
+}
+
+// prepareCampaignRun owns validation, snapshot creation and quota reservation.
+// Callers hold runMu so these stages cannot race another local campaign run.
+func (e *Engine) prepareCampaignRun(ctx context.Context, id int64) (campaign, error) {
+	if e.cfg.RecoveryPolicy != "unknown" {
+		return campaign{}, errors.New("recovery retry is prohibited")
+	}
+	if !e.enabled.Load() {
+		return campaign{}, errors.New("global sending is disabled")
+	}
+	if len(e.cfg.TokenSecret) < 16 {
+		return campaign{}, errors.New("tracking token secret must contain at least 16 bytes")
+	}
+	c, err := e.prepare(ctx, id, true)
+	if err != nil {
+		return campaign{}, err
+	}
+	if c.status == "sent" || c.status == "cancelled" || c.status == "paused" {
+		return campaign{}, fmt.Errorf("campaign is %s", c.status)
+	}
+	if err = e.snapshot(ctx, c); err != nil {
+		return campaign{}, err
+	}
+	c.audience, c.audienceArgs, err = e.audienceSQL(ctx, c)
+	if err != nil {
+		return campaign{}, err
+	}
+	c.delivery, err = e.resolveBrand(ctx, c.brand)
+	if err != nil {
+		return campaign{}, err
+	}
+	q, err := c.delivery.sender.GetAccount(ctx)
+	if err != nil {
+		return campaign{}, err
+	}
+	if err = c.delivery.setQuota(q); err != nil {
+		return campaign{}, err
+	}
+	c.delivery.syncCampaignRate()
+	var remaining int64
+	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) FROM campaign_recipients WHERE campaign_id=? AND status='pending'`, id).Scan(&remaining); err != nil {
+		return campaign{}, err
+	}
+	if err = ReserveUserCampaign(ctx, e.db, id, remaining); err != nil {
+		return campaign{}, err
+	}
+	if float64(remaining) > q.Max24HourSend-q.SentLast24Hours {
+		return campaign{}, errors.New("campaign exceeds remaining SES daily quota; schedule later or split recipients")
+	}
+	return c, nil
+}
+
+// activateCampaignRun owns the single transaction that makes the campaign live.
+func (e *Engine) activateCampaignRun(ctx context.Context, id int64) error {
+	return e.db.Immediate(ctx, func(conn *sql.Conn) error {
+		if !e.enabled.Load() {
+			return errNotSending
+		}
+		var enabled string
+		err := conn.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='sending_enabled'`).Scan(&enabled)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if enabled == "false" {
+			return errNotSending
+		}
+		res, err := conn.ExecContext(ctx, `UPDATE campaigns SET status='sending',started_at=coalesce(started_at,?),updated_at=? WHERE id=? AND status IN ('draft','scheduled','preparing','sending')`, time.Now().UnixMilli(), time.Now().UnixMilli(), id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return errNotSending
+		}
+		return e.emitLifecycleTx(ctx, conn, id, "campaign_started")
+	})
+}
+
+// startResultWriter owns result persistence until results is closed by the
+// coordinator, after all workers have stopped.
+func (e *Engine) startResultWriter(id int64, results <-chan result, stop context.CancelFunc) <-chan error {
+	writerDone := make(chan error, 1)
+	go func() {
+		t := time.NewTicker(e.cfg.FlushInterval)
+		defer t.Stop()
+		batch := make([]result, 0, e.cfg.ResultBatch)
+		var firstErr error
+		flush := func() {
+			if len(batch) == 0 || firstErr != nil {
+				return
+			}
+			var writeErr error
+			for attempt := 0; attempt < 8; attempt++ {
+				writeErr = e.writeResults(context.Background(), id, batch)
+				if writeErr == nil {
+					break
+				}
+				stop()
+				_ = waitBackoff(context.Background(), min(attempt, 3))
+			}
+			if writeErr != nil {
+				if firstErr == nil {
+					firstErr = writeErr
+				}
+				return
+			}
+			batch = batch[:0]
+		}
+		for {
+			select {
+			case r, ok := <-results:
+				if !ok {
+					firstErr = nil
+					flush()
+					writerDone <- firstErr
+					return
+				}
+				batch = append(batch, r)
+				if len(batch) >= e.cfg.ResultBatch {
+					flush()
+				}
+			case <-t.C:
+				flush()
+			}
+		}
+	}()
+	return writerDone
 }

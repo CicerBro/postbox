@@ -97,8 +97,8 @@ func StillInAudienceTx(ctx context.Context, c *sql.Conn, campaign, subscriber in
 	if len(inc) == 0 {
 		return false, nil
 	}
-	q := `SELECT EXISTS(SELECT 1 FROM subscribers s WHERE s.id=? AND s.status='active' AND (` + strings.Join(inc, " OR ") + `)`
-	a := []any{subscriber}
+	q := `SELECT EXISTS(SELECT 1 FROM subscribers s WHERE s.id=? AND ` + MarketingEligibilitySQL + ` AND s.brand_id=(SELECT brand_id FROM campaigns WHERE id=?) AND (` + strings.Join(inc, " OR ") + `)`
+	a := []any{subscriber, campaign}
 	a = append(a, ia...)
 	if len(exc) > 0 {
 		q += ` AND NOT (` + strings.Join(exc, " OR ") + `)`

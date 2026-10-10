@@ -1,3 +1,4 @@
+import { sessionRequest } from "./session-lifecycle";
 let csrfToken = "";
 export function setCsrfToken(token: string) {
   csrfToken = token;
@@ -38,6 +39,8 @@ export async function api<T>(
         : "application/json";
   if (!["GET", "HEAD"].includes(method.toUpperCase()) && csrfToken)
     headers["X-CSRF-Token"] = csrfToken;
+  const request = sessionRequest(path, options.signal);
+  try {
   const response = await fetch(url(path, options.brandId), {
     method,
     headers,
@@ -48,32 +51,42 @@ export async function api<T>(
         : raw
           ? (options.body as Blob | FormData)
           : JSON.stringify(options.body),
-    signal: options.signal,
+    signal: request.signal,
   });
   const data = await response.json().catch(() => null);
+  if (response.status === 401 && request.unauthorized()) setCsrfToken("");
   if (!response.ok)
     throw new ApiError(
       data?.error ?? `Request failed (${response.status})`,
       response.status,
     );
+  request.finish();
   return data as T;
+  } finally { request.cleanup(); }
 }
 export async function download(
   path: string,
   brandId: number,
   filename: string,
 ) {
+  const request = sessionRequest(path);
+  try {
   const response = await fetch(url(path, brandId), {
+    signal: request.signal,
     credentials: "same-origin",
   });
+  if (response.status === 401 && request.unauthorized()) setCsrfToken("");
   if (!response.ok) {
     const data = await response.json().catch(() => null);
     throw new ApiError(data?.error ?? "Download failed", response.status);
   }
-  const href = URL.createObjectURL(await response.blob());
+  const blob = await response.blob();
+  request.finish();
+  const href = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = href;
   a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(href), 1000);
+  } finally { request.cleanup(); }
 }

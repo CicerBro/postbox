@@ -7,7 +7,6 @@ import (
 	"errors"
 	"html/template"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"postbox/internal/subscribers"
@@ -40,8 +39,8 @@ func (a *API) form(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]string{"hosted_url": strings.TrimRight(a.cfg.BaseURL, "/") + "/subscribe/" + id, "html": "<iframe src=\"" + template.HTMLEscapeString(strings.TrimRight(a.cfg.BaseURL, "/")+"/subscribe/"+id) + "\" title=\"Subscribe\"></iframe>"})
 }
 func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if !a.allow("subscribe:"+host, 20) {
+	host := a.clientIP(r)
+	if !a.allow(a.rateKey(r, "subscribe", false), 20) {
 		fail(w, 429, errors.New("too many subscription requests"))
 		return
 	}
@@ -114,8 +113,7 @@ func (a *API) verifyTurnstile(r *http.Request, host string) error {
 	return nil
 }
 func (a *API) confirm(w http.ResponseWriter, r *http.Request) {
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if !a.allow("confirm:"+host, 30) {
+	if !a.allow(a.rateKey(r, "confirm", false), 30) {
 		fail(w, 429, errors.New("too many confirmation requests"))
 		return
 	}

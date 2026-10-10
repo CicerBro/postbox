@@ -286,7 +286,7 @@ func validateTransactional(ctx context.Context, db *store.DB, p transactionalEma
 			return errors.New("thank-you email requires list_id")
 		}
 		var one int
-		return db.Reader.QueryRowContext(ctx, `SELECT 1 FROM list_subscribers ls JOIN lists l ON l.id=ls.list_id WHERE ls.subscriber_id=? AND ls.list_id=? AND l.brand_id=? AND ls.status='subscribed'`, p.SubscriberID, p.ListID, p.BrandID).Scan(&one)
+		return db.Reader.QueryRowContext(ctx, `SELECT 1 FROM list_subscribers ls JOIN lists l ON l.id=ls.list_id JOIN subscribers s ON s.id=ls.subscriber_id WHERE ls.subscriber_id=? AND ls.list_id=? AND l.brand_id=? AND ls.status='subscribed' AND `+subscribers.MarketingEligibilitySQL+``, p.SubscriberID, p.ListID, p.BrandID).Scan(&one)
 	}
 	if p.ConfirmationToken != "" {
 		hash := sha256.Sum256([]byte(p.ConfirmationToken))

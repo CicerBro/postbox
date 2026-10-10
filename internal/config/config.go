@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 )
 
 type Config struct {
+	TrustedProxies                                                                               []netip.Prefix
 	DB, Listen, BaseURL, Region, SecretFile, GeoIP, BackupDir, TurnstileSecret, TurnstileSiteKey string
 	SecureCookies, Development                                                                   bool
 	MaxWorkers, RetentionDays, SoftBounceLimit                                                   int
@@ -25,8 +27,10 @@ type Config struct {
 
 func Load(args []string) (Config, error) {
 	c := Config{}
+	var trustedProxies string
 	f := flag.NewFlagSet("postbox", flag.ContinueOnError)
 	f.StringVar(&c.DB, "db", env("DB", "./data/postbox.db"), "SQLite database file")
+	f.StringVar(&trustedProxies, "trusted-proxies", env("TRUSTED_PROXIES", ""), "comma-separated trusted reverse proxy IPs or CIDRs (default: none)")
 	f.StringVar(&c.Listen, "listen", env("LISTEN", "127.0.0.1:8080"), "HTTP listen address")
 	f.StringVar(&c.BaseURL, "base-url", env("BASE_URL", ""), "public HTTPS base URL")
 	f.StringVar(&c.Region, "region", env("AWS_REGION", os.Getenv("AWS_REGION")), "AWS region")
@@ -53,6 +57,28 @@ func Load(args []string) (Config, error) {
 	}
 	if f.NArg() != 0 {
 		return c, fmt.Errorf("unexpected arguments: %s", strings.Join(f.Args(), " "))
+	}
+	for _, raw := range strings.Split(trustedProxies, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			if trustedProxies != "" {
+				return c, errors.New("trusted-proxies contains an empty entry")
+			}
+			continue
+		}
+		prefix, err := netip.ParsePrefix(raw)
+		if err != nil {
+			ip, ipErr := netip.ParseAddr(raw)
+			if ipErr != nil || ip.Zone() != "" {
+				return c, fmt.Errorf("invalid trusted proxy %q", raw)
+			}
+			ip = ip.Unmap()
+			prefix = netip.PrefixFrom(ip, ip.BitLen())
+		}
+		if prefix.Addr().Is4In6() {
+			return c, fmt.Errorf("trusted proxy CIDR must use unmapped IPv4: %q", raw)
+		}
+		c.TrustedProxies = append(c.TrustedProxies, prefix.Masked())
 	}
 	if c.SecretFile == "" {
 		c.SecretFile = c.DB + ".secret"

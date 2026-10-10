@@ -101,12 +101,12 @@ func (s *Service) DeleteList(ctx context.Context, brandID, id int64) error {
 	return e
 }
 
-const subscriberColumns = "id,brand_id,email,name,fields,status,gdpr_consent_at,coalesce(gdpr_consent_ip,''),created_at,updated_at"
+const subscriberColumns = "id,brand_id,email,name,fields,status,gdpr_consent_at,coalesce(gdpr_consent_ip,''),created_at,updated_at,marketing_unsubscribed_at"
 
 func scanSubscriber(row interface{ Scan(...any) error }) (Subscriber, error) {
 	var v Subscriber
 	var fields string
-	e := row.Scan(&v.ID, &v.BrandID, &v.Email, &v.Name, &fields, &v.Status, &v.ConsentAt, &v.ConsentIP, &v.CreatedAt, &v.UpdatedAt)
+	e := row.Scan(&v.ID, &v.BrandID, &v.Email, &v.Name, &fields, &v.Status, &v.ConsentAt, &v.ConsentIP, &v.CreatedAt, &v.UpdatedAt, &v.MarketingUnsubscribedAt)
 	if e == nil {
 		e = json.Unmarshal([]byte(fields), &v.Fields)
 	}
@@ -118,6 +118,9 @@ func (s *Service) GetByEmail(ctx context.Context, brandID int64, email string) (
 		return Subscriber{}, e
 	}
 	return scanSubscriber(s.db.Reader.QueryRowContext(ctx, "SELECT "+subscriberColumns+" FROM subscribers WHERE brand_id=? AND email=?", brandID, n))
+}
+func (s *Service) GetByID(ctx context.Context, brandID, id int64) (Subscriber, error) {
+	return scanSubscriber(s.db.Reader.QueryRowContext(ctx, "SELECT "+subscriberColumns+" FROM subscribers WHERE brand_id=? AND id=?", brandID, id))
 }
 func (s *Service) Search(ctx context.Context, brandID, afterID int64, limit int) ([]Subscriber, error) {
 	if limit <= 0 || limit > 1000 {
@@ -194,6 +197,19 @@ func (s *Service) upsertPrepared(ctx context.Context, c *sql.Conn, in UpsertInpu
 		return v, e
 	}
 	v.ConfirmationTokens = map[int64]string{}
+	// Renewing brand consent requires an explicit list subscription request and
+	// cannot clear a delivery suppression or bypass a double opt-in list.
+	if v.MarketingUnsubscribedAt != nil && in.Resubscribe && !in.Consent && (in.ConsentAt == nil || *in.ConsentAt <= *v.MarketingUnsubscribedAt) {
+		return v, errors.New("brand resubscription requires fresh consent")
+	}
+	canResubscribe := false
+	if in.Resubscribe && len(in.ListIDs) > 0 && v.Status == "active" {
+		var blocked bool
+		if e = c.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM suppressions p JOIN subscribers s ON s.id=? WHERE (p.brand_id IS NULL OR p.brand_id=s.brand_id) AND ((p.kind='email' AND p.value=s.email) OR (p.kind='domain' AND p.value=s.domain)))`, v.ID).Scan(&blocked); e != nil {
+			return v, e
+		}
+		canResubscribe = !blocked
+	}
 	var removedList int64
 	for _, id := range in.ListIDs {
 		var opt string
@@ -207,6 +223,20 @@ func (s *Service) upsertPrepared(ctx context.Context, c *sql.Conn, in UpsertInpu
 		if in.SubscriptionStatus != "" {
 			next = in.SubscriptionStatus
 		}
+		if in.Resubscribe && opt == "double" && next == "subscribed" {
+			next = "unconfirmed"
+		}
+		if v.MarketingUnsubscribedAt != nil && !canResubscribe {
+			next = "unsubscribed"
+		}
+		if canResubscribe && next == "subscribed" {
+			if _, e = c.ExecContext(ctx, `UPDATE subscribers SET marketing_unsubscribed_at=NULL,gdpr_consent_at=?,gdpr_consent_ip=? WHERE id=? AND brand_id=?`, at, in.ConsentIP, v.ID, in.BrandID); e != nil {
+				return v, e
+			}
+			v.MarketingUnsubscribedAt = nil
+			v.ConsentAt = &at
+			v.ConsentIP = in.ConsentIP
+		}
 		var previous string
 		e = c.QueryRowContext(ctx, "SELECT status FROM list_subscribers WHERE list_id=? AND subscriber_id=?", id, v.ID).Scan(&previous)
 		if e != nil && e != sql.ErrNoRows {
@@ -215,7 +245,7 @@ func (s *Service) upsertPrepared(ctx context.Context, c *sql.Conn, in UpsertInpu
 		if v.Status != "active" {
 			next = "unsubscribed"
 		}
-		if previous == "unsubscribed" && !in.Resubscribe {
+		if previous == "unsubscribed" && !canResubscribe {
 			continue
 		}
 		if previous == "subscribed" && v.Status == "active" && (in.SubscriptionStatus == "" || next == "subscribed") {
@@ -260,6 +290,11 @@ func (s *Service) upsertPrepared(ctx context.Context, c *sql.Conn, in UpsertInpu
 			if e != nil {
 				return v, e
 			}
+			if canResubscribe && v.MarketingUnsubscribedAt != nil {
+				if _, e = c.ExecContext(ctx, `UPDATE subscription_confirmations SET resubscribe_brand=1 WHERE list_id=? AND subscriber_id=?`, id, v.ID); e != nil {
+					return v, e
+				}
+			}
 			v.ConfirmationTokens[id] = token
 			if s.baseURL != "" && !in.SuppressNotifications {
 				if e := EnqueueConfirmationTx(ctx, c, in.BrandID, id, v.ID, token, s.baseURL); e != nil {
@@ -275,7 +310,7 @@ func (s *Service) upsertPrepared(ctx context.Context, c *sql.Conn, in UpsertInpu
 		}
 	}
 	if v.Status != "active" {
-		if e = unsubscribe(ctx, c, in.BrandID, v.ID, 0); e != nil {
+		if e = unsubscribeMemberships(ctx, c, in.BrandID, v.ID, 0, false); e != nil {
 			return v, e
 		}
 	}
@@ -286,10 +321,16 @@ func (s *Service) Confirm(ctx context.Context, token string) error {
 	hash := sha256.Sum256([]byte(token))
 	return s.db.Immediate(ctx, func(c *sql.Conn) error {
 		var list, id int64
-		if e := c.QueryRowContext(ctx, "SELECT list_id,subscriber_id FROM subscription_confirmations WHERE token_hash=? AND expires_at>?", hash[:], nowMS()).Scan(&list, &id); e != nil {
+		var renew bool
+		if e := c.QueryRowContext(ctx, "SELECT list_id,subscriber_id,resubscribe_brand FROM subscription_confirmations WHERE token_hash=? AND expires_at>?", hash[:], nowMS()).Scan(&list, &id, &renew); e != nil {
 			return errors.New("confirmation token invalid or expired")
 		}
-		r, e := c.ExecContext(ctx, "UPDATE list_subscribers SET status='subscribed',updated_at=? WHERE list_id=? AND subscriber_id=? AND status='unconfirmed' AND EXISTS (SELECT 1 FROM subscribers s WHERE s.id=? AND s.status='active' AND NOT EXISTS (SELECT 1 FROM suppressions p WHERE (p.brand_id IS NULL OR p.brand_id=s.brand_id) AND ((p.kind='email' AND p.value=s.email) OR (p.kind='domain' AND p.value=s.domain))))", nowMS(), list, id, id)
+		if renew {
+			if _, e := c.ExecContext(ctx, `UPDATE subscribers SET marketing_unsubscribed_at=NULL,gdpr_consent_at=? WHERE id=? AND status='active' AND EXISTS(SELECT 1 FROM list_subscribers ls WHERE ls.subscriber_id=subscribers.id AND ls.list_id=? AND ls.status='unconfirmed') AND NOT EXISTS(SELECT 1 FROM suppressions p WHERE (p.brand_id IS NULL OR p.brand_id=subscribers.brand_id) AND ((p.kind='email' AND p.value=subscribers.email) OR (p.kind='domain' AND p.value=subscribers.domain)))`, nowMS(), id, list); e != nil {
+				return e
+			}
+		}
+		r, e := c.ExecContext(ctx, "UPDATE list_subscribers SET status='subscribed',updated_at=? WHERE list_id=? AND subscriber_id=? AND status='unconfirmed' AND EXISTS (SELECT 1 FROM subscribers s WHERE s.id=? AND s.status='active' AND s.marketing_unsubscribed_at IS NULL AND NOT EXISTS (SELECT 1 FROM suppressions p WHERE (p.brand_id IS NULL OR p.brand_id=s.brand_id) AND ((p.kind='email' AND p.value=s.email) OR (p.kind='domain' AND p.value=s.domain))))", nowMS(), list, id, id)
 		if e != nil {
 			return e
 		}
@@ -317,6 +358,24 @@ func (s *Service) Unsubscribe(ctx context.Context, brandID, id, listID int64) er
 	return s.db.Immediate(ctx, func(c *sql.Conn) error { return unsubscribe(ctx, c, brandID, id, listID) })
 }
 func unsubscribe(ctx context.Context, c *sql.Conn, brandID, id, listID int64) error {
+	return unsubscribeMemberships(ctx, c, brandID, id, listID, true)
+}
+func unsubscribeMemberships(ctx context.Context, c *sql.Conn, brandID, id, listID int64, recordOptOut bool) error {
+	var found int
+	if e := c.QueryRowContext(ctx, `SELECT 1 FROM subscribers WHERE id=? AND brand_id=?`, id, brandID).Scan(&found); e != nil {
+		return e
+	}
+	if listID == 0 && recordOptOut {
+		if _, e := c.ExecContext(ctx, `UPDATE subscribers SET marketing_unsubscribed_at=coalesce(marketing_unsubscribed_at,?),updated_at=? WHERE id=? AND brand_id=?`, nowMS(), nowMS(), id, brandID); e != nil {
+			return e
+		}
+		if _, e := c.ExecContext(ctx, `DELETE FROM subscription_confirmations WHERE subscriber_id=? AND EXISTS(SELECT 1 FROM subscribers WHERE id=? AND brand_id=?)`, id, id, brandID); e != nil {
+			return e
+		}
+		if e := SkipAfterUnsubscribeTx(ctx, c, id, 0); e != nil {
+			return e
+		}
+	}
 	rows, e := c.QueryContext(ctx, "SELECT ls.list_id,ls.status FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE s.brand_id=? AND s.id=? AND ls.status!='unsubscribed' AND (?=0 OR ls.list_id=?)", brandID, id, listID, listID)
 	if e != nil {
 		return e
@@ -338,7 +397,7 @@ func unsubscribe(ctx context.Context, c *sql.Conn, brandID, id, listID int64) er
 	if e != nil {
 		return e
 	}
-	if len(ids) == 0 {
+	if len(ids) == 0 && listID > 0 {
 		return nil
 	}
 	for _, n := range ids {
@@ -360,7 +419,11 @@ func unsubscribe(ctx context.Context, c *sql.Conn, brandID, id, listID int64) er
 	if e = SkipAfterUnsubscribeTx(ctx, c, id, listID); e != nil {
 		return e
 	}
-	_, e = c.ExecContext(ctx, "INSERT INTO subscriber_activity(brand_id,subscriber_id,kind,at,detail) SELECT brand_id,id,'unsubscribe',?,'{}' FROM subscribers WHERE id=? AND brand_id=?", nowMS(), id, brandID)
+	kind := "unsubscribe"
+	if !recordOptOut {
+		kind = "suppressed"
+	}
+	_, e = c.ExecContext(ctx, "INSERT INTO subscriber_activity(brand_id,subscriber_id,kind,at,detail) SELECT brand_id,id,?,?,json_object('list_id',?) FROM subscribers WHERE id=? AND brand_id=?", kind, nowMS(), listID, id, brandID)
 	return e
 }
 func (s *Service) AddSuppression(ctx context.Context, v Suppression) error {

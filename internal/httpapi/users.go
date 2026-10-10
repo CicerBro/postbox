@@ -198,7 +198,7 @@ func (a *API) passwordConfirmation(w http.ResponseWriter, r *http.Request, passw
 		fail(w, 403, errors.New("session authentication required"))
 		return false
 	}
-	if !a.allow("mfa:"+string(digest(r.RemoteAddr)), 10) {
+	if !a.allow(a.rateKey(r, "mfa", true), 10) {
 		fail(w, 429, errors.New("too many MFA attempts"))
 		return false
 	}
@@ -248,7 +248,7 @@ func (a *API) verifyTOTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, errors.New("session authentication required"))
 		return
 	}
-	if !a.allow("totp-verify:"+string(digest(r.RemoteAddr)), 10) {
+	if !a.allow(a.rateKey(r, "totp-verify", true), 10) {
 		fail(w, 429, errors.New("too many MFA attempts"))
 		return
 	}

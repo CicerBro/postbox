@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { requestOptions, credentialJSON } from "../lib/webauthn";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
-export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
+export function Login({ onLogin, expired = false }: { onLogin: () => Promise<void>; expired?: boolean }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [totp, setTotp] = useState(false);
@@ -64,7 +64,7 @@ export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
       <div className="login-card">
         <p className="eyebrow">Your newsletter workspace</p>
         <h1>Sign in to Postbox</h1>
-        <p className="muted">Welcome back. Enter your details to continue.</p>
+        <p className="muted" role={expired ? "alert" : undefined}>{expired ? "Your session ended. Sign in again to continue. Unsaved campaign edits can be restored for the same account and brand. Failed actions have not been retried." : "Welcome back. Enter your details to continue."}</p>
         <form onSubmit={login} className="space-y-5 mt-8">
           <label>
             Email

@@ -156,7 +156,7 @@ func serve(db *store.DB, c config.Config) error {
 	tracker := tracking.New(db, &tracking.Config{TokenSecret: secret, BaseURL: c.BaseURL, GeoIPPath: c.GeoIP})
 	eventService := events.New(db, &events.Config{ResolveTopic: awsProvider.EventBrand, SoftBounceLimit: c.SoftBounceLimit})
 	mux := http.NewServeMux()
-	httpapi.New(db, engine, httpapi.Config{AWSProvider: awsProvider, SecureCookies: c.SecureCookies, SessionTTL: c.SessionTTL, BaseURL: c.BaseURL, TurnstileSecret: c.TurnstileSecret, TurnstileSiteKey: c.TurnstileSiteKey}).Register(mux)
+	httpapi.New(db, engine, httpapi.Config{TrustedProxies: c.TrustedProxies, AWSProvider: awsProvider, SecureCookies: c.SecureCookies, SessionTTL: c.SessionTTL, BaseURL: c.BaseURL, TurnstileSecret: c.TurnstileSecret, TurnstileSiteKey: c.TurnstileSiteKey}).Register(mux)
 	tracker.Register(mux)
 	eventService.Register(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {

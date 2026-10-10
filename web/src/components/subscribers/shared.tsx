@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import type { ReactNode } from "react";
 import { Badge } from "../ui/badge";
+import type { Subscriber as ContractSubscriber } from "../../lib/generated-contracts";
 
 export type SubscriberList = {
   id: number;
@@ -21,17 +22,12 @@ export type CustomField = {
   type: string;
   is_filterable: boolean;
 };
-export type Subscriber = {
-  id: number;
-  email: string;
-  name: string;
-  status: string;
-  fields: Record<string, unknown> | string;
-  gdpr_consent_at?: number;
-  gdpr_consent_ip?: string;
-  created_at: number;
-  updated_at: number;
-};
+export type Subscriber = Omit<Pick<
+  ContractSubscriber,
+  "id" | "email" | "name" | "status" | "fields" |
+  "gdpr_consent_at" | "marketing_unsubscribed_at" | "gdpr_consent_ip" |
+  "created_at" | "updated_at"
+>, "fields"> & { fields: ContractSubscriber["fields"] | string };
 export const tableClass =
   "w-full text-sm [&_th]:text-left [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:py-3 [&_th]:h-10 [&_th]:py-2 [&_tr]:border-b [&_tbody_tr]:hover:bg-muted/50 [&_tbody_tr:last-child]:border-0 [&_td]:px-3 [&_th]:px-3";
 export function SubscriberStatusBadge({ status }: { status: string }) {
@@ -50,18 +46,7 @@ export function subscriberInitials(name: string, email: string) {
       : words[0].slice(0, 2)
   ).toUpperCase();
 }
-export function ErrorMessage({ error }: { error: unknown }) {
-  const status =
-    error && typeof error === "object" && "status" in error
-      ? Number(error.status)
-      : undefined;
-  return error ? (
-    <p role="alert" className="text-sm text-destructive">
-      {status === 403 ? "Access denied (403): " : ""}
-      {error instanceof Error ? error.message : String(error)}
-    </p>
-  ) : null;
-}
+export { ErrorMessage } from "../RequestError";
 export function Field({
   label,
   children,
@@ -101,7 +86,7 @@ export function useSubscriberAction<T = unknown>(brandId: number) {
   });
 }
 export function parseFields(
-  value: Subscriber["fields"],
+	value: Subscriber["fields"] | string,
 ): Record<string, unknown> {
   const fields = typeof value === "string" ? JSON.parse(value) : value;
   return fields && typeof fields === "object" && !Array.isArray(fields)
@@ -150,20 +135,4 @@ export function parseCSV(text: string, maxRows = Infinity): string[][] {
   }
   return rows;
 }
-export async function allPages<T extends { id: number }>(
-  path: string,
-  brandId: number,
-  signal?: AbortSignal,
-): Promise<T[]> {
-  const out: T[] = [];
-  let after = 0;
-  for (;;) {
-    const page = await api<T[]>(
-      `${path}${path.includes("?") ? "&" : "?"}limit=500&after=${after}`,
-      { brandId, signal },
-    );
-    out.push(...page);
-    if (page.length < 500) return out;
-    after = page[page.length - 1].id;
-  }
-}
+export { allPages } from "../../lib/pagination";

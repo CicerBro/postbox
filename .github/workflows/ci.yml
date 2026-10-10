@@ -12,9 +12,15 @@ jobs:
           go-version-file: go.mod
           cache: true
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.3'
+      - name: Verify generated frontend contracts
+        run: go run ./cmd/contractgen -check
       - name: Build embedded frontend
         working-directory: web
         run: bun install --frozen-lockfile && bun run build
+      - name: Audit Go and frontend dependencies
+        run: make security
       - name: Test and vet
         run: go test -race ./... && go vet ./...
       - name: Test frontend source preservation and themes

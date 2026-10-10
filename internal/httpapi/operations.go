@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"postbox/internal/subscribers"
 	"time"
@@ -56,6 +57,10 @@ func (a *API) operations(w http.ResponseWriter, r *http.Request) {
 		opt.DryRun = has(r.URL.Path, "preview")
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<30)
 		v, e := s.ImportCSV(r.Context(), r.Body, opt)
+		if e != nil {
+			fail(w, 400, fmt.Errorf("CSV import stopped after %d committed rows; pending batch was not committed: %w", v.Imported, e))
+			return
+		}
 		result(w, v, e)
 	case has(r.URL.Path, "activity"):
 		after, limit := page(r)
