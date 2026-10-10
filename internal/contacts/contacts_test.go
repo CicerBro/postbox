@@ -367,3 +367,104 @@ func TestSuppressionSkipsPendingOnce(t *testing.T) {
 		t.Fatalf("counter %d %v", skipped, e)
 	}
 }
+
+func TestMembershipTransitionsPreserveOtherAudiencesAndEmitOnce(t *testing.T) {
+	ctx := context.Background()
+	s, b, l := fixture(t)
+	l.OptIn = "single"
+	if e := s.UpdateList(ctx, l); e != nil {
+		t.Fatal(e)
+	}
+	other, e := s.CreateList(ctx, List{BrandID: b.ID, Name: "Other", OptIn: "single"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.db.Writer.Exec(`INSERT INTO webhooks(brand_id,url,events,secret) VALUES(?,'https://example.org/webhook','["subscribe","unsubscribe"]','secret')`, b.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.db.SetSetting(ctx, fmt.Sprintf("brand.%d.thankyou_email", b.ID), `{"subject":"Welcome","html":"<p>Hello {{ name }}</p>"}`); e != nil {
+		t.Fatal(e)
+	}
+	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "reader@example.org", Name: "Reader", ListIDs: []int64{l.ID, other.ID}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, target := range []int64{l.ID, other.ID} {
+		r, e := s.db.Writer.Exec("INSERT INTO campaigns(brand_id,uuid,status,subject,html,created_at,updated_at) VALUES(?,?,'sending','s','h',1,1)", b.ID, fmt.Sprint(target))
+		if e != nil {
+			t.Fatal(e)
+		}
+		id, _ := r.LastInsertId()
+		for _, q := range []string{"INSERT INTO campaign_stats(campaign_id) VALUES(?)", "INSERT INTO campaign_targets(campaign_id,target_type,target_id,mode) VALUES(?,'list',?,'include')", "INSERT INTO campaign_recipients(campaign_id,subscriber_id,status) VALUES(?,?,'pending')"} {
+			args := []any{id}
+			if strings.Contains(q, "target_id") {
+				args = append(args, target)
+			}
+			if strings.Contains(q, "subscriber_id") {
+				args = append(args, v.ID)
+			}
+			if _, e = s.db.Writer.Exec(q, args...); e != nil {
+				t.Fatal(e)
+			}
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if e = s.Unsubscribe(ctx, b.ID, v.ID, l.ID); e != nil {
+			t.Fatal(e)
+		}
+	}
+	var status string
+	for target, want := range map[int64]string{l.ID: "skipped", other.ID: "pending"} {
+		if e = s.db.Reader.QueryRow("SELECT cr.status FROM campaign_recipients cr JOIN campaigns c ON c.id=cr.campaign_id WHERE c.uuid=?", fmt.Sprint(target)).Scan(&status); e != nil || status != want {
+			t.Fatalf("target %d status %s want %s: %v", target, status, want, e)
+		}
+	}
+	if _, e = s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: v.Email, ListIDs: []int64{l.ID, other.ID}}); e != nil {
+		t.Fatal(e)
+	}
+	var count int
+	if e = s.db.Reader.QueryRow("SELECT count(*) FROM jobs WHERE queue='outbound_webhook'").Scan(&count); e != nil || count != 3 {
+		t.Fatalf("transition webhooks %d: %v", count, e)
+	}
+	if e = s.db.Reader.QueryRow("SELECT count(*) FROM jobs WHERE queue='transactional_email'").Scan(&count); e != nil || count != 2 {
+		t.Fatalf("welcome emails %d: %v", count, e)
+	}
+	// Explicit membership removal through upsert must preserve other eligible targets too.
+	if _, e = s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: v.Email, ListIDs: []int64{other.ID}, SubscriptionStatus: "unconfirmed"}); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.db.Reader.QueryRow("SELECT status FROM campaign_recipients WHERE status='pending'").Scan(&status); e == nil {
+		t.Fatal("remaining audience should be skipped after final removal")
+	}
+}
+
+func TestConfirmationEmitsWelcomeOnlyAfterConsentTransition(t *testing.T) {
+	ctx := context.Background()
+	s, b, l := fixture(t)
+	if _, e := s.db.Writer.Exec(`INSERT INTO webhooks(brand_id,url,events,secret) VALUES(?,'https://example.org/webhook','["subscribe"]','secret')`, b.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.db.SetSetting(ctx, fmt.Sprintf("brand.%d.thankyou_email", b.ID), `{"subject":"Welcome","html":"<p>Welcome</p>"}`); e != nil {
+		t.Fatal(e)
+	}
+	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "reader@example.org", ListIDs: []int64{l.ID}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	var count int
+	s.db.Reader.QueryRow("SELECT count(*) FROM jobs").Scan(&count)
+	if count != 0 {
+		t.Fatal("unconfirmed member welcomed")
+	}
+	token := v.ConfirmationTokens[l.ID]
+	if e = s.Confirm(ctx, token); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Confirm(ctx, token); e == nil {
+		t.Fatal("reused token accepted")
+	}
+	s.db.Reader.QueryRow("SELECT count(*) FROM jobs").Scan(&count)
+	if count != 2 {
+		t.Fatalf("want exactly webhook and welcome, got %d", count)
+	}
+}

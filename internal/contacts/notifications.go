@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"postbox/internal/render"
 	"strings"
 	"time"
 )
@@ -67,6 +68,54 @@ func EnqueueConfirmationTx(ctx context.Context, c *sql.Conn, brandID, listID, su
 	body = strings.ReplaceAll(body, "{{ confirmation_url }}", html.EscapeString(url))
 	text = strings.ReplaceAll(text, "{{ confirmation_url }}", url)
 	payload, e := json.Marshal(map[string]any{"brand_id": brandID, "subscriber_id": subscriberID, "confirmation_token": token, "list_id": listID, "to": email, "subject": subject, "html": body, "text": text})
+	if e != nil {
+		return e
+	}
+	_, e = c.ExecContext(ctx, "INSERT INTO jobs(queue,payload,status,run_at,created_at) VALUES('transactional_email',?,'pending',?,?)", string(payload), nowMS(), nowMS())
+	return e
+}
+
+// EnqueueThankyouTx records a welcome message only with a subscribed transition.
+func EnqueueThankyouTx(ctx context.Context, c *sql.Conn, brandID, listID, subscriberID int64) error {
+	var raw string
+	e := c.QueryRowContext(ctx, "SELECT value FROM settings WHERE key=?", fmt.Sprintf("brand.%d.thankyou_email", brandID)).Scan(&raw)
+	if e == sql.ErrNoRows || (e == nil && raw == "") {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	var message struct {
+		Subject string `json:"subject"`
+		HTML    string `json:"html"`
+		Text    string `json:"text"`
+	}
+	if e = json.Unmarshal([]byte(raw), &message); e != nil {
+		return e
+	}
+	var email, name, fields string
+	if e = c.QueryRowContext(ctx, "SELECT email,name,fields FROM subscribers WHERE id=? AND brand_id=?", subscriberID, brandID).Scan(&email, &name, &fields); e != nil {
+		return e
+	}
+	var values map[string]any
+	if e = json.Unmarshal([]byte(fields), &values); e != nil {
+		return e
+	}
+	replacements := map[string]string{}
+	allowed := []string{}
+	for key, value := range values {
+		replacements[key] = fmt.Sprint(value)
+		allowed = append(allowed, key)
+	}
+	prepared, e := render.Prepare(render.Options{Subject: message.Subject, HTML: message.HTML, Text: message.Text, Fields: allowed})
+	if e != nil {
+		return e
+	}
+	subject, body, text, e := prepared.Render(render.Recipient{Email: email, Name: name, Fields: replacements})
+	if e != nil {
+		return e
+	}
+	payload, e := json.Marshal(map[string]any{"purpose": "thankyou", "brand_id": brandID, "subscriber_id": subscriberID, "list_id": listID, "to": email, "subject": subject, "html": body, "text": text})
 	if e != nil {
 		return e
 	}

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"postbox/internal/jobs"
 	"postbox/internal/render"
 	"strings"
 )
@@ -193,6 +194,7 @@ func (s *Service) upsertPrepared(ctx context.Context, c *sql.Conn, in UpsertInpu
 		return v, e
 	}
 	v.ConfirmationTokens = map[int64]string{}
+	var removedList int64
 	for _, id := range in.ListIDs {
 		var opt string
 		if e = c.QueryRowContext(ctx, "SELECT opt_in FROM lists WHERE id=? AND brand_id=?", id, in.BrandID).Scan(&opt); e != nil {
@@ -230,13 +232,27 @@ func (s *Service) upsertPrepared(ctx context.Context, c *sql.Conn, in UpsertInpu
 			if e = membershipCounter(ctx, c, id, -1, 0, 1, at); e != nil {
 				return v, e
 			}
-			if e = skipPendingTx(ctx, c, "subscriber_id=?", v.ID); e != nil {
+			removedList = id
+		}
+		if next == "subscribed" && previous != next {
+			if e = membershipCounter(ctx, c, id, 1, 1, 0, at); e != nil {
 				return v, e
 			}
 		}
-		if next == "subscribed" {
-			if e = membershipCounter(ctx, c, id, 1, 1, 0, at); e != nil {
-				return v, e
+		if previous != next {
+			event := "unsubscribe"
+			if next == "subscribed" {
+				event = "subscribe"
+			}
+			if next == "subscribed" || (previous != "" && next == "unsubscribed") || previous == "subscribed" {
+				if e = jobs.EmitTx(ctx, c, in.BrandID, event, map[string]any{"subscriber_id": v.ID, "list_id": id}); e != nil {
+					return v, e
+				}
+			}
+			if next == "subscribed" && !in.SuppressNotifications {
+				if e = EnqueueThankyouTx(ctx, c, in.BrandID, id, v.ID); e != nil {
+					return v, e
+				}
 			}
 		}
 		if next == "unconfirmed" {
@@ -252,6 +268,11 @@ func (s *Service) upsertPrepared(ctx context.Context, c *sql.Conn, in UpsertInpu
 			}
 		}
 
+	}
+	if removedList > 0 {
+		if e = SkipAfterUnsubscribeTx(ctx, c, v.ID, removedList); e != nil {
+			return v, e
+		}
 	}
 	if v.Status != "active" {
 		if e = unsubscribe(ctx, c, in.BrandID, v.ID, 0); e != nil {
@@ -277,6 +298,16 @@ func (s *Service) Confirm(ctx context.Context, token string) error {
 			if e = membershipCounter(ctx, c, list, 1, 1, 0, nowMS()); e != nil {
 				return e
 			}
+			var brand int64
+			if e = c.QueryRowContext(ctx, "SELECT brand_id FROM lists WHERE id=?", list).Scan(&brand); e != nil {
+				return e
+			}
+			if e = jobs.EmitTx(ctx, c, brand, "subscribe", map[string]any{"subscriber_id": id, "list_id": list}); e != nil {
+				return e
+			}
+			if e = EnqueueThankyouTx(ctx, c, brand, list, id); e != nil {
+				return e
+			}
 		}
 		_, e = c.ExecContext(ctx, "DELETE FROM subscription_confirmations WHERE subscriber_id=? AND list_id=?", id, list)
 		return e
@@ -286,25 +317,34 @@ func (s *Service) Unsubscribe(ctx context.Context, brandID, id, listID int64) er
 	return s.db.Immediate(ctx, func(c *sql.Conn) error { return unsubscribe(ctx, c, brandID, id, listID) })
 }
 func unsubscribe(ctx context.Context, c *sql.Conn, brandID, id, listID int64) error {
-	rows, e := c.QueryContext(ctx, "SELECT ls.list_id FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE s.brand_id=? AND s.id=? AND ls.status='subscribed' AND (?=0 OR ls.list_id=?)", brandID, id, listID, listID)
+	rows, e := c.QueryContext(ctx, "SELECT ls.list_id,ls.status FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE s.brand_id=? AND s.id=? AND ls.status!='unsubscribed' AND (?=0 OR ls.list_id=?)", brandID, id, listID, listID)
 	if e != nil {
 		return e
 	}
 	var ids []int64
+	subscribed := map[int64]bool{}
 	for rows.Next() {
 		var n int64
-		if e = rows.Scan(&n); e != nil {
+		var status string
+		if e = rows.Scan(&n, &status); e != nil {
 			rows.Close()
 			return e
 		}
 		ids = append(ids, n)
+		subscribed[n] = status == "subscribed"
 	}
 	e = rows.Err()
 	rows.Close()
 	if e != nil {
 		return e
 	}
+	if len(ids) == 0 {
+		return nil
+	}
 	for _, n := range ids {
+		if !subscribed[n] {
+			continue
+		}
 		if e = membershipCounter(ctx, c, n, -1, 0, 1, nowMS()); e != nil {
 			return e
 		}
@@ -312,7 +352,12 @@ func unsubscribe(ctx context.Context, c *sql.Conn, brandID, id, listID int64) er
 	if _, e = c.ExecContext(ctx, "UPDATE list_subscribers SET status='unsubscribed',updated_at=? WHERE subscriber_id=? AND (?=0 OR list_id=?) AND EXISTS(SELECT 1 FROM subscribers WHERE id=? AND brand_id=?)", nowMS(), id, listID, listID, id, brandID); e != nil {
 		return e
 	}
-	if e = skipPendingTx(ctx, c, "subscriber_id=? AND campaign_id IN (SELECT id FROM campaigns WHERE brand_id=?)", id, brandID); e != nil {
+	for _, list := range ids {
+		if e = jobs.EmitTx(ctx, c, brandID, "unsubscribe", map[string]any{"subscriber_id": id, "list_id": list}); e != nil {
+			return e
+		}
+	}
+	if e = SkipAfterUnsubscribeTx(ctx, c, id, listID); e != nil {
 		return e
 	}
 	_, e = c.ExecContext(ctx, "INSERT INTO subscriber_activity(brand_id,subscriber_id,kind,at,detail) SELECT brand_id,id,'unsubscribe',?,'{}' FROM subscribers WHERE id=? AND brand_id=?", nowMS(), id, brandID)

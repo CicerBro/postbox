@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"net"
@@ -50,6 +53,7 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "GET" {
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src https://challenges.cloudflare.com; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = subscriptionForm.Execute(w, map[string]string{"Name": list.Name, "SiteKey": a.cfg.TurnstileSiteKey})
 		return
@@ -82,6 +86,10 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 	if len(v.ConfirmationTokens) > 0 {
 		status = "confirmation_pending"
 	}
+	if wantsHostedHTML(r) {
+		a.thankyou(w, r, list.BrandID, status)
+		return
+	}
 	respond(w, 200, map[string]string{"status": status})
 }
 func (a *API) verifyTurnstile(r *http.Request, host string) error {
@@ -112,5 +120,46 @@ func (a *API) confirm(w http.ResponseWriter, r *http.Request) {
 		fail(w, 429, errors.New("too many confirmation requests"))
 		return
 	}
-	result(w, map[string]bool{"confirmed": true}, a.contacts().Confirm(r.Context(), r.PathValue("token")))
+	var brand int64
+	hash := sha256.Sum256([]byte(r.PathValue("token")))
+	e := a.db.Reader.QueryRowContext(r.Context(), "SELECT l.brand_id FROM subscription_confirmations sc JOIN lists l ON l.id=sc.list_id WHERE sc.token_hash=? AND sc.expires_at>?", hash[:], time.Now().UnixMilli()).Scan(&brand)
+	if errors.Is(e, sql.ErrNoRows) {
+		e = errors.New("confirmation token invalid or expired")
+	}
+	if e == nil {
+		e = a.contacts().Confirm(r.Context(), r.PathValue("token"))
+	}
+	if e != nil {
+		result(w, nil, e)
+		return
+	}
+	if wantsHostedHTML(r) {
+		a.thankyou(w, r, brand, "confirmed")
+		return
+	}
+	result(w, map[string]bool{"confirmed": true}, nil)
+}
+
+func wantsHostedHTML(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "text/html") && !strings.Contains(r.Header.Get("Accept"), "application/json")
+}
+func (a *API) thankyou(w http.ResponseWriter, r *http.Request, brand int64, status string) {
+	body, e := a.db.Setting(r.Context(), fmt.Sprintf("brand.%d.thankyou_html", brand))
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		result(w, nil, e)
+		return
+	}
+	if body == "" {
+		message := "Thank you for subscribing."
+		if status == "confirmation_pending" {
+			message = "Please check your email to confirm your subscription."
+		}
+		if status == "confirmed" {
+			message = "Your subscription is confirmed."
+		}
+		body = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Thank you</title></head><body><p>" + message + "</p></body></html>"
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; base-uri 'none'; form-action 'none'")
+	_, _ = io.WriteString(w, body)
 }
