@@ -208,7 +208,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                           <div>
                             <button
                               type="button"
-                              className="row-title text-left font-medium"
+                              className="row-title text-left font-medium hover:underline"
                               onClick={() => edit(t)}
                             >
                               {t.name}

@@ -137,7 +137,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                 {query.data?.map((c) => (
                     <tr key={c.id}>
                       <td>
-                        <Link className="row-title font-medium" to={`/campaigns/${c.id}${c.status === "sent" ? "/report" : ""}`}>
+                        <Link className="row-title font-medium hover:underline" to={`/campaigns/${c.id}${c.status === "sent" ? "/report" : ""}`}>
                           {c.subject}
                         </Link>
                         <p className="row-subtitle max-w-sm truncate">
