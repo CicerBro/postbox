@@ -71,7 +71,7 @@ func (a *API) awsSettings(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, errors.New("AWS settings exceed the maximum field length"))
 			return
 		}
-		if in.TopicARN != nil && len(*in.TopicARN) > 512 || in.QueueURL != nil && len(*in.QueueURL) > 1024 {
+		if in.TopicARN != nil && len(*in.TopicARN) > 512 {
 			fail(w, 400, errors.New("AWS settings exceed the maximum field length"))
 			return
 		}
@@ -107,7 +107,7 @@ func (a *API) awsSettings(w http.ResponseWriter, r *http.Request) {
 
 func safeAWSSettingsError(err error) error {
 	switch err.Error() {
-	case "AWS mode must be static", "an explicit AWS region is required", "a new access key requires its secret access key", "access key ID and secret access key are required", "an SNS topic ARN is required for SQS ingestion", "SNS topic ARN must match the brand AWS region", "SQS queue URL must match the brand AWS region":
+	case "AWS mode must be static", "an explicit AWS region is required", "a new access key requires its secret access key", "access key ID and secret access key are required", "SNS topic ARN must match the brand AWS region":
 		return err
 	default:
 		return errors.New("AWS settings could not be saved")
@@ -160,7 +160,7 @@ func (a *API) awsSetupEvents(w http.ResponseWriter, r *http.Request) {
 		if err.Error() == "brand keys, SNS topic and SES configuration set are required" {
 			fail(w, 400, err)
 		} else {
-			fail(w, 502, errors.New("SES event destination could not be configured. Check the brand keys, configuration set, topic policy and SES permissions."))
+			fail(w, 502, errors.New("SES configuration set could not be configured. Check the brand keys, configuration set name, SNS topic policy and SES setup permissions."))
 		}
 		return
 	}

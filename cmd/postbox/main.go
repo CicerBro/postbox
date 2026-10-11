@@ -199,8 +199,6 @@ func serve(db *store.DB, c config.Config) error {
 	}
 	start("sending engine", func() error { return engine.Start(ctx) })
 	start("jobs", func() error { return runner.Run(ctx) })
-	workers++
-	start("SQS polling", func() error { return runBrandPollers(ctx, awsProvider, eventService) })
 	start("HTTP server", server.ListenAndServe)
 	slog.Info("postbox listening", "address", c.Listen, "base_url", c.BaseURL)
 	<-ctx.Done()

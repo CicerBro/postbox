@@ -26,7 +26,7 @@ func TestAWSSettingsSecretsAndAuthorization(t *testing.T) {
 		}
 	}
 	path := "/api/v1/aws-settings?brand_id=1"
-	body := `{"mode":"static","region":"eu-west-1","access_key_id":"AKIATESTSECRETID","secret_access_key":"secret-value-never-returned","session_token":"token-value-never-returned","sns_topic_arn":"arn:aws:sns:eu-west-1:123456789012:brand-one","sqs_queue_url":"https://sqs.eu-west-1.amazonaws.com/123456789012/brand-one"}`
+	body := `{"mode":"static","region":"eu-west-1","access_key_id":"AKIATESTSECRETID","secret_access_key":"secret-value-never-returned","session_token":"token-value-never-returned","sns_topic_arn":"arn:aws:sns:eu-west-1:123456789012:brand-one"}`
 	if w := request(m, "PATCH", path, body, &c, ""); w.Code != 403 {
 		t.Fatal("missing CSRF accepted", w.Code)
 	}
@@ -40,14 +40,14 @@ func TestAWSSettingsSecretsAndAuthorization(t *testing.T) {
 		}
 	}
 	var saved awsbrand.Settings
-	if err = json.Unmarshal(w.Body.Bytes(), &saved); err != nil || !saved.HasCredentials || !saved.HasSessionToken || saved.TopicARN != "arn:aws:sns:eu-west-1:123456789012:brand-one" || saved.QueueURL != "https://sqs.eu-west-1.amazonaws.com/123456789012/brand-one" {
+	if err = json.Unmarshal(w.Body.Bytes(), &saved); err != nil || !saved.HasCredentials || !saved.HasSessionToken || saved.TopicARN != "arn:aws:sns:eu-west-1:123456789012:brand-one" {
 		t.Fatal(saved, err)
 	}
 	w = request(m, "PATCH", path, `{"sns_topic_arn":"arn:aws:sns:us-east-1:123456789012:wrong"}`, &c, csrf)
 	if w.Code != 400 {
 		t.Fatal("cross-region SNS topic accepted", w.Code, w.Body.String())
 	}
-	w = request(m, "PATCH", path, `{"region":"eu-central-1","secret_access_key":"","session_token":"","sns_topic_arn":"","sqs_queue_url":""}`, &c, csrf)
+	w = request(m, "PATCH", path, `{"region":"eu-central-1","secret_access_key":"","session_token":"","sns_topic_arn":""}`, &c, csrf)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}

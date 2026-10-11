@@ -70,10 +70,9 @@ Brand requests use the brand's saved region and static credentials. `AWS_ACCESS_
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `AWS_REGION` | Empty | Fallback for the app's default brand region when neither `--region` nor `POSTBOX_AWS_REGION` provides one. Saved brand regions take precedence for requests. |
-| `AWS_ENDPOINT_URL` | Normal AWS endpoints | SDK-wide endpoint override, such as `http://127.0.0.1:9001`. Applies to SES v2, STS and SQS unless a service-specific override takes precedence. |
+| `AWS_ENDPOINT_URL` | Normal AWS endpoints | SDK-wide endpoint override, such as `http://127.0.0.1:9001`. Applies to SES v2 and STS unless a service-specific override takes precedence. |
 | `AWS_ENDPOINT_URL_SESV2` | Unset | Endpoint override for SES v2 requests only. |
 | `AWS_ENDPOINT_URL_STS` | Unset | Endpoint override for STS account identity checks only. A local emulator must support `GetCallerIdentity` for connection checks and sending. |
-| `AWS_ENDPOINT_URL_SQS` | Unset | Endpoint override for brand SQS clients. |
 | `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS` | `false` | SDK boolean that ignores configured environment/shared-config endpoint URLs when enabled. |
 
 The Go default transport also reads `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`. Other standard SDK and runtime variables belong to those libraries. Endpoint overrides still use the real SDK; they do not select an in-process fake sender.
@@ -114,4 +113,4 @@ Migration `014_brand_marketing_consent.sql` infers historical unsubscribe-all ev
 
 Migration `018_confirmation_lifecycle.sql` records the current confirmation period separately from membership creation, allowing a fresh resubscription its full window. Confirming an expired or removed membership returns an error.
 
-Historical global suppressions are retained conservatively on upgrade. Review affected contacts; deleting a suppression does not establish consent. Legacy server-wide brand credentials are cleared and must be entered per brand. The old server-wide SNS/SQS environment settings are no longer read.
+Historical global suppressions are retained conservatively on upgrade. Review affected contacts; deleting a suppression does not establish consent. Legacy server-wide brand credentials are cleared and must be entered per brand. The old server-wide SNS environment settings are no longer read.

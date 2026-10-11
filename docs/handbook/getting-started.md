@@ -63,15 +63,14 @@ For a custom return path, set a **MAIL FROM subdomain**, such as `bounce.example
 
 Delivery events let Postbox reconcile accepted sends and process bounces and complaints. Configure them before sending a production campaign.
 
-Create an SNS topic for the brand's SES configuration set. For queue delivery, add an SQS queue with a dead-letter queue, subscribe it to the topic, and leave raw message delivery disabled. Then:
+Create a Standard SNS topic in the brand's SES region. Then:
 
-1. Enter the topic ARN and queue URL in **Settings > Amazon SES**.
-2. Set the configuration set in **Brand identity**.
-3. Select **Configure SES event destination**. This uses the brand's keys and requires the setup IAM permissions.
+1. Enter the topic ARN in **Settings > Amazon SES** and save.
+2. Set a configuration set name in **Brand identity**.
+3. Select **Create config set at AWS**. Postbox creates the configuration set if missing and configures its SNS event destination using the brand's keys and setup IAM permissions.
+4. Subscribe `https://mail.example.com/events/sns` as an HTTPS topic endpoint. Postbox verifies SNS signatures and the expected topic; allow outbound HTTPS access to AWS signing certificates.
 
-Alternatively, subscribe `https://mail.example.com/events/sns` as an HTTPS topic endpoint. Postbox verifies SNS signatures and the expected topic; allow outbound HTTPS access to AWS signing certificates.
-
-AWS resource creation and DNS changes happen outside Postbox. The permissions and resource policies are in the expandable reference below.
+SNS topic creation, subscriptions and DNS changes happen outside Postbox. The permissions and topic policy are in the expandable reference below.
 
 ## Prepare the first campaign
 

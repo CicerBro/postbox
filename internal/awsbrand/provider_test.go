@@ -35,72 +35,108 @@ func TestStatusWithDevelopmentAWSService(t *testing.T) {
 	}
 }
 
-func TestBrandEventRoutesUseSavedSettings(t *testing.T) {
+func TestBrandEventTopicUsesSavedSettings(t *testing.T) {
 	p, _ := testProvider(t, "")
 	ctx := context.Background()
 	topic := "arn:aws:sns:eu-west-1:123456789012:brand-one"
-	queue := "https://sqs.eu-west-1.amazonaws.com/123456789012/brand-one"
-	if e := p.Save(ctx, 1, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "key", SecretAccessKey: "secret", TopicARN: &topic, QueueURL: &queue}); e != nil {
-		t.Fatal(e)
+	if err := p.Save(ctx, 1, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "key", SecretAccessKey: "secret", TopicARN: &topic}); err != nil {
+		t.Fatal(err)
 	}
-	routes, e := p.EventRoutes(ctx)
-	if e != nil || len(routes) != 1 || routes[0].BrandID != 1 || routes[0].TopicARN != topic || routes[0].QueueURL != queue {
-		t.Fatalf("unexpected routes: %+v %v", routes, e)
+	if id, err := p.EventBrand(ctx, topic); err != nil || id != 1 {
+		t.Fatalf("topic resolved to %d: %v", id, err)
 	}
-	if id, e := p.EventBrand(ctx, topic); e != nil || id != 1 {
-		t.Fatalf("topic resolved to %d: %v", id, e)
-	}
-	if _, e := p.SQSClient(ctx, 1); e != nil {
-		t.Fatal(e)
-	}
-	if e := p.Save(ctx, 2, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "other", SecretAccessKey: "other", TopicARN: &topic}); e == nil {
+	if err := p.Save(ctx, 2, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "other", SecretAccessKey: "other", TopicARN: &topic}); err == nil {
 		t.Fatal("SNS topic assigned to two brands")
 	}
 	blank := ""
-	if e := p.Save(ctx, 1, Update{Mode: "static", Region: "eu-west-1", TopicARN: &blank, QueueURL: &blank}); e != nil {
-		t.Fatal(e)
+	if err := p.Save(ctx, 1, Update{Mode: "static", Region: "eu-west-1", TopicARN: &blank}); err != nil {
+		t.Fatal(err)
 	}
-	if routes, e = p.EventRoutes(ctx); e != nil || len(routes) != 0 {
-		t.Fatalf("cleared topic still routed: %+v %v", routes, e)
+	if _, err := p.EventBrand(ctx, topic); err == nil {
+		t.Fatal("cleared topic still routed")
 	}
 }
 
 func TestSetupEventsUsesBrandKeys(t *testing.T) {
-	var created bool
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.Header.Get("Authorization"), "Credential=brand-event-key/") {
-			t.Error("event setup did not use brand keys")
-		}
-		if r.URL.Path == "/" {
-			w.Header().Set("Content-Type", "text/xml")
-			fmt.Fprint(w, `<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/"><GetCallerIdentityResult><Account>123456789012</Account></GetCallerIdentityResult></GetCallerIdentityResponse>`)
-			return
-		}
-		if strings.Contains(r.URL.Path, "/event-destinations") && r.Method == http.MethodGet {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"EventDestinations":[]}`)
-			return
-		}
-		if strings.Contains(r.URL.Path, "/event-destinations") && r.Method == http.MethodPost {
-			created = true
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{}`)
-			return
-		}
-		t.Errorf("unexpected AWS request: %s %s", r.Method, r.URL.Path)
-		http.Error(w, "unexpected request", 404)
-	}))
-	defer server.Close()
-	p, db := testProvider(t, server.URL)
-	if _, err := db.Writer.Exec("UPDATE brands SET configuration_set='postbox' WHERE id=1"); err != nil {
-		t.Fatal(err)
-	}
-	topic := "arn:aws:sns:eu-west-1:123456789012:brand-one"
-	if err := p.Save(context.Background(), 1, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "brand-event-key", SecretAccessKey: "secret", TopicARN: &topic}); err != nil {
-		t.Fatal(err)
-	}
-	if err := p.SetupEvents(context.Background(), 1); err != nil || !created {
-		t.Fatalf("event destination was not created: %v", err)
+	for _, initial := range []string{"missing", "existing", "destination", "denied"} {
+		t.Run(initial, func(t *testing.T) {
+			configExists := initial != "missing"
+			destinationExists := initial == "destination"
+			var createdConfig, configured bool
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !strings.Contains(r.Header.Get("Authorization"), "Credential=brand-event-key/") {
+					t.Error("event setup did not use brand keys")
+				}
+				if r.URL.Path == "/" {
+					w.Header().Set("Content-Type", "text/xml")
+					fmt.Fprint(w, `<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/"><GetCallerIdentityResult><Account>123456789012</Account></GetCallerIdentityResult></GetCallerIdentityResponse>`)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/v2/email/configuration-sets" && r.Method == http.MethodPost {
+					if configExists {
+						t.Error("attempted to create an existing configuration set")
+					}
+					configExists, createdConfig = true, true
+					fmt.Fprint(w, `{}`)
+					return
+				}
+				if r.URL.Path == "/v2/email/configuration-sets/postbox/event-destinations" && r.Method == http.MethodGet {
+					if initial == "denied" {
+						w.WriteHeader(http.StatusForbidden)
+						fmt.Fprint(w, `{"__type":"AccessDeniedException","message":"denied"}`)
+					} else if !configExists {
+						w.WriteHeader(http.StatusNotFound)
+						fmt.Fprint(w, `{"__type":"NotFoundException","message":"missing"}`)
+					} else if destinationExists {
+						fmt.Fprint(w, `{"EventDestinations":[{"Name":"postbox"}]}`)
+					} else {
+						fmt.Fprint(w, `{"EventDestinations":[]}`)
+					}
+					return
+				}
+				if (r.URL.Path == "/v2/email/configuration-sets/postbox/event-destinations" && r.Method == http.MethodPost && !destinationExists) || (r.URL.Path == "/v2/email/configuration-sets/postbox/event-destinations/postbox" && r.Method == http.MethodPut && destinationExists) {
+					var body struct {
+						EventDestinationName string
+						EventDestination     struct {
+							Enabled            bool
+							MatchingEventTypes []string
+							SnsDestination     struct{ TopicArn string }
+						}
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Fatal(err)
+					}
+					if !body.EventDestination.Enabled || body.EventDestination.SnsDestination.TopicArn != "arn:aws:sns:eu-west-1:123456789012:brand-one" || len(body.EventDestination.MatchingEventTypes) != 7 {
+						t.Errorf("unexpected event destination: %+v", body)
+					}
+					configured = true
+					fmt.Fprint(w, `{}`)
+					return
+				}
+				t.Errorf("unexpected AWS request: %s %s", r.Method, r.URL.Path)
+				http.Error(w, "unexpected request", 404)
+			}))
+			defer server.Close()
+			p, db := testProvider(t, server.URL)
+			if _, err := db.Writer.Exec("UPDATE brands SET configuration_set='postbox' WHERE id=1"); err != nil {
+				t.Fatal(err)
+			}
+			topic := "arn:aws:sns:eu-west-1:123456789012:brand-one"
+			if err := p.Save(context.Background(), 1, Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "brand-event-key", SecretAccessKey: "secret", TopicARN: &topic}); err != nil {
+				t.Fatal(err)
+			}
+			err := p.SetupEvents(context.Background(), 1)
+			if initial == "denied" {
+				if err == nil || createdConfig || configured {
+					t.Fatalf("permission failure triggered setup: %v", err)
+				}
+				return
+			}
+			if err != nil || !configured || createdConfig != (initial == "missing") {
+				t.Fatalf("configuration setup: created=%v configured=%v err=%v", createdConfig, configured, err)
+			}
+		})
 	}
 }
 

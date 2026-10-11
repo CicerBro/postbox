@@ -1,6 +1,6 @@
 # Postbox
 
-Postbox is a self-hosted newsletter service using Amazon SES v2 and SQLite. A single Go binary embeds the React application and database migrations. Run it directly or with Docker. SQLite and durable jobs remove the need for a separate database or queue server; JavaScript is needed only when building the frontend. AWS SES delivers email, with optional SNS/SQS for delivery events.
+Postbox is a self-hosted newsletter service using Amazon SES v2 and SQLite. A single Go binary embeds the React application and database migrations. Run it directly or with Docker. SQLite and durable jobs remove the need for a separate database or queue server; JavaScript is needed only when building the frontend. AWS SES delivers email, with SNS HTTPS notifications for delivery events.
 
 ![Postbox campaigns with sample test campaigns](docs/images/postbox-campaigns.png)
 

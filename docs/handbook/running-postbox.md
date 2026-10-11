@@ -102,7 +102,7 @@ Monitor failed jobs and your AWS dead-letter queues as well as HTTP health. Dail
 
 Recurring schedules survive restarts, prevent overlapping occurrences and skip missed intervals. A failed run does not stop future occurrences. Repair the cause and monitor the next run. Set `POSTBOX_BACKUP_DIR` to the backup directory, or explicitly empty it to disable recurring backups.
 
-On SIGTERM, Postbox stops claiming recipients, drains in-flight sends and tracking writes, stops jobs and SQS polling, and optimises SQLite. The default shutdown timeout is 60 seconds; allow at least 75 seconds in the supervisor. Interrupted dispatches become unknown and can later be reconciled by SES events.
+On SIGTERM, Postbox stops claiming recipients, drains in-flight sends and tracking writes, stops jobs, and optimises SQLite. The default shutdown timeout is 60 seconds; allow at least 75 seconds in the supervisor. Interrupted dispatches become unknown and can later be reconciled by SES events.
 
 ## Diagnose common problems
 

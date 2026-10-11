@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"io"
 	"net/http"
 	"postbox/internal/store"
@@ -18,11 +16,11 @@ import (
 )
 
 type Config struct {
-	TopicARN, QueueURL string
-	BrandID            int64
-	ResolveTopic       func(context.Context, string) (int64, error)
-	SoftBounceLimit    int
-	HTTPClient         *http.Client
+	TopicARN        string
+	BrandID         int64
+	ResolveTopic    func(context.Context, string) (int64, error)
+	SoftBounceLimit int
+	HTTPClient      *http.Client
 }
 type Service struct {
 	db         *store.DB
@@ -209,42 +207,6 @@ func firstTag(m map[string][]string, keys ...string) string {
 		}
 	}
 	return ""
-}
-
-type SQSClient interface {
-	ReceiveMessage(context.Context, *sqs.ReceiveMessageInput, ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
-	DeleteMessage(context.Context, *sqs.DeleteMessageInput, ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
-}
-
-func (s *Service) Poll(ctx context.Context, client SQSClient) error {
-	return s.PollBrand(ctx, client, s.cfg.BrandID, s.cfg.TopicARN, s.cfg.QueueURL)
-}
-
-func (s *Service) PollBrand(ctx context.Context, client SQSClient, brandID int64, topicARN, queueURL string) error {
-	if queueURL == "" || topicARN == "" {
-		return errors.New("SQS queue URL required")
-	}
-	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		out, e := client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{QueueUrl: aws.String(queueURL), MaxNumberOfMessages: 10, WaitTimeSeconds: 20, VisibilityTimeout: 120})
-		if e != nil {
-			return fmt.Errorf("SQS receive: %w", e)
-		}
-		for _, m := range out.Messages {
-			envelope, e := DecodeSNS([]byte(aws.ToString(m.Body)))
-			if e != nil || envelope.Type != "Notification" || envelope.TopicARN != topicARN {
-				continue
-			}
-			if e = s.process(ctx, brandID, envelope.MessageID, []byte(envelope.Message)); e != nil {
-				continue
-			}
-			if _, e = client.DeleteMessage(ctx, &sqs.DeleteMessageInput{QueueUrl: aws.String(queueURL), ReceiptHandle: m.ReceiptHandle}); e != nil {
-				return fmt.Errorf("SQS delete committed event: %w", e)
-			}
-		}
-	}
 }
 
 func skipSubscriber(ctx context.Context, c *sql.Conn, id int64) error {

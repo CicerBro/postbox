@@ -9,8 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 )
 
-// SetupEvents connects an existing brand SES configuration set to its SNS topic.
-// Topic and queue creation, subscriptions and resource policies remain in AWS.
+// SetupEvents creates a missing brand SES configuration set and connects it to its SNS topic.
+// Topic creation, HTTPS subscriptions and resource policies remain in AWS.
 func (p *Provider) SetupEvents(ctx context.Context, id int64) error {
 	settings, err := p.Settings(ctx, id)
 	if err != nil {
@@ -27,9 +27,24 @@ func (p *Provider) SetupEvents(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.GetConfigurationSetEventDestinations(ctx, &sesv2.GetConfigurationSetEventDestinationsInput{ConfigurationSetName: aws.String(name)})
+	input := &sesv2.GetConfigurationSetEventDestinationsInput{ConfigurationSetName: aws.String(name)}
+	output, err := client.GetConfigurationSetEventDestinations(ctx, input)
 	if err != nil {
-		return err
+		var missing *types.NotFoundException
+		if !errors.As(err, &missing) {
+			return err
+		}
+		_, err = client.CreateConfigurationSet(ctx, &sesv2.CreateConfigurationSetInput{ConfigurationSetName: aws.String(name)})
+		if err != nil {
+			var exists *types.AlreadyExistsException
+			if !errors.As(err, &exists) {
+				return err
+			}
+		}
+		output, err = client.GetConfigurationSetEventDestinations(ctx, input)
+		if err != nil {
+			return err
+		}
 	}
 	destination := &types.EventDestinationDefinition{
 		Enabled:            true,

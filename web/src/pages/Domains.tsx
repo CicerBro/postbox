@@ -36,9 +36,9 @@ export function DomainsPage({ brandId }: { brandId: number }) {
                 sender domain.
               </li>
               <li>
-                Create the configuration set above in SES. Configure its event
-                destination for delivery, bounce and complaint events through
-                the deployment’s SNS or SQS ingestion.
+                Set a configuration set name above, then select Create config set
+                at AWS in Amazon SES settings. Subscribe your public HTTPS
+                /events/sns URL to the saved SNS topic.
               </li>
               <li>
                 Point the tracking hostname to this Postbox deployment and serve

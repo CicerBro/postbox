@@ -12,9 +12,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"io"
 	"math/big"
 	"net/http"
@@ -189,61 +186,6 @@ func TestBounceThreshold(t *testing.T) {
 	}
 }
 
-type fakeQueue struct {
-	body    string
-	cancel  context.CancelFunc
-	deleted int
-	db      *store.DB
-	durable bool
-}
-
-func (f *fakeQueue) ReceiveMessage(ctx context.Context, in *sqs.ReceiveMessageInput, _ ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
-	if in.WaitTimeSeconds != 20 {
-		panic("not long polling")
-	}
-	f.cancel()
-	return &sqs.ReceiveMessageOutput{Messages: []types.Message{{Body: aws.String(f.body), ReceiptHandle: aws.String("receipt")}}}, nil
-}
-func (f *fakeQueue) DeleteMessage(ctx context.Context, in *sqs.DeleteMessageInput, _ ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error) {
-	f.deleted++
-	var count int
-	f.db.Reader.QueryRow(`SELECT count(*) FROM ses_events WHERE sns_message_id='poll-event'`).Scan(&count)
-	f.durable = count == 1
-	return &sqs.DeleteMessageOutput{}, nil
-}
-
-// Cancel only when Delete runs, so successful processing completes before the polling loop stops.
-type committedQueue struct{ fakeQueue }
-
-func (f *committedQueue) ReceiveMessage(ctx context.Context, in *sqs.ReceiveMessageInput, _ ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
-	if in.WaitTimeSeconds != 20 {
-		panic("not long polling")
-	}
-	return &sqs.ReceiveMessageOutput{Messages: []types.Message{{Body: aws.String(f.body), ReceiptHandle: aws.String("receipt")}}}, nil
-}
-func (f *committedQueue) DeleteMessage(ctx context.Context, in *sqs.DeleteMessageInput, options ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error) {
-	out, e := f.fakeQueue.DeleteMessage(ctx, in, options...)
-	f.cancel()
-	return out, e
-}
-func TestSQSAcknowledgesOnlyCommittedEvents(t *testing.T) {
-	db := eventDB(t)
-	cfg := &Config{QueueURL: "https://sqs.eu-west-1.amazonaws.com/123/queue", TopicARN: "arn:aws:sns:eu-west-1:123:events"}
-	s := New(db, cfg)
-	ctx, cancel := context.WithCancel(context.Background())
-	envelope, _ := json.Marshal(SNSMessage{Type: "Notification", MessageID: "poll-event", TopicARN: cfg.TopicARN, Message: `{"eventType":"Delivery","mail":{"messageId":"ses-id"},"delivery":{"recipients":["user@example.com"]}}`})
-	q := &committedQueue{fakeQueue{body: string(envelope), cancel: cancel, db: db}}
-	s.Poll(ctx, q)
-	if q.deleted != 1 || !q.durable {
-		t.Fatal("acknowledged before durable commit")
-	}
-	ctx, cancel = context.WithCancel(context.Background())
-	bad := &fakeQueue{body: string(envelope), cancel: cancel, db: db}
-	s.Poll(ctx, bad)
-	if bad.deleted != 0 {
-		t.Fatal("acknowledged failed/cancelled transaction")
-	}
-}
 func TestFallbackUsesFrozenAddressBeforeMessageIDPersists(t *testing.T) {
 	db := eventDB(t)
 	if _, e := db.Writer.Exec(`UPDATE campaign_recipients SET message_id=NULL WHERE campaign_id=1`); e != nil {
