@@ -46,6 +46,12 @@ A campaign reserves a durable attempt before contacting SES. Uncertain acceptanc
 
 WAL `synchronous=NORMAL` preserves committed reservations across a process crash. A host crash or power loss can lose recent commits, including reservations, and permit a duplicate. Preserve that distinction in reliability claims and tests. The policy also permits a missed email when nonacceptance cannot be proven.
 
+## Database schema changes
+
+The complete fresh-install schema lives in `internal/store/migrations/001_initial.sql`. The pre-production migration history was consolidated into this baseline. Older development databases need a fresh database as described in [Upgrade notes](configuration.md#upgrade-notes).
+
+Add future schema changes as new numbered SQL files in `internal/store/migrations/`, starting with `002_`. The store embeds these files, applies them in filename order within a write transaction and records their SHA-256 checksums. Leave applied migration files unchanged so existing databases can reopen safely. Validate fresh installation and reopening with `go test ./internal/store`, then run the Go suite for affected workflows.
+
 ## Edit the handbook
 
 The eight chapters in `docs/handbook/` are the canonical prose for `/docs`. Their order is declared in [the guide builder](../../web/docs/content.ts). The builder renders Markdown, resolves local chapter links and lists SES & SNS Setup and Configuration reference as standalone pages in the sidebar. Sendy adapter details live in Moving from Sendy. The README links to these chapters.

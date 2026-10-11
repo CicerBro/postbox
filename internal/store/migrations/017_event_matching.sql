@@ -1,1 +1,0 @@
-CREATE INDEX campaign_recipients_snapshot_email ON campaign_recipients(campaign_id,snapshot_email);

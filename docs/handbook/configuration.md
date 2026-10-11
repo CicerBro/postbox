@@ -107,10 +107,8 @@ Only a trusted direct socket peer can supply `X-Forwarded-For`. Entries must be 
 
 ## Upgrade notes
 
-Migration `015_stable_session_csrf.sql` revokes older sessions once because their former random CSRF tokens cannot be recovered from hashes. Users sign in again after that upgrade.
+Postbox has not been deployed to production. The development migration history has been consolidated into `001_initial.sql`, which creates the complete current schema for a fresh installation. Historical session resets, consent backfills and AWS credential conversions are no longer upgrade steps.
 
-Migration `014_brand_marketing_consent.sql` infers historical unsubscribe-all events. Ambiguous older events are treated as opt-outs when no active membership or later subscribe event remains. Review affected contacts and obtain fresh consent before restoring eligibility.
+Databases created with the earlier development migrations cannot be opened with this baseline: startup reports `migration 001_initial.sql checksum changed`. Stop the old service and retain a backup with its matching secret if you need the development data. Initialise a new, empty database, recreate the administrator and brand settings, and rerun any Sendy import from its original source. Do not clear `schema_migrations` or edit its checksums to bypass the error; that does not recreate the schema.
 
-Migration `018_confirmation_lifecycle.sql` records the current confirmation period separately from membership creation, allowing a fresh resubscription its full window. Confirming an expired or removed membership returns an error.
-
-Historical global suppressions are retained conservatively on upgrade. Review affected contacts; deleting a suppression does not establish consent. Legacy server-wide brand credentials are cleared and must be entered per brand. The old server-wide SNS environment settings are no longer read.
+Future schema changes will use new numbered migrations applied automatically when a command opens the database.

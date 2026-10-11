@@ -159,6 +159,40 @@ func TestConnectionsAndTransactions(t *testing.T) {
 		t.Error("foreign key accepted orphan")
 	}
 }
+func TestMigrationChecksumMismatchPreservesData(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer legacy.Close()
+	// Earlier development databases recorded a different initial migration.
+	if _, err = legacy.Exec(`
+		CREATE TABLE schema_migrations(name TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at INTEGER NOT NULL) STRICT, WITHOUT ROWID;
+		INSERT INTO schema_migrations VALUES('001_initial.sql','previous-development-baseline',1);
+		CREATE TABLE preserved_data(value TEXT NOT NULL) STRICT;
+		INSERT INTO preserved_data VALUES('keep');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(path)
+	if err == nil {
+		db.Close()
+		t.Fatal("opened a database from a different migration baseline")
+	}
+	if !strings.Contains(err.Error(), "migration 001_initial.sql checksum changed") {
+		t.Fatalf("unexpected startup error: %v", err)
+	}
+	var value string
+	if err = legacy.QueryRow("SELECT value FROM preserved_data").Scan(&value); err != nil || value != "keep" {
+		t.Fatalf("failed startup changed existing data: %q %v", value, err)
+	}
+	var tableCount int
+	if err = legacy.QueryRow("SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='brands'").Scan(&tableCount); err != nil || tableCount != 0 {
+		t.Fatalf("failed startup applied the new baseline: %d %v", tableCount, err)
+	}
+}
+
 func TestMigrationsReopenAndStrict(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "db.sqlite")
 	db, err := Open(path)
@@ -176,6 +210,14 @@ func TestMigrationsReopenAndStrict(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	var migrationCount int
+	var migrationName string
+	if err := db.Reader.QueryRow("SELECT count(*),min(name) FROM schema_migrations").Scan(&migrationCount, &migrationName); err != nil {
+		t.Fatal(err)
+	}
+	if migrationCount != 1 || migrationName != "001_initial.sql" {
+		t.Fatalf("fresh database migrations: %d %q", migrationCount, migrationName)
+	}
 	v, err := db.Setting(context.Background(), "persist")
 	if err != nil || v != "yes" {
 		t.Fatalf("reopen %q %v", v, err)

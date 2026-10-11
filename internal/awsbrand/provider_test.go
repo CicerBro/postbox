@@ -302,39 +302,20 @@ func TestInvalidConfigurationNeverResolvesToFallback(t *testing.T) {
 	}
 }
 
-func TestMigrationRemovesServerCredentialConnections(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "upgrade.db")
-	db, e := store.Open(path)
-	if e != nil {
-		t.Fatal(e)
-	}
-	_, e = db.Writer.Exec(`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'One','One','one@example.test',1),(2,'Two','Two','two@example.test',1);
-		DROP TABLE brand_aws_settings;
-		CREATE TABLE brand_aws_settings (brand_id INTEGER PRIMARY KEY REFERENCES brands(id) ON DELETE CASCADE, mode TEXT NOT NULL CHECK(mode IN ('static','instance_role')), region TEXT NOT NULL, credentials BLOB NOT NULL, revision INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL) STRICT;
-		INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'instance_role','us-east-1',x'00',1),(2,'static','eu-west-1',x'01',1);
-		INSERT INTO suppressions(brand_id,kind,value,reason,created_at) VALUES(1,'email','old@example.test','ses_sync',1),(2,'email','keep@example.test','ses_sync',1);
-		DELETE FROM schema_migrations WHERE name IN ('012_brand_keys_only.sql','013_brand_ses_events.sql')`)
-	if e != nil {
-		t.Fatal(e)
-	}
-	db.Close()
-	db, e = store.Open(path)
-	if e != nil {
-		t.Fatal(e)
+func TestSchemaRequiresBrandCredentials(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "postbox.db"))
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer db.Close()
-	var count int
-	if e = db.Reader.QueryRow("SELECT count(*) FROM brand_aws_settings WHERE mode='instance_role'").Scan(&count); e != nil || count != 0 {
-		t.Fatalf("legacy server connection retained: %d %v", count, e)
+	if _, err = db.Writer.Exec(`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'One','One','one@example.test',1)`); err != nil {
+		t.Fatal(err)
 	}
-	if e = db.Reader.QueryRow("SELECT count(*) FROM brand_aws_settings WHERE brand_id=2 AND mode='static'").Scan(&count); e != nil || count != 1 {
-		t.Fatalf("brand keys removed: %d %v", count, e)
+	if _, err = db.Writer.Exec(`INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'instance_role','us-east-1',X'00',1)`); err == nil {
+		t.Fatal("schema accepts server credential mode")
 	}
-	if e = db.Reader.QueryRow("SELECT count(*) FROM suppressions WHERE brand_id=1 AND reason='ses_sync'").Scan(&count); e != nil || count != 0 {
-		t.Fatalf("legacy imported suppression retained: %d %v", count, e)
-	}
-	if _, e = db.Writer.Exec("INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'instance_role','us-east-1',x'00',1)"); e == nil {
-		t.Fatal("schema still accepts server credential mode")
+	if _, err = db.Writer.Exec(`INSERT INTO brand_aws_settings(brand_id,mode,region,credentials,updated_at) VALUES(1,'static','eu-west-1',X'01',1)`); err != nil {
+		t.Fatalf("schema rejected brand keys: %v", err)
 	}
 }
 
@@ -458,44 +439,6 @@ func TestConnectionChangesResetOnlyImportedSuppressions(t *testing.T) {
 	db.Reader.QueryRow("SELECT count(*) FROM jobs WHERE queue='ses_suppressions' AND status='pending'").Scan(&count)
 	if count != 1 {
 		t.Fatal("reset did not enqueue missing refresh")
-	}
-}
-func TestMigrationScopesLegacySESImports(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "upgrade.db")
-	db, e := store.Open(path)
-	if e != nil {
-		t.Fatal(e)
-	}
-	_, e = db.Writer.Exec(`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'One','One','one@example.test',1),(2,'Two','Two','two@example.test',1); INSERT INTO suppressions(brand_id,kind,value,reason,created_at) VALUES(NULL,'email','legacy@example.test','ses_sync',1),(NULL,'domain','blocked.test','manual',1),(1,'email','legacy@example.test','manual',1); DROP TABLE brand_aws_settings; DELETE FROM schema_migrations WHERE name='010_brand_aws.sql'`)
-	if e != nil {
-		t.Fatal(e)
-	}
-	db.Close()
-	db, e = store.Open(path)
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer db.Close()
-	var count int
-	db.Reader.QueryRow("SELECT count(*) FROM suppressions WHERE brand_id IS NULL AND reason='ses_sync'").Scan(&count)
-	if count != 0 {
-		t.Fatal("legacy account suppression remained global")
-	}
-	db.Reader.QueryRow("SELECT count(*) FROM suppressions WHERE brand_id=2 AND reason='ses_sync' AND value='legacy@example.test'").Scan(&count)
-	if count != 1 {
-		t.Fatal("legacy import not preserved for existing brand")
-	}
-	db.Reader.QueryRow("SELECT count(*) FROM suppressions WHERE reason='manual'").Scan(&count)
-	if count != 2 {
-		t.Fatal("manual suppression altered during migration")
-	}
-	_, e = db.Writer.Exec(`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(3,'Three','Three','three@example.test',1)`)
-	if e != nil {
-		t.Fatal(e)
-	}
-	db.Reader.QueryRow("SELECT count(*) FROM suppressions WHERE brand_id=3").Scan(&count)
-	if count != 0 {
-		t.Fatal("new brand inherited old account imports")
 	}
 }
 
