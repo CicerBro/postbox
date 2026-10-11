@@ -26,6 +26,12 @@ jobs:
       - name: Test frontend source preservation and themes
         working-directory: web
         run: bun test
+      - name: Install browser test runtime
+        working-directory: web
+        run: bunx playwright install --with-deps chromium
+      - name: Test browser workflows
+        working-directory: web
+        run: bun run test:browser
       - name: Verify CGO-free deployment
         env:
           CGO_ENABLED: '0'
