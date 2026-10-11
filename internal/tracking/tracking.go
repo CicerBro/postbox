@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"postbox/internal/consent"
+	"postbox/internal/emailpreferences"
 	"postbox/internal/htmlpolicy"
 	"postbox/internal/jobs"
 	"postbox/internal/render"
@@ -349,7 +350,7 @@ func (s *Service) Goodbye(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", 503)
 		return
 	}
-	lists, e := currentMailingLists(r.Context(), s.db.Reader, c, u)
+	lists, e := emailpreferences.CurrentMailingLists(r.Context(), s.db.Reader, c, u)
 	if e != nil {
 		http.Error(w, "unavailable", 503)
 		return
@@ -360,7 +361,7 @@ func (s *Service) Goodbye(w http.ResponseWriter, r *http.Request) {
 	if goodbye == "" {
 		goodbye = `<h1>Unsubscribe</h1><p class="muted">Stop receiving emails from this sender.</p>`
 	}
-	preferencePageStart(w, "Unsubscribe", brandName)
+	emailpreferences.Start(w, "Unsubscribe", brandName)
 	fmt.Fprint(w, goodbye+`<form method="post"><div class="actions">`)
 	if len(lists) > 0 {
 		label := "Unsubscribe from this list"
@@ -373,7 +374,7 @@ func (s *Service) Goodbye(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `<button class="primary" name="list" value="all">Unsubscribe from all emails</button>`)
 	}
 	fmt.Fprint(w, `</div></form>`)
-	preferencePageEnd(w)
+	emailpreferences.End(w)
 }
 func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	c, u, e := s.identity(r)
@@ -404,7 +405,7 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		}
 		ids := []int64{id}
 		if list == "current" {
-			ids, e = currentMailingLists(r.Context(), conn, c, u)
+			ids, e = emailpreferences.CurrentMailingLists(r.Context(), conn, c, u)
 			if e != nil {
 				return e
 			}
@@ -478,7 +479,7 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 				message = "You have been unsubscribed from the lists associated with this email. Your other subscriptions are unchanged."
 			}
 		}
-		preferenceConfirmation(w, "You're unsubscribed", message, brandName)
+		emailpreferences.Confirmation(w, "You're unsubscribed", message, brandName)
 		return
 	}
 	fmt.Fprint(w, body)
@@ -512,7 +513,7 @@ func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
-	preferenceConfirmation(w, "Preference saved", "Your subscription preference has been saved. If confirmation is needed, check your inbox to finish subscribing.", brandName)
+	emailpreferences.Confirmation(w, "Preference saved", "Your subscription preference has been saved. If confirmation is needed, check your inbox to finish subscribing.", brandName)
 }
 
 func stringFields(raw string) (map[string]string, error) {

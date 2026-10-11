@@ -1,4 +1,4 @@
-package tracking
+package emailpreferences
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"net/http"
 )
 
-// preferencePageStart keeps public email pages self-contained on tracking domains.
-func preferencePageStart(w http.ResponseWriter, title, brandName string) {
+// Start keeps public email pages self-contained on tracking domains.
+func Start(w http.ResponseWriter, title, brandName string) {
 	fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>%s</title><style>
 *{box-sizing:border-box}body{margin:0;background:#fff;color:#18181b;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.5}
 main{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px}
@@ -23,21 +23,21 @@ button{width:100%%;min-height:40px;border:1px solid #e4e4e7;border-radius:8px;pa
 	fmt.Fprintf(w, `<p class="muted">Emails from <strong>%s</strong></p>`, html.EscapeString(brandName))
 }
 
-func preferencePageEnd(w http.ResponseWriter) {
+func End(w http.ResponseWriter) {
 	fmt.Fprint(w, `</section></main></body></html>`)
 }
 
-func preferenceConfirmation(w http.ResponseWriter, title, message, brandName string) {
-	preferencePageStart(w, title, brandName)
+func Confirmation(w http.ResponseWriter, title, message, brandName string) {
+	Start(w, title, brandName)
 	fmt.Fprintf(w, `<h1>%s</h1><p class="muted">%s</p>`, html.EscapeString(title), html.EscapeString(message))
-	preferencePageEnd(w)
+	End(w)
 }
 
-// currentMailingLists resolves only included campaign lists the recipient belongs to.
-func currentMailingLists(ctx context.Context, q interface {
+// CurrentMailingLists resolves only included campaign lists the recipient belongs to.
+func CurrentMailingLists(ctx context.Context, q interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }, campaign, subscriber int64) ([]int64, error) {
-	rows, err := q.QueryContext(ctx, `SELECT DISTINCT l.id FROM campaign_targets t JOIN campaigns c ON c.id=t.campaign_id JOIN lists l ON l.id=t.target_id AND l.brand_id=c.brand_id JOIN list_subscribers ls ON ls.list_id=l.id WHERE t.campaign_id=? AND t.target_type='list' AND t.mode='include' AND ls.subscriber_id=? ORDER BY l.id`, campaign, subscriber)
+	rows, err := q.QueryContext(ctx, `SELECT DISTINCT l.id FROM campaign_targets t JOIN campaigns c ON c.id=t.campaign_id JOIN lists l ON l.id=t.target_id AND l.brand_id=c.brand_id WHERE t.campaign_id=? AND t.target_type='list' AND t.mode='include' AND (?=0 OR EXISTS(SELECT 1 FROM list_subscribers ls WHERE ls.list_id=l.id AND ls.subscriber_id=?)) ORDER BY l.id`, campaign, subscriber, subscriber)
 	if err != nil {
 		return nil, err
 	}

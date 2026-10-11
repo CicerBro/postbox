@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"postbox/internal/emailpreferences"
 	"postbox/internal/htmlpolicy"
 	"postbox/internal/previewtoken"
 	"postbox/internal/subscribers"
@@ -24,7 +25,7 @@ func previewHeaders(w http.ResponseWriter, forms bool) {
 
 func (a *API) previewIdentity(w http.ResponseWriter, r *http.Request) (previewtoken.Claims, bool) {
 	c, err := a.engine.PreviewIdentity(r.Context(), r.PathValue("token"))
-	if err != nil || !strings.EqualFold(c.Host, r.Host) || c.List != 0 {
+	if err != nil || !strings.EqualFold(c.Host, r.Host) || c.List != 0 || c.Scope != "" {
 		http.NotFound(w, r)
 		return c, false
 	}
@@ -51,6 +52,16 @@ func (a *API) unsubscribePreview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	var brandName string
+	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT name FROM brands WHERE id=?`, c.Brand).Scan(&brandName); err != nil {
+		http.Error(w, "Preview unavailable", 503)
+		return
+	}
+	lists, err := emailpreferences.CurrentMailingLists(r.Context(), a.db.Reader, c.Campaign, c.Subscriber)
+	if err != nil {
+		http.Error(w, "Preview unavailable", 503)
+		return
+	}
 	previewHeaders(w, true)
 	if r.Method == "POST" {
 		r.Body = http.MaxBytesReader(w, r.Body, 4096)
@@ -63,33 +74,40 @@ func (a *API) unsubscribePreview(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid preview selection", 400)
 			return
 		}
-		label := "all lists"
-		if selected.List > 0 {
-			err = a.db.Reader.QueryRowContext(r.Context(), `SELECT l.name FROM lists l JOIN list_subscribers ls ON ls.list_id=l.id WHERE l.id=? AND l.brand_id=? AND ls.subscriber_id=?`, selected.List, c.Brand, c.Subscriber).Scan(&label)
+		label := "all emails from this sender"
+		if selected.Scope == "current" {
+			if len(lists) == 0 {
+				http.Error(w, "Invalid preview selection", 400)
+				return
+			}
+			label = "the lists associated with this email"
+			if len(lists) == 1 {
+				selected.List = lists[0]
+				label = "this list"
+			}
+		} else if selected.List > 0 {
+			var exists int
+			err = a.db.Reader.QueryRowContext(r.Context(), `SELECT 1 FROM lists l JOIN list_subscribers ls ON ls.list_id=l.id WHERE l.id=? AND l.brand_id=? AND ls.subscriber_id=?`, selected.List, c.Brand, c.Subscriber).Scan(&exists)
 			if err != nil {
 				http.NotFound(w, r)
 				return
 			}
+			label = "this list"
 		}
 		body, err := subscribers.NotificationSetting(r.Context(), a.db.Reader, c.Brand, selected.List, "goodbye_html")
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Preview unavailable", 503)
 			return
 		}
+		emailpreferences.Start(w, "Unsubscribe preview", brandName)
+		fmt.Fprint(w, `<p class="muted"><strong>Preview only. No subscription was changed.</strong></p>`)
 		if body == "" {
-			body = "You have been unsubscribed."
+			fmt.Fprintf(w, `<h1>You're unsubscribed</h1><p class="muted">On a live campaign, this would unsubscribe you from %s.</p>`, html.EscapeString(label))
+		} else {
+			fmt.Fprint(w, body)
 		}
-		fmt.Fprintf(w, `<!doctype html><title>Unsubscribe preview</title><p><strong>Preview only. No subscription was changed.</strong></p><p>On a live campaign, this would unsubscribe the selected subscriber from %s.</p>%s`, html.EscapeString(label), body)
+		emailpreferences.End(w)
 		return
-	}
-	var email string
-	if c.Subscriber > 0 {
-		if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT email FROM subscribers WHERE id=? AND brand_id=?`, c.Subscriber, c.Brand).Scan(&email); err != nil {
-			http.NotFound(w, r)
-			return
-		}
-	} else {
-		email = "preview@example.org"
 	}
 	goodbye, err := subscribers.NotificationSetting(r.Context(), a.db.Reader, c.Brand, 0, "goodbye_html")
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -97,39 +115,29 @@ func (a *API) unsubscribePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if goodbye == "" {
-		goodbye = "<h1>Email preferences</h1>"
+		goodbye = `<h1>Unsubscribe</h1><p class="muted">Stop receiving emails from this sender.</p>`
 	}
-	type choice struct{ token, name string }
-	choices := []choice{{r.PathValue("token"), "all lists"}}
-	rows, err := a.db.Reader.QueryContext(r.Context(), `SELECT l.id,l.name FROM lists l JOIN list_subscribers ls ON ls.list_id=l.id WHERE ls.subscriber_id=? AND l.brand_id=? ORDER BY l.id`, c.Subscriber, c.Brand)
-	if err != nil {
-		http.Error(w, "Preview unavailable", 503)
-		return
-	}
-	for rows.Next() {
-		var id int64
-		var name string
-		if err = rows.Scan(&id, &name); err != nil {
-			break
-		}
-		var tok string
-		tok, err = a.engine.PreviewListToken(c, id)
+	var currentToken string
+	if len(lists) > 0 {
+		current := c
+		current.Scope = "current"
+		currentToken, err = a.engine.PreviewListToken(current, 0)
 		if err != nil {
-			break
+			http.Error(w, "Preview unavailable", 503)
+			return
 		}
-		choices = append(choices, choice{tok, name})
 	}
-	if err == nil {
-		err = rows.Err()
+	emailpreferences.Start(w, "Unsubscribe preview", brandName)
+	fmt.Fprint(w, `<p class="muted"><strong>Preview only. No subscription will be changed.</strong></p>`+goodbye+`<form method="post"><div class="actions">`)
+	if len(lists) > 0 {
+		label := "Unsubscribe from this list"
+		if len(lists) > 1 {
+			label = "Unsubscribe from these lists"
+		}
+		fmt.Fprintf(w, `<button class="primary" name="selection" value="%s">%s</button><button name="selection" value="%s">Unsubscribe from all emails</button>`, html.EscapeString(currentToken), label, html.EscapeString(r.PathValue("token")))
+	} else {
+		fmt.Fprintf(w, `<button class="primary" name="selection" value="%s">Unsubscribe from all emails</button>`, html.EscapeString(r.PathValue("token")))
 	}
-	rows.Close()
-	if err != nil {
-		http.Error(w, "Preview unavailable", 503)
-		return
-	}
-	fmt.Fprintf(w, `<!doctype html><title>Unsubscribe preview</title><p><strong>Preview only. No subscription will be changed.</strong></p><p>Email preferences for %s</p>%s<form method="post" action="%s">`, html.EscapeString(email), goodbye, html.EscapeString(r.URL.Path))
-	for _, v := range choices {
-		fmt.Fprintf(w, `<p><button name="selection" value="%s">Unsubscribe from %s</button></p>`, html.EscapeString(v.token), html.EscapeString(v.name))
-	}
-	fmt.Fprint(w, `</form>`)
+	fmt.Fprint(w, `</div></form>`)
+	emailpreferences.End(w)
 }

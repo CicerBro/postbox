@@ -17,6 +17,7 @@ type Claims struct {
 	Campaign   int64  `json:"c"`
 	Subscriber int64  `json:"s"`
 	List       int64  `json:"l"`
+	Scope      string `json:"scope,omitempty"`
 	Host       string `json:"h"`
 	Expires    int64  `json:"e"`
 }
@@ -67,7 +68,7 @@ func Decode(secret []byte, token string) (Claims, error) {
 	if err = json.Unmarshal(body, &c); err != nil {
 		return c, err
 	}
-	if c.Brand <= 0 || c.Campaign <= 0 || c.Subscriber < 0 || c.List < 0 || c.Expires <= time.Now().Unix() {
+	if c.Brand <= 0 || c.Campaign <= 0 || c.Subscriber < 0 || c.List < 0 || (c.Scope != "" && c.Scope != "current") || c.Expires <= time.Now().Unix() {
 		return Claims{}, errors.New("expired or invalid preview")
 	}
 	return c, nil

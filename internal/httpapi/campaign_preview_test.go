@@ -41,6 +41,9 @@ func TestSavedCampaignAndUnsubscribePreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	id, _ := res.LastInsertId()
+	if _, err = db.Writer.Exec(`INSERT INTO campaign_targets(campaign_id,target_type,target_id,mode) VALUES(?,'list',?,'include')`, id, list.ID); err != nil {
+		t.Fatal(err)
+	}
 	tables := []string{"links", "campaign_preparations", "campaign_recipients", "subscriber_activity", "jobs"}
 	before := map[string]int{}
 	for _, table := range tables {
@@ -76,7 +79,7 @@ func TestSavedCampaignAndUnsubscribePreview(t *testing.T) {
 		t.Fatal("missing preview privacy header")
 	}
 	w = request(mux, "GET", unsubscribe, "", nil, "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "selected@example.org") || !strings.Contains(w.Body.String(), "Readers") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Emails from <strong>Preview</strong>") || strings.Contains(w.Body.String(), "Readers") || strings.Contains(w.Body.String(), "selected@example.org") || strings.Contains(w.Body.String(), "<footer") || !strings.Contains(w.Body.String(), "Unsubscribe from this list") {
 		t.Fatal(w.Code, w.Body)
 	}
 	assertHTMLPolicy(t, w.Header(), htmlpolicy.UnsubscribePreview)
@@ -93,6 +96,20 @@ func TestSavedCampaignAndUnsubscribePreview(t *testing.T) {
 			t.Fatal(w.Code, w.Body)
 		}
 		assertHTMLPolicy(t, w.Header(), htmlpolicy.UnsubscribePreview)
+	}
+	// Generic previews still show campaign-scoped choices without a real recipient.
+	payload, _ = json.Marshal(map[string]any{"campaign_id": id, "html": `<a href="{{ unsubscribe }}">Unsubscribe</a>`})
+	generic := request(mux, "POST", fmt.Sprintf("/api/v1/email-preview?brand_id=%d", brand.ID), string(payload), &cookie, csrf)
+	if generic.Code != 200 || json.Unmarshal(generic.Body.Bytes(), &out) != nil {
+		t.Fatal(generic.Code, generic.Body)
+	}
+	genericLinks := regexp.MustCompile(`href="([^"]+)"`).FindAllStringSubmatch(out.HTML, -1)
+	if len(genericLinks) != 1 {
+		t.Fatal(out.HTML)
+	}
+	generic = request(mux, "GET", genericLinks[0][1], "", nil, "")
+	if generic.Code != 200 || !strings.Contains(generic.Body.String(), "Unsubscribe from this list") || strings.Contains(generic.Body.String(), "Readers") {
+		t.Fatal(generic.Code, generic.Body)
 	}
 	var status string
 	if err = db.Reader.QueryRow(`SELECT status FROM list_subscribers WHERE subscriber_id=? AND list_id=?`, sub.ID, list.ID).Scan(&status); err != nil || status != "subscribed" {
