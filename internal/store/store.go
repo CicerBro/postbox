@@ -20,8 +20,9 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-// consolidatedInitialMigrationChecksum identifies the applied squashed schema
-// before the harmless fresh-install header was added.
+// The squash replaced the original initial migration while existing databases
+// retained its checksum and the records for the later, already applied migrations.
+const originalInitialMigrationChecksum = "c28283c4e7531dc17883dada93d129e8ecdb8e51ac5061af7b37db06c8bae220"
 const consolidatedInitialMigrationChecksum = "e89e92d4f0f2f762ca560dbfdac7e66fe997dab469e5bfab7ae3f23a953006e3"
 
 type DB struct {
@@ -142,10 +143,10 @@ func (db *DB) migrate(ctx context.Context) error {
 			err = conn.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE name=?", f.Name()).Scan(&existing)
 			if err == nil {
 				if existing != checksum {
-					if f.Name() != "001_initial.sql" || existing != consolidatedInitialMigrationChecksum {
+					if f.Name() != "001_initial.sql" || existing != originalInitialMigrationChecksum || checksum != consolidatedInitialMigrationChecksum {
 						return fmt.Errorf("migration %s checksum changed", f.Name())
 					}
-					// The applied schema is the squashed baseline. Keep its recorded checksum.
+					// Recognize the known squash without replaying SQL or rewriting history.
 					continue
 				}
 				continue

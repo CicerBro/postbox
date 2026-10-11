@@ -202,7 +202,7 @@ func TestConsolidatedInitialMigrationChecksumAccepted(t *testing.T) {
 	if _, err = legacy.Exec("CREATE TABLE schema_migrations(name TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at INTEGER NOT NULL) STRICT, WITHOUT ROWID"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = legacy.Exec("INSERT INTO schema_migrations VALUES('001_initial.sql', ?, 1)", consolidatedInitialMigrationChecksum); err != nil {
+	if _, err = legacy.Exec("INSERT INTO schema_migrations VALUES('001_initial.sql', ?, 1)", originalInitialMigrationChecksum); err != nil {
 		t.Fatal(err)
 	}
 	if err = legacy.Close(); err != nil {
@@ -217,7 +217,7 @@ func TestConsolidatedInitialMigrationChecksumAccepted(t *testing.T) {
 	if err = db.Reader.QueryRow("SELECT checksum FROM schema_migrations WHERE name='001_initial.sql'").Scan(&recorded); err != nil {
 		t.Fatal(err)
 	}
-	if recorded != consolidatedInitialMigrationChecksum {
+	if recorded != originalInitialMigrationChecksum {
 		t.Fatalf("migration checksum rewritten: got %q", recorded)
 	}
 	var brandTableCount int
