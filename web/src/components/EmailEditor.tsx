@@ -224,6 +224,10 @@ export function EmailEditor({
     Promise.all([import("grapesjs"), import("grapesjs-preset-newsletter")])
       .then(([g, p]) => {
         if (disposed) return;
+        // Vite 8 preserves the CommonJS module.exports wrapper of this UMD preset.
+        const newsletter = typeof p.default === "function"
+          ? p.default
+          : (p.default as unknown as { default: typeof p.default }).default;
         const editor = g.default.init({
           container,
           autorender: false,
@@ -233,7 +237,7 @@ export function EmailEditor({
           assetManager: { upload: false },
           plugins: [
             (editor) =>
-              p.default(editor, {
+              newsletter(editor, {
                 inlineCss: false,
                 useCustomTheme: false,
                 blocks: [

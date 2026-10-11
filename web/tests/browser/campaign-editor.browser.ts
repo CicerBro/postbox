@@ -90,6 +90,45 @@ async function fixture(context: BrowserContext) {
   return state;
 }
 
+test("visual editor frames stay sandboxed and HTML changes require review", async ({ page, context }) => {
+  const state = await fixture(context);
+  const source = '<!doctype html><html><head><meta name="upgrade-test" content="preserved"><!--[if mso]><style>p { color: red; }</style><![endif]--></head><body><p>Saved HTML</p></body></html>';
+  state.campaign.html = source;
+  await page.goto("/campaigns/7");
+  const raw = page.locator('.cm-content[aria-label="Full HTML source"]');
+  await expect(raw).toHaveText(source);
+
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await page.getByRole("button", { name: "Visual editor", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Review proposed HTML", exact: true })).toBeEnabled();
+    await expect(page.frameLocator("iframe.gjs-frame").getByText("Saved HTML", { exact: true })).toBeVisible();
+    const frames = await page.locator("iframe").evaluateAll((elements) => elements.map((element) => element.getAttribute("sandbox")));
+    expect(frames.length).toBeGreaterThan(0);
+    for (const sandbox of frames) {
+      expect(sandbox).not.toBeNull();
+      expect(sandbox?.split(/\s+/)).not.toContain("allow-scripts");
+    }
+    await page.getByRole("button", { name: "Discard visual changes", exact: true }).click();
+    await expect(page.locator("iframe.gjs-frame")).toHaveCount(0);
+    await expect(raw).toHaveText(source);
+  }
+
+  await page.getByRole("button", { name: "Visual editor", exact: true }).click();
+  await expect(page.frameLocator("iframe.gjs-frame").getByText("Saved HTML", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Review proposed HTML", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(state.campaignWrites).toEqual([]);
+  await page.getByRole("button", { name: "Apply proposed HTML", exact: true }).click();
+  await expect(raw).toContainText('name="upgrade-test"');
+  await expect(raw).toContainText("<!--[if mso]>");
+  await expect(raw).toContainText("Saved HTML");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect.poll(() => state.campaignWrites.length).toBe(1);
+  expect(state.campaignWrites[0].html).toContain('name="upgrade-test"');
+  expect(state.campaignWrites[0].html).toContain("<!--[if mso]>");
+  expect(state.campaignWrites[0].html).toContain("Saved HTML");
+});
+
 test("template, text and mutually exclusive audiences survive draft saving", async ({
   page,
   context,
