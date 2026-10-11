@@ -30,7 +30,8 @@ func Set(w http.ResponseWriter, policy Policy, cacheControl string) {
 // scripts and speculative loading of links with application side effects.
 func Protect(w http.ResponseWriter, cacheControl string) {
 	w.Header().Set("Cache-Control", cacheControl+", no-transform")
-	// Cloudflare preserves an origin-provided Speculation-Rules header. An empty
-	// structured list opts out without a rules fetch from a sandbox's null origin.
-	w.Header().Set("Speculation-Rules", "")
+	// Cloudflare replaces an empty header with Speed Brain rules. A nonempty
+	// data URL supplies an empty rule set without a network request or CORS
+	// failure from sandboxed documents, which have a null origin.
+	w.Header().Set("Speculation-Rules", `"data:application/speculationrules+json,%7B%7D"`)
 }

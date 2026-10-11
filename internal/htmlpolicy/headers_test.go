@@ -68,8 +68,8 @@ func TestProxyProtectionOnWire(t *testing.T) {
 			if response.Header.Get("Cache-Control") != cache+", no-transform" || response.Header.Get("Content-Type") != "text/html; charset=utf-8" {
 				t.Fatal("missing HTML proxy protection", response.Header)
 			}
-			// Empty headers must reach the proxy, rather than being omitted.
-			if values := response.Header.Values("Speculation-Rules"); len(values) != 1 || values[0] != "" {
+			// A nonempty local rule set prevents the proxy adding its own URL.
+			if values := response.Header.Values("Speculation-Rules"); len(values) != 1 || values[0] != `"data:application/speculationrules+json,%7B%7D"` {
 				t.Fatal("missing explicit speculation opt-out", response.Header)
 			}
 		})

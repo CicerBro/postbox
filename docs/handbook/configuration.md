@@ -107,11 +107,13 @@ Only a trusted direct socket peer can supply `X-Forwarded-For`. Entries must be 
 
 ## Cloudflare and HTML responses
 
-HTML responses send `Cache-Control: no-transform` alongside their existing caching policy and an empty `Speculation-Rules` header. These prevent proxy changes to HTML and opt out of automatic speculative navigation. Keep Origin Cache Control enabled so Cloudflare respects the response directives.
+HTML responses send `Cache-Control: no-transform` alongside their existing caching policy. The nonempty `Speculation-Rules: "data:application/speculationrules+json,%7B%7D"` header provides an empty rule set without a network request. Cloudflare replaces an empty header with its Speed Brain URL, which causes CORS errors from sandboxed previews. Keep Origin Cache Control enabled so Cloudflare respects the response directives.
 
 The app, documentation and signup policies permit Cloudflare Web Analytics only from `https://static.cloudflareinsights.com`, with reporting to `https://cloudflareinsights.com`. Signup also permits Turnstile. Because `no-transform` stops automatic beacon injection, analytics requires an explicitly installed beacon snippet if wanted; allowing its origins does not enable analytics by itself.
 
 Email previews and live browser-version emails stay script-free. Their links can open normal new tabs. Custom thank-you and goodbye HTML also keeps scripts disabled.
+
+If a preview still reports blocked scripts, inspect the response for Cloudflare injection. Disable Rocket Loader and Web Analytics with a Cloudflare Configuration Rule scoped to the Postbox hostname and these HTML paths. Cloudflare JavaScript Detections should respect `no-transform`; verify that a Worker or response rule has not removed it. Do not enable scripts or same-origin access in the email sandbox to accommodate injected scripts. See [Cloudflare Configuration Rules settings](https://developers.cloudflare.com/rules/configuration-rules/settings/) and [JavaScript Detections](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/javascript-detections/).
 
 ## Upgrade notes
 
