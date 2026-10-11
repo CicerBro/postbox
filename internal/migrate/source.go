@@ -336,6 +336,10 @@ func (s DumpSource) Scan(ctx context.Context, emit func(Row) error) error {
 			return e
 		}
 		switch strings.ToUpper(t.value) {
+		case ";":
+			// Ignored executable comments leave their terminator behind.
+			// It is an empty statement, not a reason to skip the next one.
+			continue
 		case "REPLACE", "LOAD":
 			return fmt.Errorf("unsupported source data statement %s; export INSERT VALUES", t.value)
 		case "SET":
