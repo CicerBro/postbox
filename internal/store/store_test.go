@@ -193,6 +193,39 @@ func TestMigrationChecksumMismatchPreservesData(t *testing.T) {
 	}
 }
 
+func TestConsolidatedInitialMigrationChecksumAccepted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "consolidated.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = legacy.Exec("CREATE TABLE schema_migrations(name TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at INTEGER NOT NULL) STRICT, WITHOUT ROWID"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = legacy.Exec("INSERT INTO schema_migrations VALUES('001_initial.sql', ?, 1)", consolidatedInitialMigrationChecksum); err != nil {
+		t.Fatal(err)
+	}
+	if err = legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("open database with consolidated migration checksum: %v", err)
+	}
+	defer db.Close()
+	var recorded string
+	if err = db.Reader.QueryRow("SELECT checksum FROM schema_migrations WHERE name='001_initial.sql'").Scan(&recorded); err != nil {
+		t.Fatal(err)
+	}
+	if recorded != consolidatedInitialMigrationChecksum {
+		t.Fatalf("migration checksum rewritten: got %q", recorded)
+	}
+	var brandTableCount int
+	if err = db.Reader.QueryRow("SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='brands'").Scan(&brandTableCount); err != nil || brandTableCount != 0 {
+		t.Fatalf("compatibility check applied migration SQL: count=%d err=%v", brandTableCount, err)
+	}
+}
+
 func TestMigrationsReopenAndStrict(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "db.sqlite")
 	db, err := Open(path)
