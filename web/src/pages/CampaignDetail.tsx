@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
-import { ErrorMessage, StatusBadge } from "./campaign-shared";
+import { ErrorMessage, StatusBadge, isFinishedCampaign } from "./campaign-shared";
 import { CampaignContent, CampaignAudience } from "./campaign-content";
 import {
   CampaignDelivery,
@@ -149,7 +149,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
   }
   if (routeID && (!Number.isSafeInteger(routeID) || routeID < 1))
     return <ErrorMessage error={new Error("Invalid campaign ID")} />;
-  if (routeID && campaign.data?.[0]?.status === "sent")
+  if (routeID && isFinishedCampaign(campaign.data?.[0]?.status))
     return <Navigate to={`/campaigns/${routeID}/report`} replace />;
   if (routeID && (campaign.isPending || targetQuery.isPending))
     return <p role="status">Loading campaign…</p>;

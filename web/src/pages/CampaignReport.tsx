@@ -33,6 +33,7 @@ import {
 } from "../components/ui/card";
 import {
   StatusBadge,
+  isFinishedCampaign,
   Campaign,
   ErrorMessage,
   number,
@@ -215,7 +216,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-        {campaign.data?.[0] && campaign.data[0].status !== "sent" && <Button variant="outline" asChild><Link to={`/campaigns/${id}`}>Manage campaign</Link></Button>}
+        {campaign.data?.[0] && !isFinishedCampaign(campaign.data[0].status) && <Button variant="outline" asChild><Link to={`/campaigns/${id}`}>Manage campaign</Link></Button>}
         <Button variant="outline" disabled={exporting} onClick={exportCSV}>
           <Download size={16} />{" "}
           {exporting ? "Exporting…" : "Export recipients CSV"}

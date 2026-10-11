@@ -17,6 +17,7 @@ import { Plus, Search, ArrowUpRight, Mail, Trash2 } from "lucide-react";
 import { SortableTableHead } from "../components/SortableTableHead";
 import {
   StatusBadge,
+  isFinishedCampaign,
   Campaign,
   ErrorMessage,
   tableClass,
@@ -170,7 +171,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                     <td>
                       <Link
                         className="row-title font-medium hover:underline"
-                        to={`/campaigns/${c.id}${c.status === "sent" ? "/report" : ""}`}
+                        to={`/campaigns/${c.id}${isFinishedCampaign(c.status) ? "/report" : ""}`}
                       >
                         {c.subject}
                       </Link>

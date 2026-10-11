@@ -455,14 +455,9 @@ func (i *importer) row(r Row) error {
 		if e != nil {
 			return e
 		}
-		status := "cancelled"
-		if truth(r.get("sent")) || r.get("status") == "sent" {
-			status = "sent"
-		}
-		if !truth(r.get("sent")) && r.get("status") != "sent" {
-			i.warn("unsent Sendy campaigns are imported as cancelled to prevent automatic sends")
-		}
-		target, e = i.insert("INSERT INTO campaigns(brand_id,uuid,status,subject,html,text,inline_css,created_at,updated_at) VALUES(?,?,?,?,?,?,0,?,?)", brand, i.uuid("campaigns", id), status, r.get("subject", "title"), r.get("html_text", "html"), r.get("plain_text", "text"), i.date(r, "timestamp", "created_at"), i.now)
+		// Imported campaigns are historical records, never work for the send engine.
+		// Archive every source campaign as finished, including unsent source drafts.
+		target, e = i.insert("INSERT INTO campaigns(brand_id,uuid,status,subject,html,text,inline_css,created_at,updated_at,finished_at) VALUES(?,?,'sent',?,?,?,0,?,?,?)", brand, i.uuid("campaigns", id), r.get("subject", "title"), r.get("html_text", "html"), r.get("plain_text", "text"), i.date(r, "timestamp", "created_at"), i.now, i.now)
 		if e != nil {
 			return e
 		}

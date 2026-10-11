@@ -96,6 +96,12 @@ func TestImportStatusesArchiveAndIdempotency(t *testing.T) {
 	if scalar(t, db, "SELECT count(*) FROM campaigns WHERE status IN ('sending','scheduled','draft')") != 0 {
 		t.Fatal("import queued campaigns")
 	}
+	if scalar(t, db, "SELECT count(*) FROM campaigns WHERE status='sent' AND finished_at IS NOT NULL") != 2 {
+		t.Fatal("imported campaigns must be finished historical records")
+	}
+	if scalar(t, db, "SELECT count(*) FROM campaign_recipients") != 0 {
+		t.Fatal("import created sendable recipients")
+	}
 	var name string
 	if e = db.Reader.QueryRow("SELECT name FROM subscribers WHERE email='active@example.com'").Scan(&name); e != nil || name != "O'Brien" {
 		t.Fatalf("escaped name %q: %v", name, e)

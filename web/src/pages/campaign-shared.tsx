@@ -37,6 +37,9 @@ export const bytes = (n: number) =>
     ? `${(n / 1048576).toFixed(1)} MB`
     : `${(n / 1024).toFixed(1)} KB`;
 
+export const isFinishedCampaign = (status: string | undefined) =>
+  status === "sent" || status === "cancelled";
+
 export function StatusBadge({ status }: { status: string }) {
   const tone = ["sent", "delivered", "completed", "finished"].includes(status)
     ? "success"
