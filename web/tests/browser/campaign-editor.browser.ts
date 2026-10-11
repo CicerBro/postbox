@@ -184,6 +184,25 @@ test("template, text and mutually exclusive audiences survive draft saving", asy
   ).toBeChecked();
 });
 
+test("saved audiences stay visible when their list or segment is unavailable", async ({ page, context }) => {
+  const state = await fixture(context);
+  state.targets = [
+    { target_type: "list", target_id: 10, mode: "include" },
+    { target_type: "segment", target_id: 20, mode: "exclude" },
+  ];
+  await page.goto("/campaigns/7");
+  await expect(page.getByText("1 included audience · 1 exclusion", { exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Include Newsletter", exact: true })).not.toBeChecked();
+  await expect(page.getByText("Unavailable list (ID 10)", { exact: true })).toBeVisible();
+  await expect(page.getByText("Unavailable segment (ID 20)", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Remove unavailable list 10", exact: true }).click();
+  await expect(page.getByText("0 included audiences · 1 exclusion", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Remove unavailable segment 20", exact: true }).click();
+  await expect(page.getByText("0 included audiences · 0 exclusions", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect.poll(() => state.targetWrites).toEqual([[]]);
+});
+
 test("polling preserves unsaved edits and preflight becomes available only after audience save succeeds", async ({
   page,
   context,

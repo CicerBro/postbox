@@ -593,7 +593,9 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
             <DialogTitle>Delete {deleteRow?.name}?</DialogTitle>
           </DialogHeader>
           <p className="text-sm">
-            This removes the saved segment. Subscribers remain in the brand.
+            This removes the saved segment and removes it from draft campaign
+            audiences. Subscribers remain in the brand. Segments used by
+            scheduled or active campaigns cannot be deleted.
           </p>
           <ErrorMessage error={action.error} />
           <DialogFooter>

@@ -206,7 +206,13 @@ func TestConsolidatedInitialMigrationChecksumAccepted(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Supply the tables used by later data migrations without replaying the baseline.
-	if _, err = legacy.Exec(`CREATE TABLE campaigns(id INTEGER PRIMARY KEY, status TEXT, finished_at INTEGER, updated_at INTEGER); CREATE TABLE migration_identities(entity TEXT, target_id INTEGER)`); err != nil {
+	if _, err = legacy.Exec(`
+		CREATE TABLE campaigns(id INTEGER PRIMARY KEY, brand_id INTEGER, status TEXT, finished_at INTEGER, updated_at INTEGER);
+		CREATE TABLE migration_identities(entity TEXT, target_id INTEGER);
+		CREATE TABLE lists(id INTEGER PRIMARY KEY, brand_id INTEGER);
+		CREATE TABLE segments(id INTEGER PRIMARY KEY, brand_id INTEGER);
+		CREATE TABLE campaign_targets(campaign_id INTEGER, target_type TEXT, target_id INTEGER, mode TEXT);
+	`); err != nil {
 		t.Fatal(err)
 	}
 	if err = legacy.Close(); err != nil {
@@ -252,7 +258,7 @@ func TestMigrationsReopenAndStrict(t *testing.T) {
 	if err := db.Reader.QueryRow("SELECT count(*),min(name) FROM schema_migrations").Scan(&migrationCount, &migrationName); err != nil {
 		t.Fatal(err)
 	}
-	if migrationCount != 2 || migrationName != "001_initial.sql" {
+	if migrationCount != 3 || migrationName != "001_initial.sql" {
 		t.Fatalf("fresh database migrations: %d %q", migrationCount, migrationName)
 	}
 	v, err := db.Setting(context.Background(), "persist")

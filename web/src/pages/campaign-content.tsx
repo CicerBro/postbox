@@ -1,6 +1,7 @@
 import { Mail, Users } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
+import { Button } from "../components/ui/button";
 import { SelectField } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import {
@@ -148,6 +149,14 @@ export function CampaignAudience({
   choices,
   targetMode,
 }: AudienceProps) {
+  const included = targets.filter((t) => t.mode === "include").length;
+  const excluded = targets.filter((t) => t.mode === "exclude").length;
+  const unavailable = targets.filter(
+    (t) =>
+      !choices[t.target_type === "list" ? "lists" : "segments"].some(
+        (row) => row.id === t.target_id,
+      ),
+  );
   return (
     <Card>
       <CardHeader>
@@ -155,9 +164,8 @@ export function CampaignAudience({
           <Users size={18} /> Audience
         </CardTitle>
         <p className="row-subtitle">
-          {targets.filter((t) => t.mode === "include").length} included
-          audiences · {targets.filter((t) => t.mode === "exclude").length}{" "}
-          exclusions
+          {included} included {included === 1 ? "audience" : "audiences"} ·{" "}
+          {excluded} {excluded === 1 ? "exclusion" : "exclusions"}
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -169,52 +177,87 @@ export function CampaignAudience({
         {loading ? (
           <p role="status">Loading audiences…</p>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2">
-            {(["list", "segment"] as const).map((type) => (
-              <div key={type}>
-                <h3 className="mb-3 font-medium">
-                  {type === "list" ? "Lists" : "Segments"}
-                </h3>
-                {choices[type === "list" ? "lists" : "segments"].map((row) => (
+          <>
+            {unavailable.length > 0 && (
+              <div className="space-y-2 rounded-md border p-3 text-sm">
+                <p className="text-muted-foreground">
+                  Some saved audiences are no longer available. Remove them and
+                  choose an available list or segment before sending.
+                </p>
+                {unavailable.map((target) => (
                   <div
-                    key={row.id}
-                    className="audience-option mb-2 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm"
+                    key={`${target.target_type}:${target.target_id}`}
+                    className="flex flex-wrap items-center justify-between gap-3"
                   >
-                    <span className="font-medium">{row.name}</span>
-                    <div className="flex gap-4">
-                      {(["include", "exclude"] as const).map((mode) => (
-                        <label key={mode} className="flex items-center gap-2">
-                          <Checkbox
-                            aria-label={`${mode === "include" ? "Include" : "Exclude"} ${row.name}`}
-                            disabled={!editable}
-                            checked={targets.some(
-                              (t) =>
-                                t.target_type === type &&
-                                t.target_id === row.id &&
-                                t.mode === mode,
-                            )}
-                            onCheckedChange={(checked) =>
-                              targetMode(
-                                type,
-                                row.id,
-                                checked === true ? mode : "",
-                              )
-                            }
-                          />
-                          {mode === "include" ? "Include" : "Exclude"}
-                        </label>
-                      ))}
+                    <div>
+                      <span className="font-medium">
+                        Unavailable {target.target_type} (ID {target.target_id})
+                      </span>
+                      <span className="ml-2 text-muted-foreground">
+                        {target.mode === "include" ? "Included" : "Excluded"}
+                      </span>
                     </div>
+                    <Button
+                      variant="outline"
+                      disabled={!editable}
+                      aria-label={`Remove unavailable ${target.target_type} ${target.target_id}`}
+                      onClick={() =>
+                        targetMode(target.target_type, target.target_id, "")
+                      }
+                    >
+                      Remove
+                    </Button>
                   </div>
                 ))}
-                {!choices[type === "list" ? "lists" : "segments"].length && (
-                  <p className="text-sm text-muted-foreground">
-                    No {type === "list" ? "lists" : "segments"} available.
-                  </p>
-                )}
               </div>
-            ))}
-          </div>
+            )}
+            <div className="grid gap-6 md:grid-cols-2">
+              {(["list", "segment"] as const).map((type) => (
+                <div key={type}>
+                  <h3 className="mb-3 font-medium">
+                    {type === "list" ? "Lists" : "Segments"}
+                  </h3>
+                  {choices[type === "list" ? "lists" : "segments"].map((row) => (
+                    <div
+                      key={row.id}
+                      className="audience-option mb-2 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm"
+                    >
+                      <span className="font-medium">{row.name}</span>
+                      <div className="flex gap-4">
+                        {(["include", "exclude"] as const).map((mode) => (
+                          <label key={mode} className="flex items-center gap-2">
+                            <Checkbox
+                              aria-label={`${mode === "include" ? "Include" : "Exclude"} ${row.name}`}
+                              disabled={!editable}
+                              checked={targets.some(
+                                (t) =>
+                                  t.target_type === type &&
+                                  t.target_id === row.id &&
+                                  t.mode === mode,
+                              )}
+                              onCheckedChange={(checked) =>
+                                targetMode(
+                                  type,
+                                  row.id,
+                                  checked === true ? mode : "",
+                                )
+                              }
+                            />
+                            {mode === "include" ? "Include" : "Exclude"}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {!choices[type === "list" ? "lists" : "segments"].length && (
+                    <p className="text-sm text-muted-foreground">
+                      No {type === "list" ? "lists" : "segments"} available.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </CardContent>
     </Card>

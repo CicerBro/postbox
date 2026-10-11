@@ -710,8 +710,9 @@ function Lists({
             <DialogTitle>Delete {deleting?.name}?</DialogTitle>
           </DialogHeader>
           <p className="text-sm">
-            Deletes the list, its memberships and form. Subscriber profiles
-            remain in the brand.
+            Deletes the list, its memberships and form, and removes it from
+            draft campaign audiences. Subscriber profiles remain in the brand.
+            Lists used by scheduled or active campaigns cannot be deleted.
           </p>
           <ErrorMessage error={action.error} />
           <DialogFooter>
