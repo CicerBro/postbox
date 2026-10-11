@@ -1,6 +1,7 @@
 import { Globe2, ExternalLink } from "lucide-react";
 import { BrandIdentity } from "../components/settings/BrandIdentity";
 import { Section } from "../components/settings/Common";
+import { SESDomain } from "../components/settings/SESDomain";
 export function DomainsPage({ brandId }: { brandId: number }) {
   return (
     <div className="space-y-6">
@@ -20,25 +21,24 @@ export function DomainsPage({ brandId }: { brandId: number }) {
       {brandId ? (
         <>
           <BrandIdentity key={brandId} brandId={brandId} />
+          <SESDomain key={`ses-${brandId}`} brandId={brandId} />
           <Section
-            title="DNS and Amazon SES setup"
-            description="Complete these steps in your AWS console and DNS provider before sending."
+            title="Additional sending setup"
+            description="Complete your authentication, event handling and tracking setup before sending."
           >
             <ol className="list-decimal space-y-4 pl-5 text-sm marker:font-semibold marker:text-foreground">
               <li>
-                In Amazon SES, create and verify the sender domain in the region
-                used by Postbox. Publish the exact Easy DKIM records supplied by
-                SES.
+                Use the domain verification section above to create your SES
+                identity and publish its DKIM records at your DNS provider.
               </li>
               <li>
-                Configure a custom MAIL FROM domain in SES and publish its
-                supplied MX and SPF records. Publish a DMARC policy for the
-                sender domain.
+                Configure a custom MAIL FROM domain above and publish its MX and
+                SPF records. Publish a DMARC policy for the sender domain.
               </li>
               <li>
-                Set a configuration set name above, then select Create config set
-                at AWS in Amazon SES settings. Subscribe your public HTTPS
-                /events/sns URL to the saved SNS topic.
+                Select Set up SES and SNS in Amazon SES settings to create the
+                event resources and subscribe this deployment. Refresh event
+                status to confirm delivery is ready.
               </li>
               <li>
                 Point the tracking hostname to this Postbox deployment and serve
@@ -56,9 +56,9 @@ export function DomainsPage({ brandId }: { brandId: number }) {
               Open Amazon SES
             </a>
             <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
-              Verification is performed in the AWS console. Postbox has no SES
-              identity-status endpoint, so this page does not report
-              verification status or generate DNS records.
+              Postbox displays the verification status reported by AWS. Publish
+              DNS records at your DNS provider, then use Refresh status to check
+              whether AWS has verified them.
             </p>
           </Section>
         </>

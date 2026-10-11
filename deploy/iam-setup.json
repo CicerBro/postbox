@@ -1,6 +1,57 @@
 {
   "Version": "2012-10-17",
   "Statement": [
-    { "Effect": "Allow", "Action": ["ses:CreateConfigurationSet", "ses:GetConfigurationSetEventDestinations", "ses:CreateConfigurationSetEventDestination", "ses:UpdateConfigurationSetEventDestination"], "Resource": "arn:aws:ses:REGION:ACCOUNT:configuration-set/postbox" }
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ses:CreateConfigurationSet",
+        "ses:GetConfigurationSetEventDestinations",
+        "ses:CreateConfigurationSetEventDestination",
+        "ses:UpdateConfigurationSetEventDestination"
+      ],
+      "Resource": [
+        "arn:aws:ses:REGION:ACCOUNT:configuration-set/postbox",
+        "arn:aws:ses:REGION:ACCOUNT:configuration-set/postbox-*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ses:CreateEmailIdentity",
+        "ses:PutEmailIdentityMailFromAttributes"
+      ],
+      "Resource": "arn:aws:ses:REGION:ACCOUNT:identity/example.com"
+    },
+    {
+      "Sid": "CreateAndConfigureTopics",
+      "Effect": "Allow",
+      "Action": [
+        "sns:CreateTopic",
+        "sns:GetTopicAttributes",
+        "sns:SetTopicAttributes",
+        "sns:SetSubscriptionAttributes"
+      ],
+      "Resource": [
+        "arn:aws:sns:REGION:ACCOUNT:postbox-events",
+        "arn:aws:sns:REGION:ACCOUNT:postbox-*"
+      ]
+    },
+    {
+      "Sid": "SubscribePostboxHTTPS",
+      "Effect": "Allow",
+      "Action": [
+        "sns:Subscribe"
+      ],
+      "Resource": [
+        "arn:aws:sns:REGION:ACCOUNT:postbox-events",
+        "arn:aws:sns:REGION:ACCOUNT:postbox-*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "sns:Protocol": "https",
+          "sns:Endpoint": "https://mail.example.com/events/sns"
+        }
+      }
+    }
   ]
 }

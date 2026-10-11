@@ -217,7 +217,17 @@ func (p *Provider) Save(ctx context.Context, id int64, u Update) error {
 
 func validTopicARN(arn, region string) bool {
 	parts := strings.Split(arn, ":")
-	return len(parts) == 6 && parts[0] == "arn" && parts[1] == "aws" && parts[2] == "sns" && parts[3] == region && accountPattern.MatchString(parts[4]) && parts[5] != ""
+	return len(parts) == 6 && parts[0] == "arn" && parts[1] == awsPartition(region) && parts[2] == "sns" && parts[3] == region && accountPattern.MatchString(parts[4]) && parts[5] != ""
+}
+
+func awsPartition(region string) string {
+	if strings.HasPrefix(region, "us-gov-") {
+		return "aws-us-gov"
+	}
+	if strings.HasPrefix(region, "cn-") {
+		return "aws-cn"
+	}
+	return "aws"
 }
 
 func (p *Provider) EventBrand(ctx context.Context, topicARN string) (int64, error) {

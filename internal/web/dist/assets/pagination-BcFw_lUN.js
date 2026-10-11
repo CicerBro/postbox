@@ -1,0 +1,1 @@
+import{a as s}from"./index-BIyAJSAH.js";async function l(e,i,o){const n=[];let a=0;for(;;){const t=await s(`${e}${e.includes("?")?"&":"?"}limit=500&after=${a}`,{brandId:i,signal:o});if(n.push(...t??[]),!t||t.length<500)return n;const r=t.at(-1).id;if(!Number.isSafeInteger(r)||r<=a)throw new Error("Invalid pagination cursor");a=r}}export{l as a};

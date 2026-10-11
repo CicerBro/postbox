@@ -63,14 +63,15 @@ For a custom return path, set a **MAIL FROM subdomain**, such as `bounce.example
 
 Delivery events let Postbox reconcile accepted sends and process bounces and complaints. Configure them before sending a production campaign.
 
-Create a Standard SNS topic in the brand's SES region. Then:
+As an administrator, open **Settings > Amazon SES**:
 
-1. Enter the topic ARN in **Settings > Amazon SES** and save.
-2. Set a configuration set name in **Brand identity**.
-3. Select **Create config set at AWS**. Postbox creates the configuration set if missing and configures its SNS event destination using the brand's keys and setup IAM permissions.
-4. Subscribe `https://mail.example.com/events/sns` as an HTTPS topic endpoint. Postbox verifies SNS signatures and the expected topic; allow outbound HTTPS access to AWS signing certificates.
+1. Save the brand's region and AWS keys with the runtime and setup permissions from the reference below. Leave **SNS topic ARN** blank to create a topic, or save an existing Standard topic ARN from the same account and region.
+2. Select **Set up SES and SNS**. Postbox creates or reuses the topic, adds its SES publish policy, creates or reuses the configuration set, configures its event destination and subscribes this deployment's HTTPS endpoint.
+3. Review the returned configuration set, topic and endpoint. Select **Refresh event status** until the SNS subscription is confirmed and event delivery is ready.
 
-SNS topic creation, subscriptions and DNS changes happen outside Postbox. The permissions and topic policy are in the expandable reference below.
+If the brand has no configuration set name, setup generates and saves one. A name set in **Brand identity** is reused and created in AWS if missing. Setup can be run again to finish a partial attempt.
+
+Set `POSTBOX_BASE_URL` to the deployment's public HTTPS origin before setup. SNS sends confirmation to `/events/sns`; Postbox verifies the message and confirms automatically. This route must be reachable from AWS without a login or proxy challenge, and Postbox needs outbound HTTPS access to AWS signing certificates and the signed confirmation URL. Local HTTP development origins cannot receive SNS subscriptions. DNS records are published separately at your DNS provider.
 
 ## Prepare the first campaign
 

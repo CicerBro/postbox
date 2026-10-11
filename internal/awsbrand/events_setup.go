@@ -10,7 +10,6 @@ import (
 )
 
 // SetupEvents creates a missing brand SES configuration set and connects it to its SNS topic.
-// Topic creation, HTTPS subscriptions and resource policies remain in AWS.
 func (p *Provider) SetupEvents(ctx context.Context, id int64) error {
 	settings, err := p.Settings(ctx, id)
 	if err != nil {
@@ -27,6 +26,10 @@ func (p *Provider) SetupEvents(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
+	return setupEventDestination(ctx, client, name, settings.TopicARN)
+}
+
+func setupEventDestination(ctx context.Context, client *sesv2.Client, name, topic string) error {
 	input := &sesv2.GetConfigurationSetEventDestinationsInput{ConfigurationSetName: aws.String(name)}
 	output, err := client.GetConfigurationSetEventDestinations(ctx, input)
 	if err != nil {
@@ -49,7 +52,7 @@ func (p *Provider) SetupEvents(ctx context.Context, id int64) error {
 	destination := &types.EventDestinationDefinition{
 		Enabled:            true,
 		MatchingEventTypes: []types.EventType{types.EventTypeSend, types.EventTypeDelivery, types.EventTypeBounce, types.EventTypeComplaint, types.EventTypeReject, types.EventTypeRenderingFailure, types.EventTypeDeliveryDelay},
-		SnsDestination:     &types.SnsDestination{TopicArn: aws.String(settings.TopicARN)},
+		SnsDestination:     &types.SnsDestination{TopicArn: aws.String(topic)},
 	}
 	for _, existing := range output.EventDestinations {
 		if aws.ToString(existing.Name) == "postbox" {
@@ -58,5 +61,9 @@ func (p *Provider) SetupEvents(ctx context.Context, id int64) error {
 		}
 	}
 	_, err = client.CreateConfigurationSetEventDestination(ctx, &sesv2.CreateConfigurationSetEventDestinationInput{ConfigurationSetName: aws.String(name), EventDestinationName: aws.String("postbox"), EventDestination: destination})
+	var exists *types.AlreadyExistsException
+	if errors.As(err, &exists) {
+		_, err = client.UpdateConfigurationSetEventDestination(ctx, &sesv2.UpdateConfigurationSetEventDestinationInput{ConfigurationSetName: aws.String(name), EventDestinationName: aws.String("postbox"), EventDestination: destination})
+	}
 	return err
 }

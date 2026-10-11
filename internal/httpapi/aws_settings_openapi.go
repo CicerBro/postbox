@@ -1,7 +1,7 @@
 package httpapi
 
 func documentAWSSettings(method, path string, op map[string]any) {
-	if path != "/api/v1/aws-settings" && path != "/api/v1/aws-settings/check" && path != "/api/v1/aws-settings/setup-events" {
+	if path != "/api/v1/aws-settings" && path != "/api/v1/aws-settings/check" && path != "/api/v1/aws-settings/setup-events" && path != "/api/v1/aws-settings/event-status" {
 		return
 	}
 	text := map[string]any{"type": "string"}
@@ -33,10 +33,16 @@ func documentAWSSettings(method, path string, op map[string]any) {
 		response = obj(map[string]any{"account_id": text, "region": text, "sending_enabled": boolean, "production_access_enabled": boolean, "enforcement_status": text, "checked_at": integer, "quota": obj(map[string]any{"max_send_rate": number, "max_24_hour_send": number, "sent_last_24_hours": number}), "identities": map[string]any{"type": "array", "items": identity}})
 		op["responses"].(map[string]any)["502"] = map[string]any{"description": "AWS check failed; credential values and raw upstream errors are never exposed"}
 	}
-	if path == "/api/v1/aws-settings/setup-events" {
-		op["description"] = "Create the selected brand's SES configuration set if missing and configure it to publish events to its saved SNS topic. Uses that brand's saved AWS keys and requires an administrator session. AWS topic and HTTPS subscription resources must already exist."
-		response = obj(map[string]any{"configured": boolean})
-		op["responses"].(map[string]any)["502"] = map[string]any{"description": "SES event destination setup failed"}
+	if path == "/api/v1/aws-settings/setup-events" || path == "/api/v1/aws-settings/event-status" {
+		op["security"] = []map[string]any{{"cookieAuth": []string{}}}
+		delete(op, "requestBody")
+		op["description"] = "Read SES destination and SNS HTTPS subscription confirmation status for the selected brand using its saved AWS keys. Requires a user session with brand read access. Limited to six reads per minute."
+		if method == "POST" {
+			op["description"] = "Set up SES and SNS event delivery using the selected brand's saved AWS keys. Creates a Standard SNS topic and SES configuration set when their saved values are blank, merges a scoped SES publish policy, configures the postbox event destination, and subscribes the server's public HTTPS /events/sns endpoint. Reuses existing resources on retries. Pending subscriptions are confirmed by the signed SNS callback, not by this response. Requires administrator session and CSRF; limited to three setups per minute."
+		}
+		response = obj(map[string]any{"configured": boolean, "configuration_set": text, "sns_topic_arn": text, "endpoint": text, "subscription_status": map[string]any{"type": "string", "enum": []string{"confirmed", "pending_confirmation", "not_subscribed"}}, "checked_at": integer})
+		op["responses"].(map[string]any)["409"] = map[string]any{"description": "AWS or brand settings changed during setup"}
+		op["responses"].(map[string]any)["502"] = map[string]any{"description": "AWS event request failed; response identifies required permissions without exposing upstream errors"}
 	}
 	op["responses"].(map[string]any)["200"] = map[string]any{"description": "AWS metadata without credential values", "content": map[string]any{"application/json": map[string]any{"schema": response}}}
 	op["responses"].(map[string]any)["503"] = map[string]any{"description": "Brand AWS configuration unavailable"}

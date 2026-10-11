@@ -31,7 +31,15 @@ type Identity struct {
 	DKIMStatus         string   `json:"dkim_status,omitempty"`
 	MailFromDomain     string   `json:"mail_from_domain,omitempty"`
 	MailFromStatus     string   `json:"mail_from_status,omitempty"`
+	MailFromBehavior   string   `json:"mail_from_behavior,omitempty"`
+	DKIMOrigin         string   `json:"dkim_origin,omitempty"`
+	DKIMSigningEnabled bool     `json:"dkim_signing_enabled,omitempty"`
+	DKIMHostedZone     string   `json:"dkim_hosted_zone,omitempty"`
+	Region             string   `json:"region,omitempty"`
+	CustomEndpoint     bool     `json:"custom_endpoint,omitempty"`
 }
+
+var ErrIdentityNotFound = errors.New("SES identity not found")
 
 func (p *Provider) SESClient(ctx context.Context, id int64) (*sesv2.Client, error) {
 	v, e := p.resolve(ctx, id)
@@ -88,10 +96,14 @@ func identity(name string, a *sesv2.GetEmailIdentityOutput) Identity {
 	if a.DkimAttributes != nil {
 		out.DKIMTokens = a.DkimAttributes.Tokens
 		out.DKIMStatus = string(a.DkimAttributes.Status)
+		out.DKIMOrigin = string(a.DkimAttributes.SigningAttributesOrigin)
+		out.DKIMSigningEnabled = a.DkimAttributes.SigningEnabled
+		out.DKIMHostedZone = aws.ToString(a.DkimAttributes.SigningHostedZone)
 	}
 	if a.MailFromAttributes != nil {
 		out.MailFromDomain = aws.ToString(a.MailFromAttributes.MailFromDomain)
 		out.MailFromStatus = string(a.MailFromAttributes.MailFromDomainStatus)
+		out.MailFromBehavior = string(a.MailFromAttributes.BehaviorOnMxFailure)
 	}
 	return out
 }
@@ -100,11 +112,22 @@ func (p *Provider) GetIdentity(ctx context.Context, id int64, name string) (Iden
 	if e != nil {
 		return Identity{}, e
 	}
+	return getIdentity(ctx, c, name)
+}
+
+func getIdentity(ctx context.Context, c *sesv2.Client, name string) (Identity, error) {
 	a, e := c.GetEmailIdentity(ctx, &sesv2.GetEmailIdentityInput{EmailIdentity: aws.String(name)})
 	if e != nil {
+		var missing *types.NotFoundException
+		if errors.As(e, &missing) {
+			return Identity{}, ErrIdentityNotFound
+		}
 		return Identity{}, errors.New("SES identity could not be retrieved")
 	}
-	return identity(name, a), nil
+	out := identity(name, a)
+	out.Region = c.Options().Region
+	out.CustomEndpoint = c.Options().BaseEndpoint != nil
+	return out, nil
 }
 func (p *Provider) VerifyIdentity(ctx context.Context, id int64, name string) (Identity, error) {
 	name = strings.TrimSpace(name)
@@ -117,13 +140,19 @@ func (p *Provider) VerifyIdentity(ctx context.Context, id int64, name string) (I
 	}
 	a, e := c.CreateEmailIdentity(ctx, &sesv2.CreateEmailIdentityInput{EmailIdentity: aws.String(name)})
 	if e != nil {
+		var exists *types.AlreadyExistsException
+		if errors.As(e, &exists) {
+			return getIdentity(ctx, c, name)
+		}
 		return Identity{}, errors.New("SES identity verification could not be requested")
 	}
-	out := Identity{Identity: name, IdentityType: string(a.IdentityType), SendingEnabled: a.VerifiedForSendingStatus}
-	if a.DkimAttributes != nil {
-		out.DKIMTokens = a.DkimAttributes.Tokens
-		out.DKIMStatus = string(a.DkimAttributes.Status)
+	status := types.VerificationStatusPending
+	if a.VerifiedForSendingStatus {
+		status = types.VerificationStatusSuccess
 	}
+	out := identity(name, &sesv2.GetEmailIdentityOutput{IdentityType: a.IdentityType, VerifiedForSendingStatus: a.VerifiedForSendingStatus, VerificationStatus: status, DkimAttributes: a.DkimAttributes})
+	out.Region = c.Options().Region
+	out.CustomEndpoint = c.Options().BaseEndpoint != nil
 	return out, nil
 }
 func (p *Provider) DeleteIdentity(ctx context.Context, id int64, name string) error {
@@ -137,12 +166,12 @@ func (p *Provider) DeleteIdentity(ctx context.Context, id int64, name string) er
 	}
 	return nil
 }
-func (p *Provider) SetMailFrom(ctx context.Context, id int64, name, domain string) error {
+func (p *Provider) SetMailFrom(ctx context.Context, id int64, name, domain, behavior string) error {
 	c, e := p.SESClient(ctx, id)
 	if e != nil {
 		return e
 	}
-	in := &sesv2.PutEmailIdentityMailFromAttributesInput{EmailIdentity: aws.String(name), BehaviorOnMxFailure: types.BehaviorOnMxFailureUseDefaultValue}
+	in := &sesv2.PutEmailIdentityMailFromAttributesInput{EmailIdentity: aws.String(name), BehaviorOnMxFailure: types.BehaviorOnMxFailure(behavior)}
 	if domain != "" {
 		in.MailFromDomain = aws.String(domain)
 	}

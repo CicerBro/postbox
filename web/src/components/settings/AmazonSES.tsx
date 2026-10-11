@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
@@ -29,6 +29,16 @@ type Status = {
     max_24_hour_send: number;
     sent_last_24_hours: number;
   };
+};
+
+type EventStatus = {
+  configured: boolean;
+  configuration_set: string;
+  sns_topic_arn: string;
+  endpoint: string;
+  subscription_status: "confirmed" | "pending_confirmation" | "not_subscribed";
+  checked_at: number;
+  connection_revision?: number | string;
 };
 
 // Amazon SES API endpoints: https://docs.aws.amazon.com/general/latest/gr/ses.html
@@ -73,6 +83,8 @@ export function AmazonSES({ brandId }: { brandId: number }) {
   const { session } = useApp();
   const id = useId();
   const action = useAction();
+  const queryClient = useQueryClient();
+  const [eventStatus, setEventStatus] = useState<EventStatus>();
   const [region, setRegion] = useState("");
   const [topicArn, setTopicArn] = useState("");
   const [accessKey, setAccessKey] = useState("");
@@ -126,13 +138,14 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                   });
                   setAccessKey(""); setSecretKey(""); setToken(""); setClearToken(false);
                   setStatus(undefined);
+                  setEventStatus(undefined);
                   await q.refetch();
                 }, "Amazon SES settings saved. Test the connection to refresh the quota.");
               }}>
                 <div className="space-y-2">
                   <label htmlFor={`${id}-region`} className="text-sm font-medium">AWS region</label>
                   <SelectField id={`${id}-region`} value={region} required disabled={action.busy}
-                    onValueChange={setRegion} placeholder="Select an AWS region"
+                    onValueChange={(value) => { if (value) setRegion(value); }} placeholder="Select an AWS region"
                     options={region && !regions.some((option) => option.value === region)
                       ? [...regions, { value: region, label: region }] : regions} />
                   <p className="text-sm text-muted-foreground">SES quotas and verified identities belong to a region.</p>
@@ -162,10 +175,9 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                 </div>
                 <div className="space-y-4">
                   <h3 className="text-sm font-medium">SES events</h3>
-                  <p className="text-sm text-muted-foreground">Create an SNS topic in AWS and enter its ARN here. Set a configuration set name in Brand identity, then use the button below to create it in AWS and publish events to this topic.</p>
+                  <p className="text-sm text-muted-foreground">Leave the topic ARN blank to create a topic during setup, or enter an existing Standard topic owned by this AWS account in the selected region.</p>
                   <Field label="SNS topic ARN" type="text" value={topicArn}
                     disabled={action.busy} onChange={(e) => setTopicArn(e.target.value)} />
-                  {topicArn && <p className="text-sm text-muted-foreground">Subscribe your public HTTPS /events/sns URL to this topic so Postbox receives delivery, bounce and complaint events.</p>}
                 </div>
                 <Button disabled={action.busy || !region}>Save Amazon SES settings</Button>
               </form>
@@ -174,14 +186,44 @@ export function AmazonSES({ brandId }: { brandId: number }) {
               <div><dt className="text-muted-foreground">AWS region</dt><dd>{q.data.region || "Not configured"}</dd></div>
               <div><dt className="text-muted-foreground">SNS topic ARN</dt><dd>{q.data.sns_topic_arn || "Not configured"}</dd></div>
             </dl>}
-            {session.admin && <div className="space-y-2">
-              <Button variant="outline" disabled={action.busy || dirty || !q.data.has_credentials || !q.data.sns_topic_arn} onClick={() => {
-                void action.run(async () => {
-                  await api("/aws-settings/setup-events", { method: "POST", brandId });
-                }, "SES configuration set is ready in AWS and publishes events to this brand's SNS topic.");
-              }}>Create config set at AWS</Button>
-              <p className="text-sm text-muted-foreground">Save the SNS topic first and set a configuration set name in Brand identity. The brand's AWS keys need permission to create configuration sets and configure event destinations.</p>
-            </div>}
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium">Event delivery</h3>
+              <p className="text-sm text-muted-foreground">Set up delivery, bounce and complaint events. Postbox creates the SNS topic, publish policy, HTTPS subscription and SES configuration set. Existing saved resources are reused.</p>
+              <div className="flex flex-wrap gap-2">
+                {session.admin && <Button variant="outline" disabled={action.busy || dirty || !q.data.has_credentials} onClick={() => {
+                  setEventStatus(undefined);
+                  void action.run(async () => {
+                    const result = await api<EventStatus>("/aws-settings/setup-events", { method: "POST", brandId }).finally(async () => {
+                      // A partial setup can still have saved a topic and configuration set.
+                      await q.refetch();
+                      await queryClient.invalidateQueries({ queryKey: ["brands"] });
+                      await queryClient.invalidateQueries({ queryKey: ["brand-settings", brandId] });
+                    });
+                    const saved = queryClient.getQueryData<Settings>(["aws-settings", brandId]);
+                    setEventStatus({ ...result, connection_revision: saved?.updated_at });
+                  }, "SES and SNS resources configured. Check the subscription status below.");
+                }}>Set up SES and SNS</Button>}
+                <Button variant="outline" disabled={action.busy || !q.data.has_credentials || (session.admin && dirty)} onClick={() => {
+                  setEventStatus(undefined);
+                  void action.run(async () => {
+                    const result = await api<EventStatus>("/aws-settings/event-status", { brandId });
+                    setEventStatus({ ...result, connection_revision: q.data?.updated_at });
+                  }, "Event status refreshed.");
+                }}>Refresh event status</Button>
+              </div>
+              {session.admin && dirty && <p className="text-sm text-muted-foreground">Save your changes before setting up or checking events.</p>}
+              {session.admin && <p className="text-sm text-muted-foreground">The server needs a public HTTPS base URL, and the saved keys need the SES and SNS setup permissions listed in the handbook.</p>}
+              {eventStatus && eventStatus.connection_revision === q.data.updated_at && <div className="space-y-3 rounded-lg border p-3 text-sm">
+                <p role="status">{!eventStatus.configured ? "SES event destination is not configured." : eventStatus.subscription_status === "confirmed" ? "Event delivery is ready. SNS subscription confirmed." : eventStatus.subscription_status === "pending_confirmation" ? "Waiting for SNS subscription confirmation. Ensure the public endpoint is reachable, then refresh event status." : "SNS endpoint is not subscribed. Run setup to connect it."}</p>
+                <dl className="grid gap-3 sm:grid-cols-2">
+                  <div><dt className="text-muted-foreground">Configuration set</dt><dd>{eventStatus.configuration_set || "Not configured"}</dd></div>
+                  <div><dt className="text-muted-foreground">Subscription</dt><dd>{eventStatus.subscription_status.replaceAll("_", " ")}</dd></div>
+                  <div className="sm:col-span-2"><dt className="text-muted-foreground">SNS topic</dt><dd className="break-all">{eventStatus.sns_topic_arn || "Not configured"}</dd></div>
+                  <div className="sm:col-span-2"><dt className="text-muted-foreground">HTTPS endpoint</dt><dd className="break-all">{eventStatus.endpoint}</dd></div>
+                  <div><dt className="text-muted-foreground">Last checked</dt><dd>{timestamp(eventStatus.checked_at)}</dd></div>
+                </dl>
+              </div>}
+            </div>
           </Section>
           <Section title="Sending status" description="Live account statistics reported by AWS for the saved connection. Quotas are shared by all senders in this AWS account and region.">
             <Button variant="outline" disabled={action.busy || !q.data.has_credentials || (session.admin && dirty)} onClick={() => {

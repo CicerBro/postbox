@@ -18,6 +18,10 @@ func (a *API) registerAWSSettings(m *http.ServeMux) {
 	}
 	a.route(m, "POST /api/v1/aws-settings/check", a.awsCheck)
 	a.route(m, "POST /api/v1/aws-settings/setup-events", a.awsSetupEvents)
+	a.route(m, "GET /api/v1/aws-settings/event-status", a.awsEventStatus)
+	a.route(m, "GET /api/v1/aws-settings/identity", a.awsIdentity)
+	a.route(m, "POST /api/v1/aws-settings/identity", a.awsIdentity)
+	a.route(m, "PATCH /api/v1/aws-settings/identity/mail-from", a.awsMailFrom)
 }
 
 func (a *API) awsScope(w http.ResponseWriter, r *http.Request, admin bool) (int64, bool) {
@@ -154,15 +158,52 @@ func (a *API) awsSetupEvents(w http.ResponseWriter, r *http.Request) {
 		fail(w, 429, errors.New("event setup rate limit exceeded"))
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 	defer cancel()
-	if err := a.cfg.AWSProvider.SetupEvents(ctx, id); err != nil {
-		if err.Error() == "brand keys, SNS topic and SES configuration set are required" {
-			fail(w, 400, err)
-		} else {
-			fail(w, 502, errors.New("SES configuration set could not be configured. Check the brand keys, configuration set name, SNS topic policy and SES setup permissions."))
-		}
+	out, err := a.cfg.AWSProvider.ProvisionEvents(ctx, id, a.cfg.BaseURL)
+	if err != nil {
+		failEventSetup(w, err)
 		return
 	}
-	respond(w, 200, map[string]bool{"configured": true})
+	respond(w, 200, out)
+}
+
+func failEventSetup(w http.ResponseWriter, err error) {
+	code := http.StatusBadGateway
+	var safe *awsbrand.EventSetupError
+	if errors.As(err, &safe) {
+		if safe.Invalid {
+			code = http.StatusBadRequest
+		}
+		if safe.Conflict {
+			code = http.StatusConflict
+		}
+		fail(w, code, safe)
+	} else {
+		fail(w, code, errors.New("AWS event setup failed. Check the brand's saved settings and SES/SNS permissions."))
+	}
+}
+
+func (a *API) awsEventStatus(w http.ResponseWriter, r *http.Request) {
+	i := r.Context().Value(identityKey{}).(*identity)
+	if i.UserID == 0 {
+		fail(w, 403, errors.New("user session required"))
+		return
+	}
+	id, ok := a.awsScope(w, r, false)
+	if !ok {
+		return
+	}
+	if !a.allow(fmt.Sprintf("aws-event-status:%d:%d", i.UserID, id), 6) {
+		fail(w, 429, errors.New("event status rate limit exceeded"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	out, err := a.cfg.AWSProvider.EventStatus(ctx, id, a.cfg.BaseURL)
+	if err != nil {
+		failEventSetup(w, err)
+		return
+	}
+	respond(w, 200, out)
 }
