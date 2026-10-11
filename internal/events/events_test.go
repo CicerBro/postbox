@@ -1,6 +1,7 @@
 package events
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -11,11 +12,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"postbox/internal/store"
 	"strings"
@@ -26,6 +30,37 @@ import (
 type transport func(*http.Request) (*http.Response, error)
 
 func (t transport) RoundTrip(r *http.Request) (*http.Response, error) { return t(r) }
+
+func TestSNSFailureDiagnostics(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		resolve func(context.Context, string) (int64, error)
+		stage   string
+	}{
+		{"unknown topic", func(context.Context, string) (int64, error) { return 0, errors.New("topic not found") }, "topic_lookup"},
+		{"invalid signature", func(context.Context, string) (int64, error) { return 1, nil }, "signature_verification"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			s := New(nil, &Config{ResolveTopic: tc.resolve, Logger: slog.New(slog.NewJSONHandler(&output, nil))})
+			w := httptest.NewRecorder()
+			s.SNS(w, httptest.NewRequest(http.MethodPost, "/events/sns", strings.NewReader(`{"TopicArn":"arn:aws:sns:eu-central-1:123:events","Token":"private-token","Message":"private-body"}`)))
+			if w.Code != http.StatusForbidden || !strings.Contains(output.String(), tc.stage) {
+				t.Fatalf("status=%d log=%s", w.Code, output.String())
+			}
+			if strings.Contains(output.String(), "private-") {
+				t.Fatal("logged SNS payload")
+			}
+		})
+	}
+	var output bytes.Buffer
+	s := New(nil, &Config{Logger: slog.New(slog.NewJSONHandler(&output, nil))})
+	s.logSNSFailure(context.Background(), "subscription_confirmation", &url.Error{Op: "Get", URL: "https://sns.eu-central-1.amazonaws.com/?Token=private-token", Err: errors.New("connection refused")})
+	if strings.Contains(output.String(), "private-token") || strings.Contains(output.String(), "https://") || !strings.Contains(output.String(), "connection refused") {
+		t.Fatalf("unsafe or missing transport diagnostic: %s", output.String())
+	}
+}
+
 func TestSNSVerification(t *testing.T) {
 	now := time.Now()
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"postbox/internal/store"
 	"strings"
 	"sync"
@@ -21,6 +23,7 @@ type Config struct {
 	ResolveTopic    func(context.Context, string) (int64, error)
 	SoftBounceLimit int
 	HTTPClient      *http.Client
+	Logger          *slog.Logger
 }
 type Service struct {
 	db         *store.DB
@@ -40,6 +43,9 @@ func New(db *store.DB, cfg *Config) *Service {
 	if c.SoftBounceLimit <= 0 {
 		c.SoftBounceLimit = 3
 	}
+	if c.Logger == nil {
+		c.Logger = slog.Default()
+	}
 	return &Service{db: db, cfg: c, Verifier: &Verifier{TopicARN: c.TopicARN, Client: c.HTTPClient}}
 }
 func (s *Service) Register(mux *http.ServeMux) { mux.HandleFunc("POST /events/sns", s.SNS) }
@@ -50,17 +56,21 @@ func (s *Service) SNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m, e := DecodeSNS(b)
+	stage := "decode"
 	brandID := s.cfg.BrandID
 	verifier := s.Verifier
 	if e == nil && s.cfg.ResolveTopic != nil {
+		stage = "topic_lookup"
 		brandID, e = s.cfg.ResolveTopic(r.Context(), m.TopicARN)
 		v, _ := s.verifiers.LoadOrStore(m.TopicARN, &Verifier{TopicARN: m.TopicARN, Client: s.cfg.HTTPClient})
 		verifier = v.(*Verifier)
 	}
 	if e == nil {
+		stage = "signature_verification"
 		e = verifier.Verify(r.Context(), m)
 	}
 	if e != nil {
+		s.logSNSFailure(r.Context(), stage, e)
 		http.Error(w, "invalid SNS signature", 403)
 		return
 	}
@@ -72,10 +82,23 @@ func (s *Service) SNS(w http.ResponseWriter, r *http.Request) {
 		e = errors.New("unsupported event")
 	}
 	if e != nil {
+		if m.Type == "SubscriptionConfirmation" {
+			s.logSNSFailure(r.Context(), "subscription_confirmation", e)
+		}
 		http.Error(w, "event processing failed", 503)
 		return
 	}
 	w.WriteHeader(204)
+}
+
+// Transport errors include the requested URL, which can contain a confirmation
+// token. Log only the underlying cause, never the SNS payload or URL.
+func (s *Service) logSNSFailure(ctx context.Context, stage string, err error) {
+	var transportError *url.Error
+	for errors.As(err, &transportError) {
+		err = transportError.Err
+	}
+	s.cfg.Logger.WarnContext(ctx, "SNS callback failed", "stage", stage, "error", err)
 }
 
 type sesEvent struct {
