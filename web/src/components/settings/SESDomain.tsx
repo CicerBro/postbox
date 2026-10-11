@@ -145,11 +145,16 @@ function DomainIdentity({ brandId, domain, connectionVersion, region }: { brandI
               {identity.dns_records.filter((record) => record.type === "CNAME").map(renderDNSRecord)}
             </div>
           </details>}
-          {identity.dns_records.filter((record) => record.type !== "CNAME").map(renderDNSRecord)}
+          {identity.dns_records.some((record) => record.type !== "CNAME") && <details open={identity.mail_from_status !== "SUCCESS"} className="space-y-3">
+            <summary className="cursor-pointer font-medium">MAIL FROM DNS records</summary>
+            <div className="space-y-3">
+              {identity.dns_records.filter((record) => record.type !== "CNAME").map(renderDNSRecord)}
+              {identity.mail_from_domain && <p className="text-sm text-muted-foreground">For MAIL FROM, publish exactly one MX record with priority 10 and one SPF TXT record. Use a dedicated subdomain that does not receive mail.</p>}
+            </div>
+          </details>}
           {identity.dkim_origin === "EXTERNAL" ? <p className="text-sm text-muted-foreground">This identity uses Bring Your Own DKIM. Publish the TXT record for your own public key; Postbox cannot derive that key from SES.</p> :
             identity.dkim_origin?.startsWith("AWS_SES_") ? <p className="text-sm text-muted-foreground">This identity uses Deterministic Easy DKIM. Its parent identity supplies DKIM; no additional DKIM records are required here.</p> :
             !identity.dns_records.some((record) => record.type === "CNAME") ? <p className="text-sm text-muted-foreground">AWS did not return Easy DKIM DNS records. Check the identity’s authentication settings in Amazon SES.</p> : null}
-          {identity.mail_from_domain && <p className="text-sm text-muted-foreground">For MAIL FROM, publish exactly one MX record with priority 10 and one SPF TXT record. Use a dedicated subdomain that does not receive mail.</p>}
           <Message {...copy} />
         </div>
         {session.admin && <form className="space-y-4 border-t pt-4" onSubmit={(e) => {

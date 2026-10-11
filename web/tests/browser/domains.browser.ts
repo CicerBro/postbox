@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
 
 async function domainFixture(context: BrowserContext, admin = true) {
-  const state = { created: false, verified: false, mailFrom: "", behavior: "USE_DEFAULT_VALUE", failure: 0, writes: 0, secondBrandReads: 0 };
+  const state = { created: false, verified: false, mailFromVerified: false, mailFrom: "", behavior: "USE_DEFAULT_VALUE", failure: 0, writes: 0, secondBrandReads: 0 };
   await context.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -46,7 +46,7 @@ async function domainFixture(context: BrowserContext, admin = true) {
           sending_enabled: state.verified, verification_status: state.verified ? "SUCCESS" : "PENDING",
           dkim_status: state.verified ? "SUCCESS" : "PENDING", dkim_signing_enabled: true,
           dkim_origin: "AWS_SES", dkim_hosted_zone: "dkim.eu-west-1.amazonses.com",
-          mail_from_domain: state.mailFrom, mail_from_status: state.mailFrom ? "PENDING" : "",
+          mail_from_domain: state.mailFrom, mail_from_status: state.mailFrom ? (state.mailFromVerified ? "SUCCESS" : "PENDING") : "",
           mail_from_behavior: state.behavior, checked_at: Date.now(),
           dns_records: [
             ...["one", "two", "three"].map((token) => ({ type: "CNAME", name: `${token}._domainkey.example.org`, value: `${token}.dkim.eu-west-1.amazonses.com` })),
@@ -88,6 +88,18 @@ test("Domains creates the identity, copies AWS records, refreshes verification a
   await expect(page.getByText("feedback-smtp.eu-west-1.amazonses.com", { exact: true })).toBeVisible();
   await expect(page.getByText("v=spf1 include:amazonses.com ~all", { exact: true })).toBeVisible();
   await expect(page.getByText("MAIL FROM · MX · Priority 10", { exact: true })).toBeVisible();
+  state.mailFromVerified = true;
+  await page.getByRole("button", { name: "Refresh status", exact: true }).click();
+  await expect(page.getByText("feedback-smtp.eu-west-1.amazonses.com", { exact: true })).toBeHidden();
+  await expect(page.getByText("v=spf1 include:amazonses.com ~all", { exact: true })).toBeHidden();
+  await page.getByText("MAIL FROM DNS records", { exact: true }).click();
+  await expect(page.getByText("feedback-smtp.eu-west-1.amazonses.com", { exact: true })).toBeVisible();
+  await expect(page.getByText("v=spf1 include:amazonses.com ~all", { exact: true })).toBeVisible();
+  await page.getByText("MAIL FROM DNS records", { exact: true }).click();
+  state.mailFromVerified = false;
+  await page.getByRole("button", { name: "Refresh status", exact: true }).click();
+  await expect(page.getByText("feedback-smtp.eu-west-1.amazonses.com", { exact: true })).toBeVisible();
+  await expect(page.getByText("v=spf1 include:amazonses.com ~all", { exact: true })).toBeVisible();
   await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeHidden();
   state.verified = false;
   await page.getByRole("button", { name: "Refresh status", exact: true }).click();
@@ -104,6 +116,7 @@ test("Domains creates the identity, copies AWS records, refreshes verification a
   await page.getByRole("button", { name: "Save MAIL FROM settings", exact: true }).click();
   await expect(page.getByText("Custom MAIL FROM disabled. SES will use its default MAIL FROM domain.", { exact: true })).toBeVisible();
   await expect(page.getByText("feedback-smtp.eu-west-1.amazonses.com", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("MAIL FROM DNS records", { exact: true })).toHaveCount(0);
   expect(state.writes).toBe(3);
 });
 
