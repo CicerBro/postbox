@@ -29,7 +29,7 @@ export type Subscriber = Omit<Pick<
   "created_at" | "updated_at"
 >, "fields"> & { fields: ContractSubscriber["fields"] | string };
 export const tableClass =
-  "w-full text-sm [&_th]:text-left [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:py-3 [&_th]:h-10 [&_th]:py-2 [&_tr]:border-b [&_tbody_tr]:hover:bg-muted/50 [&_tbody_tr:last-child]:border-0 [&_td]:px-3 [&_th]:px-3";
+  "w-full text-sm [&_th]:text-left [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:py-2 [&_th]:h-10 [&_th]:py-2 [&_tr]:border-b [&_tbody_tr]:hover:bg-muted/50 [&_tbody_tr:last-child]:border-0 [&_td]:px-3 [&_th]:px-3";
 export function SubscriberStatusBadge({ status }: { status: string }) {
   return (
     <Badge variant="outline" className={`status-badge status-${status}`}>

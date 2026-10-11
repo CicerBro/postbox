@@ -226,21 +226,27 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                       <td>
                         <div className="flex gap-2">
                           <Button
-                            variant="default"
-                            size="sm"
+                            variant="outline"
+                            size="icon"
+                            className="action-edit"
+                            aria-label={`Edit template ${t.name}`}
+                            title="Edit template"
                             onClick={() => edit(t)}
                           >
-                            <Pencil size={14} /> Edit
+                            <Pencil size={16} aria-hidden="true" />
                           </Button>
                           <Button
-                            variant="destructive"
-                            size="sm"
+                            variant="outline"
+                            size="icon"
+                            className="action-delete"
+                            aria-label={`Delete template ${t.name}`}
+                            title="Delete template"
                             onClick={() => {
                               setError(null);
                               setDeleting(t);
                             }}
                           >
-                            <Trash2 size={14} /> Delete
+                            <Trash2 size={16} aria-hidden="true" />
                           </Button>
                         </div>
                       </td>

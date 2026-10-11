@@ -2,7 +2,7 @@ import { SortableTableHead } from "../components/SortableTableHead";
 import { useTableSort } from "../lib/use-table-sort";
 import { SelectField } from "../components/ui/select";
 import { useEffect, useState } from "react";
-import { Plus, Search, Filter } from "lucide-react";
+import { Plus, Search, Filter, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -489,21 +489,27 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
                     <td>
                       <div className="flex gap-2">
                         <Button
-                          size="sm"
-                          variant="default"
+                          size="icon"
+                          variant="outline"
+                          className="action-edit"
+                          aria-label={`Edit segment ${s.name}`}
+                          title="Edit segment"
                           onClick={() => edit(s)}
                         >
-                          Edit
+                          <Pencil size={16} aria-hidden="true" />
                         </Button>
                         <Button
-                          size="sm"
-                          variant="destructive"
+                          size="icon"
+                          variant="outline"
+                          className="action-delete"
+                          aria-label={`Delete segment ${s.name}`}
+                          title="Delete segment"
                           onClick={() => {
                             action.reset();
                             setDeleteRow(s);
                           }}
                         >
-                          Delete
+                          <Trash2 size={16} aria-hidden="true" />
                         </Button>
                       </div>
                     </td>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "../ui/badge";
 import {
   useInfiniteQuery,
@@ -82,15 +82,21 @@ export function Users() {
               </div>
               <div className="flex gap-2">
                 <Button
-                  size="sm"
-                  variant="default"
+                  size="icon"
+                  variant="outline"
+                  className="action-edit"
+                  aria-label={`Edit access for ${u.email}`}
+                  title="Edit access"
                   onClick={() => setEditing(u)}
                 >
-                  Edit / access
+                  <Pencil size={16} aria-hidden="true" />
                 </Button>
                 <Button
-                  size="sm"
-                  variant="destructive"
+                  size="icon"
+                  variant="outline"
+                  className="action-delete"
+                  aria-label={`Delete ${u.email}`}
+                  title="Delete user"
                   disabled={a.busy}
                   onClick={() => {
                     if (
@@ -105,7 +111,7 @@ export function Users() {
                       }, "User deleted.");
                   }}
                 >
-                  Delete
+                  <Trash2 size={16} aria-hidden="true" />
                 </Button>
               </div>
             </li>

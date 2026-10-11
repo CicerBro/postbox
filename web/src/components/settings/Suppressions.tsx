@@ -177,7 +177,8 @@ export function Suppressions({ brandId }: { brandId: number }) {
                       <div className="flex items-center gap-1 pr-3">
                         <Button
                           size="icon"
-                          variant="default"
+                          variant="outline"
+                          className="action-edit"
                           aria-label={`Edit suppression for ${s.value}`}
                           title="Edit suppression"
                           disabled={a.busy}
@@ -187,7 +188,8 @@ export function Suppressions({ brandId }: { brandId: number }) {
                         </Button>
                         <Button
                           size="icon"
-                          variant="destructive"
+                          variant="outline"
+                          className="action-delete"
                           aria-label={`Remove suppression for ${s.value}`}
                           title="Remove suppression"
                           disabled={a.busy}

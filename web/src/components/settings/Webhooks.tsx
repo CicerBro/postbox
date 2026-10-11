@@ -133,11 +133,13 @@ export function Webhooks({ brandId }: { brandId: number }) {
                   {h.is_active ? "Active" : "Paused"}
                 </Badge>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {h.events
-                  .map((event) => event.replaceAll("_", " "))
-                  .join(" · ")}
-              </p>
+              <div className="flex flex-wrap gap-1">
+                {h.events.map((event) => (
+                  <Badge key={event}>
+                    {event.replaceAll("_", " ")}
+                  </Badge>
+                ))}
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"

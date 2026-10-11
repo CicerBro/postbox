@@ -10,6 +10,8 @@ import {
   Users,
   List as ListIcon,
   MoreHorizontal,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useSearchParams } from "react-router-dom";
@@ -98,7 +100,7 @@ function CustomFields({
   };
   return (
     <section className="space-y-4">
-      <div className="flex justify-between">
+      <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Custom fields</h2>
           <p className="text-sm text-muted-foreground">
@@ -487,7 +489,7 @@ function Lists({
   }, [createRequest, onCreatedRequest]);
   return (
     <section className="space-y-4">
-      <div className="flex justify-between">
+      <div className="flex items-center justify-between">
         <div>
           <h2 className="section-heading text-lg font-semibold">Lists</h2>
           <p className="page-subtitle text-sm text-muted-foreground mt-1">
@@ -568,55 +570,65 @@ function Lists({
                   <td>{l.bounced?.toLocaleString() ?? "Unavailable"}</td>
                   <td>{l.complained?.toLocaleString() ?? "Unavailable"}</td>
                   <td>
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger asChild>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label={`Actions for ${l.name}`}
-                        >
-                          <MoreHorizontal size={18} />
-                        </Button>
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Portal>
-                        <DropdownMenu.Content
-                          className="dropdown-content"
-                          align="end"
-                          sideOffset={6}
-                        >
-                          <DropdownMenu.Label className="dropdown-label">
-                            List actions
-                          </DropdownMenu.Label>
-                          <DropdownMenu.Item
-                            className="text-amber-700 dark:text-amber-300"
-                            onSelect={() => {
-                              action.reset();
-                              setEditing({ ...l });
-                            }}
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="action-edit"
+                        aria-label={`Edit list ${l.name}`}
+                        title="Edit list"
+                        onClick={() => {
+                          action.reset();
+                          setEditing({ ...l });
+                        }}
+                      >
+                        <Pencil size={16} aria-hidden="true" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="action-delete"
+                        aria-label={`Delete list ${l.name}`}
+                        title="Delete list"
+                        onClick={() => {
+                          action.reset();
+                          setDeleting(l);
+                        }}
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                      </Button>
+                      <DropdownMenu.Root>
+                        <DropdownMenu.Trigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            aria-label={`More actions for ${l.name}`}
+                            title="More actions"
                           >
-                            Edit list
-                          </DropdownMenu.Item>
-                          <DropdownMenu.Item onSelect={() => setForm(l)}>
-                            Subscribe form
-                          </DropdownMenu.Item>
-                          <DropdownMenu.Item
-                            onSelect={() => setNotifications(l)}
+                            <MoreHorizontal size={18} aria-hidden="true" />
+                          </Button>
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Portal>
+                          <DropdownMenu.Content
+                            className="dropdown-content"
+                            align="end"
+                            sideOffset={6}
                           >
-                            Messages and pages
-                          </DropdownMenu.Item>
-                          <DropdownMenu.Separator className="dropdown-separator" />
-                          <DropdownMenu.Item
-                            className="text-destructive"
-                            onSelect={() => {
-                              action.reset();
-                              setDeleting(l);
-                            }}
-                          >
-                            Delete list
-                          </DropdownMenu.Item>
-                        </DropdownMenu.Content>
-                      </DropdownMenu.Portal>
-                    </DropdownMenu.Root>
+                            <DropdownMenu.Label className="dropdown-label">
+                              More actions
+                            </DropdownMenu.Label>
+                            <DropdownMenu.Item onSelect={() => setForm(l)}>
+                              Subscribe form
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                              onSelect={() => setNotifications(l)}
+                            >
+                              Messages and pages
+                            </DropdownMenu.Item>
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Portal>
+                      </DropdownMenu.Root>
+                    </div>
                   </td>
                 </tr>
               ))}

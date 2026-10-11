@@ -154,6 +154,9 @@
   label > .input {
     margin-top: 8px;
   }
+  label.grid > .input {
+    margin-top: 0;
+  }
   .muted {
     color: var(--muted);
   }
@@ -178,6 +181,23 @@
     border-color: color-mix(in srgb, var(--ink) 24%, var(--border));
     background: var(--secondary);
     color: var(--ink);
+  }
+  .button.action-edit,
+  .button.action-delete {
+    background: var(--background);
+    color: var(--ink);
+  }
+  .button.action-edit {
+    border-color: var(--primary);
+  }
+  .button.action-edit:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary) 10%, var(--background));
+  }
+  .button.action-delete {
+    border-color: #b42330;
+  }
+  .button.action-delete:hover:not(:disabled) {
+    background: color-mix(in srgb, #b42330 8%, var(--background));
   }
   .button.subscriber-view-options {
     background: var(--muted-background);
@@ -225,7 +245,7 @@
     z-index: 80;
   }
   .dialog-header {
-    margin-bottom: 24px;
+    margin-bottom: 0;
   }
   .dialog-header h2 {
     margin: 0 30px 8px 0;
@@ -240,7 +260,7 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    margin-top: 24px;
+    margin-top: 0;
   }
   .dialog-close {
     position: absolute;
@@ -1027,6 +1047,16 @@
   :root:not(.dark) .button.button-outline:hover {
     background: var(--secondary);
   }
+  :root:not(.dark) .button.button-outline.action-edit,
+  :root:not(.dark) .button.button-outline.action-delete {
+    background: var(--background);
+  }
+  :root:not(.dark) .button.button-outline.action-edit:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary) 10%, var(--background));
+  }
+  :root:not(.dark) .button.button-outline.action-delete:hover:not(:disabled) {
+    background: color-mix(in srgb, #b42330 8%, var(--background));
+  }
   .button-ghost[aria-current="page"] {
     background: var(--soft);
   }
@@ -1379,6 +1409,9 @@
     right: 4px;
   }
   .dialog-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
     position: fixed;
     top: 50%;
     left: 50%;
