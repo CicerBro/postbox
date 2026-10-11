@@ -137,7 +137,7 @@ func representativeDB(t *testing.T) *store.DB {
  INSERT INTO campaign_stats(campaign_id) SELECT id FROM campaigns;
  WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000)
  INSERT INTO subscribers(id,brand_id,email,fields,created_at,updated_at) SELECT x,(x-1)%40+1,printf('person%d@example.test',x),json_object('country',CASE WHEN x%101=1 THEN 'NL' ELSE 'US' END),x,x FROM n;
- INSERT INTO list_subscribers SELECT brand_id,id,'subscribed',1,1 FROM subscribers;
+ INSERT INTO list_subscribers(list_id,subscriber_id,status,created_at,updated_at) SELECT brand_id,id,'subscribed',1,1 FROM subscribers;
  INSERT INTO campaign_recipients(campaign_id,subscriber_id,status,message_id) SELECT brand_id,id,CASE WHEN id%3=0 THEN 'sent' WHEN id%3=1 THEN 'pending' ELSE 'claimed' END,printf('msg%d',id) FROM subscribers;
  INSERT INTO opens(campaign_id,subscriber_id,at) SELECT brand_id,id,id FROM subscribers;
  INSERT INTO clicks(campaign_id,link_id,subscriber_id,at) SELECT brand_id,brand_id,id,id FROM subscribers;

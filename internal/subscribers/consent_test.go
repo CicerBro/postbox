@@ -219,8 +219,8 @@ func TestSingleOptInRenewalRequiresConsentAndSuppressionStillWins(t *testing.T) 
 	if err = s.AddSuppression(ctx, Suppression{BrandID: &b.ID, Kind: "email", Value: v.Email}); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.Confirm(ctx, v.ConfirmationTokens[l.ID]); err != nil {
-		t.Fatal(err)
+	if err = s.Confirm(ctx, v.ConfirmationTokens[l.ID]); err == nil {
+		t.Fatal("suppressed confirmation reported success")
 	}
 	v, err = s.GetByEmail(ctx, b.ID, v.Email)
 	if err != nil || v.MarketingUnsubscribedAt == nil {

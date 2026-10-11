@@ -20,7 +20,7 @@ func trackDB(t *testing.T) *store.DB {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { db.Close() })
-	for _, q := range []string{`INSERT INTO brands(id,name,from_name,from_email,tracking_domain,created_at) VALUES(1,'Brand','','sender@example.com','track.example.com',1)`, `INSERT INTO subscribers(id,brand_id,email,name,fields,created_at,updated_at) VALUES(1,1,'changed@example.com','Changed','{}',1,1)`, `INSERT INTO lists(id,brand_id,uuid,name,opt_in,created_at) VALUES(1,1,'one','One','single',1)`, `INSERT INTO list_subscribers VALUES(1,1,'subscribed',1,1)`, `INSERT INTO campaigns(id,brand_id,uuid,status,subject,html,created_at,updated_at) VALUES(1,1,'campaign','sending','Hi','Hi',1,1),(2,1,'other','sending','Hi','Hi',1,1)`, `INSERT INTO campaign_recipients(campaign_id,subscriber_id,status,snapshot_email,snapshot_name,snapshot_fields) VALUES(1,1,'sent','original@example.com','Original','{}'),(2,1,'pending','original@example.com','Original','{}')`, `INSERT INTO campaign_stats(campaign_id) VALUES(1),(2)`} {
+	for _, q := range []string{`INSERT INTO brands(id,name,from_name,from_email,tracking_domain,created_at) VALUES(1,'Brand','','sender@example.com','track.example.com',1)`, `INSERT INTO subscribers(id,brand_id,email,name,fields,created_at,updated_at) VALUES(1,1,'changed@example.com','Changed','{}',1,1)`, `INSERT INTO lists(id,brand_id,uuid,name,opt_in,created_at) VALUES(1,1,'one','One','single',1)`, `INSERT INTO list_subscribers(list_id,subscriber_id,status,created_at,updated_at) VALUES(1,1,'subscribed',1,1)`, `INSERT INTO campaigns(id,brand_id,uuid,status,subject,html,created_at,updated_at) VALUES(1,1,'campaign','sending','Hi','Hi',1,1),(2,1,'other','sending','Hi','Hi',1,1)`, `INSERT INTO campaign_recipients(campaign_id,subscriber_id,status,snapshot_email,snapshot_name,snapshot_fields) VALUES(1,1,'sent','original@example.com','Original','{}'),(2,1,'pending','original@example.com','Original','{}')`, `INSERT INTO campaign_stats(campaign_id) VALUES(1),(2)`} {
 		if _, e = db.Writer.Exec(q); e != nil {
 			t.Fatal(e)
 		}
@@ -161,7 +161,7 @@ func TestPersonalizedClickAndDoubleResubscribe(t *testing.T) {
 }
 func TestPerListUnsubscribeKeepsOtherEligibleCampaign(t *testing.T) {
 	db := trackDB(t)
-	for _, q := range []string{`INSERT INTO lists(id,brand_id,uuid,name,opt_in,created_at) VALUES(2,1,'two','Two','single',1)`, `INSERT INTO list_subscribers VALUES(2,1,'subscribed',1,1)`, `INSERT INTO campaign_targets VALUES(2,'list',2,'include')`} {
+	for _, q := range []string{`INSERT INTO lists(id,brand_id,uuid,name,opt_in,created_at) VALUES(2,1,'two','Two','single',1)`, `INSERT INTO list_subscribers(list_id,subscriber_id,status,created_at,updated_at) VALUES(2,1,'subscribed',1,1)`, `INSERT INTO campaign_targets VALUES(2,'list',2,'include')`} {
 		if _, e := db.Writer.Exec(q); e != nil {
 			t.Fatal(e)
 		}

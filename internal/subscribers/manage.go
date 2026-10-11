@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"postbox/internal/consent"
 	"postbox/internal/render"
 )
 
@@ -243,11 +244,7 @@ func (s *Service) Segments(ctx context.Context, brandID int64) ([]Segment, error
 }
 
 func membershipCounter(ctx context.Context, c *sql.Conn, listID, delta, subscribed, unsubscribed, at int64) error {
-	if _, e := c.ExecContext(ctx, "INSERT INTO list_counters(list_id,active,subscribed,unsubscribed) VALUES(?,max(0,?),?,?) ON CONFLICT(list_id) DO UPDATE SET active=max(0,active+?),subscribed=subscribed+excluded.subscribed,unsubscribed=unsubscribed+excluded.unsubscribed", listID, delta, subscribed, unsubscribed, delta); e != nil {
-		return e
-	}
-	_, e := c.ExecContext(ctx, "INSERT INTO list_daily_stats(list_id,day,active,subscribed,unsubscribed) SELECT ?,?,active,?,? FROM list_counters WHERE list_id=? ON CONFLICT(list_id,day) DO UPDATE SET active=excluded.active,subscribed=subscribed+excluded.subscribed,unsubscribed=unsubscribed+excluded.unsubscribed", listID, at/86400000*86400000, subscribed, unsubscribed, listID)
-	return e
+	return consent.UpdateCountersTx(ctx, c, listID, delta, subscribed, unsubscribed, 0, 0, at)
 }
 
 func skipPendingTx(ctx context.Context, c *sql.Conn, predicate string, args ...any) error {

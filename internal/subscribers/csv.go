@@ -95,13 +95,17 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOpt
 			return nil
 		}
 		e := s.db.Immediate(ctx, func(c *sql.Conn) error {
+			memberships, e := loadMembershipBatch(ctx, c, opt.BrandID, opt.ListIDs, batch)
+			if e != nil {
+				return e
+			}
 			stmt, e := c.PrepareContext(ctx, subscriberUpsertSQL)
 			if e != nil {
 				return e
 			}
 			defer stmt.Close()
 			for _, in := range batch {
-				if _, e := s.upsertPrepared(ctx, c, in, stmt); e != nil {
+				if _, e := s.upsertPrepared(ctx, c, in, stmt, memberships); e != nil {
 					return fmt.Errorf("import %s: %w", in.Email, e)
 				}
 			}

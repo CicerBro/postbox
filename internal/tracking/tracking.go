@@ -12,7 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"postbox/internal/events"
+	"postbox/internal/consent"
 	"postbox/internal/jobs"
 	"postbox/internal/render"
 	"postbox/internal/store"
@@ -401,14 +401,12 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if id == 0 {
-			if _, e = conn.ExecContext(r.Context(), `UPDATE subscribers SET marketing_unsubscribed_at=coalesce(marketing_unsubscribed_at,?),updated_at=? WHERE id=? AND brand_id=?`, at, at, u, brand); e != nil {
-				return e
-			}
-			if _, e = conn.ExecContext(r.Context(), `DELETE FROM subscription_confirmations WHERE subscriber_id=?`, u); e != nil {
+			if e = consent.RecordBrandOptOutTx(r.Context(), conn, brand, u, at); e != nil {
 				return e
 			}
 		}
-		if e = events.UnsubscribeMembershipsTx(r.Context(), conn, u, id, at, "unsubscribe"); e != nil {
+
+		if _, e = consent.UnsubscribeMembershipsTx(r.Context(), conn, u, id, at, "unsubscribe"); e != nil {
 			return e
 		}
 		if _, e = conn.ExecContext(r.Context(), `INSERT INTO subscriber_activity(brand_id,subscriber_id,kind,at,detail) VALUES(?,?,'unsubscribe',?,json_object('campaign_id',?,'list_id',?))`, brand, u, at, c, id); e != nil {
@@ -468,11 +466,7 @@ func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
 	if e == nil {
 		service := subscribers.New(s.db)
 		service.SetBaseURL(s.cfg.BaseURL)
-		var profile subscribers.Subscriber
-		profile, e = service.GetByEmail(r.Context(), brand, email)
-		if e == nil {
-			_, e = service.Upsert(r.Context(), subscribers.UpsertInput{BrandID: brand, Email: email, Name: profile.Name, Fields: profile.Fields, ListIDs: []int64{id}, Resubscribe: true, Consent: true})
-		}
+		_, e = service.PublicSubscribe(r.Context(), subscribers.UpsertInput{BrandID: brand, Email: email, ListIDs: []int64{id}, Resubscribe: true, Consent: true})
 	}
 	if e != nil {
 		http.Error(w, "re-subscription unavailable", 400)

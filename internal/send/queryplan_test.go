@@ -129,7 +129,7 @@ func TestProductionAudiencePlans(t *testing.T) {
  WITH RECURSIVE n(x) AS (VALUES(401) UNION ALL SELECT x+1 FROM n WHERE x<10000)
  INSERT INTO subscribers(id,brand_id,email,created_at,updated_at) SELECT x,2,printf('other%d@example.test',x),1,1 FROM n;
  INSERT INTO lists(id,brand_id,uuid,name,opt_in,created_at) VALUES(3,1,'excluded','Excluded','single',1);
- INSERT INTO list_subscribers SELECT 3,id,'subscribed',1,1 FROM subscribers WHERE brand_id=1 AND id%7=0;
+ INSERT INTO list_subscribers(list_id,subscriber_id,status,created_at,updated_at) SELECT 3,id,'subscribed',1,1 FROM subscribers WHERE brand_id=1 AND id%7=0;
  UPDATE subscribers SET fields=json_object('country',CASE WHEN id%5=0 THEN 'NL' ELSE 'US' END);
  INSERT INTO suppressions(brand_id,kind,value,reason,created_at) VALUES(1,'email','reader1@example.org','manual',1),(NULL,'domain','blocked.example','manual',1);`)
 	if err != nil {
