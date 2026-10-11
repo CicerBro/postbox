@@ -354,16 +354,29 @@ func (s *Service) Goodbye(w http.ResponseWriter, r *http.Request) {
 	var goodbye string
 	_ = s.db.Reader.QueryRowContext(r.Context(), `SELECT value FROM settings WHERE key='brand.'||(SELECT brand_id FROM subscribers WHERE id=?)||'.goodbye_html'`, u).Scan(&goodbye)
 	if goodbye == "" {
-		goodbye = "<h1>Email preferences</h1>"
+		goodbye = `<h1>Email preferences</h1><p class="muted">Choose which emails you would like to stop receiving.</p>`
 	}
-	fmt.Fprint(w, `<!doctype html><title>Email preferences</title>`+goodbye+`<form method="post"><p><button name="list" value="all">Unsubscribe from all lists</button></p>`)
+	var actions, options strings.Builder
 	for rows.Next() {
 		var id int64
 		var name string
-		rows.Scan(&id, &name)
-		fmt.Fprintf(w, `<p><button name="list" value="%d">Unsubscribe from %s</button></p>`, id, html.EscapeString(name))
+		if e = rows.Scan(&id, &name); e != nil {
+			http.Error(w, "unavailable", 503)
+			return
+		}
+		fmt.Fprintf(&actions, `<button name="list" value="%d">Unsubscribe from %s</button>`, id, html.EscapeString(name))
+		fmt.Fprintf(&options, `<option value="%d">%s</option>`, id, html.EscapeString(name))
 	}
-	fmt.Fprint(w, `</form><form method="post" action="`+html.EscapeString(r.URL.Path)+`/resubscribe"><p>To subscribe again, enter a list ID: <input name="list" required type="number"><button>Re-subscribe</button></p></form>`)
+	if e = rows.Err(); e != nil {
+		http.Error(w, "unavailable", 503)
+		return
+	}
+	preferencePageStart(w, "Email preferences")
+	fmt.Fprint(w, goodbye+`<form method="post"><div class="actions"><button class="primary" name="list" value="all">Unsubscribe from all lists</button>`+actions.String()+`</div></form>`)
+	if options.Len() > 0 {
+		fmt.Fprint(w, `<details><summary>Want to subscribe again?</summary><form method="post" action="`+html.EscapeString(r.URL.Path)+`/resubscribe"><label>Mailing list<select name="list" required>`+options.String()+`</select></label><button>Re-subscribe</button></form></details>`)
+	}
+	preferencePageEnd(w)
 }
 func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	c, u, e := s.identity(r)
@@ -434,10 +447,11 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	var brand int64
 	_ = s.db.Reader.QueryRowContext(r.Context(), "SELECT brand_id FROM subscribers WHERE id=?", u).Scan(&brand)
 	body, _ := subscribers.NotificationSetting(r.Context(), s.db.Reader, brand, id, "goodbye_html")
-	if body == "" {
-		body = "You have been unsubscribed."
-	}
 	htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
+	if body == "" {
+		preferenceConfirmation(w, "You're unsubscribed", "You have been unsubscribed. You can close this page.")
+		return
+	}
 	fmt.Fprint(w, body)
 }
 func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
@@ -468,7 +482,8 @@ func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "re-subscription unavailable", 400)
 		return
 	}
-	fmt.Fprint(w, "Your subscription preference has been saved.")
+	htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
+	preferenceConfirmation(w, "Preference saved", "Your subscription preference has been saved. If confirmation is needed, check your inbox to finish subscribing.")
 }
 
 func stringFields(raw string) (map[string]string, error) {
