@@ -10,6 +10,7 @@
 *.sqlite-wal
 *.sqlite-shm
 .env
+.DS_Store
 *.log
 /coverage.out
 /profiles/
