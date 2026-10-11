@@ -1,0 +1,1 @@
+import{j as n}from"./index-BTh0kfDe.js";const i=t=>t instanceof Error?t.message:String(t??"Request failed");function c({error:t,className:s="text-sm text-destructive"}){if(!t)return null;const e=typeof t=="object"&&"status"in t&&t.status===403;return n.jsxs("p",{role:"alert",className:s,children:[e?"Access denied (403): ":"",i(t)]})}export{c as E};
