@@ -139,7 +139,7 @@ func (a *API) awsCheck(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	out, err := a.cfg.AWSProvider.Status(ctx, id)
 	if err != nil {
-		fail(w, 502, errors.New("AWS connection check failed. Check credentials, region, and SES permissions."))
+		fail(w, 502, awsbrand.ConnectionCheckError(err))
 		return
 	}
 	respond(w, 200, struct {

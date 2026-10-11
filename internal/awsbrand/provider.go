@@ -310,7 +310,7 @@ func (p *Provider) resolve(ctx context.Context, id int64) (cached, error) {
 	})
 	who, e := st.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if e != nil {
-		return cached{}, errors.New("AWS account identity could not be verified")
+		return cached{}, awsCheckError("sts:GetCallerIdentity", r.Region, e)
 	}
 	account := aws.ToString(who.Account)
 	if account == "" {

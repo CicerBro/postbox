@@ -64,7 +64,7 @@ func (p *Provider) Status(ctx context.Context, id int64) (Status, error) {
 	}
 	a, e := v.client.Client.GetAccount(ctx, &sesv2.GetAccountInput{})
 	if e != nil {
-		return Status{}, errors.New("SES account status could not be retrieved")
+		return Status{}, awsCheckError("ses:GetAccount", v.client.Client.Options().Region, e)
 	}
 	if a.SendQuota == nil {
 		return Status{}, errors.New("SES returned no sending quota")
@@ -83,7 +83,7 @@ func (p *Provider) Status(ctx context.Context, id int64) (Status, error) {
 	for pager.HasMorePages() {
 		page, e := pager.NextPage(ctx)
 		if e != nil {
-			return Status{}, errors.New("SES identities could not be retrieved")
+			return Status{}, awsCheckError("ses:ListEmailIdentities", v.client.Client.Options().Region, e)
 		}
 		for _, i := range page.EmailIdentities {
 			out.Identities = append(out.Identities, Identity{Identity: aws.ToString(i.IdentityName), IdentityType: string(i.IdentityType), SendingEnabled: i.SendingEnabled, VerificationStatus: string(i.VerificationStatus)})

@@ -12,6 +12,66 @@ import (
 	"testing"
 )
 
+func TestAWSConnectionCheckDiagnostics(t *testing.T) {
+	for _, tc := range []struct {
+		name, path, code, operation, reason string
+	}{
+		{"invalid key", "/", "InvalidClientTokenId", "sts:GetCallerIdentity", "AWS rejected the access key"},
+		{"bad signature", "/", "SignatureDoesNotMatch", "sts:GetCallerIdentity", "secret matches the access key"},
+		{"account permissions", "/v2/email/account", "AccessDeniedException", "ses:GetAccount", "AWS denied permission"},
+		{"identity permissions", "/v2/email/list-identities", "AccessDeniedException", "ses:ListEmailIdentities", "AWS denied permission"},
+		{"unknown code", "/v2/email/account", "raw-secret-value", "ses:GetAccount", "AWS could not complete the request"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == tc.path {
+					if tc.path == "/" {
+						w.Header().Set("Content-Type", "text/xml")
+						w.WriteHeader(403)
+						fmt.Fprintf(w, `<ErrorResponse><Error><Type>Sender</Type><Code>%s</Code><Message>raw-secret-value AKIATEST</Message></Error><RequestId>test</RequestId></ErrorResponse>`, tc.code)
+					} else {
+						w.Header().Set("Content-Type", "application/json")
+						w.Header().Set("X-Amzn-Errortype", tc.code)
+						w.WriteHeader(403)
+						fmt.Fprintf(w, `{"__type":%q,"message":"raw-secret-value AKIATEST"}`, tc.code)
+					}
+					return
+				}
+				switch r.URL.Path {
+				case "/":
+					w.Header().Set("Content-Type", "text/xml")
+					fmt.Fprint(w, `<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/"><GetCallerIdentityResult><Account>123456789012</Account></GetCallerIdentityResult></GetCallerIdentityResponse>`)
+				case "/v2/email/account":
+					fmt.Fprint(w, `{"SendQuota":{"MaxSendRate":14,"Max24HourSend":1000,"SentLast24Hours":10}}`)
+				default:
+					t.Errorf("unexpected request %s", r.URL.Path)
+				}
+			}))
+			defer upstream.Close()
+			a, m, db, c, csrf := setup(t)
+			p, err := awsbrand.New(db, []byte(strings.Repeat("x", 32)), "eu-west-1", upstream.URL, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a.cfg.AWSProvider = p
+			if _, err = subscribers.New(db).CreateBrand(context.Background(), subscribers.Brand{Name: "one", FromEmail: "from@example.org"}); err != nil {
+				t.Fatal(err)
+			}
+			if err = p.Save(context.Background(), 1, awsbrand.Update{Mode: "static", Region: "eu-west-1", AccessKeyID: "AKIATEST", SecretAccessKey: "raw-secret-value"}); err != nil {
+				t.Fatal(err)
+			}
+			w := request(m, "POST", "/api/v1/aws-settings/check?brand_id=1", "", &c, csrf)
+			body := w.Body.String()
+			if w.Code != 502 || !strings.Contains(body, tc.operation) || !strings.Contains(body, tc.reason) || !strings.Contains(body, "eu-west-1") {
+				t.Fatalf("missing diagnostics: %d %s", w.Code, body)
+			}
+			if strings.Contains(body, "raw-secret-value") || strings.Contains(body, "AKIATEST") {
+				t.Fatalf("AWS error leaked credentials: %s", body)
+			}
+		})
+	}
+}
+
 func TestAWSSettingsSecretsAndAuthorization(t *testing.T) {
 	a, m, db, c, csrf := setup(t)
 	p, err := awsbrand.New(db, []byte(strings.Repeat("x", 32)), "eu-west-1", "", 1)
