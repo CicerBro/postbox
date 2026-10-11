@@ -369,6 +369,10 @@ export default function App() {
           </div>
         ))}
       </nav>
+      <a className="nav-item" href="/docs" title="Documentation" target="_blank" rel="noreferrer">
+        <BookOpen size={16} />
+        <span className="sidebar-label">Documentation</span>
+      </a>
       <div className="sidebar-bottom">
         {session.data.admin ? (
           <>
@@ -400,9 +404,9 @@ export default function App() {
                   : "Status unavailable"}
               </span>
               {sending.data?.enabled ? (
-                <Pause className="sidebar-label sending-action-icon" size={14} aria-hidden="true" />
-              ) : (
                 <Play className="sidebar-label sending-action-icon" size={14} aria-hidden="true" />
+              ) : (
+                <Pause className="sidebar-label sending-action-icon" size={14} aria-hidden="true" />
               )}
             </button>
             {(sending.error || changeSending.error) && (
