@@ -201,7 +201,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                 {visibleTemplates.map((t) => (
                     <tr key={t.id}>
                       <td>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 font-bold">
                           <span className="avatar">
                             <FileCode2 size={18} />
                           </span>
