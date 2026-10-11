@@ -83,6 +83,7 @@ export function BrandIdentity({ brandId }: { brandId: number }) {
                   key.includes("email") || key === "reply_to" ? "email" : "text"
                 }
                 required={key === "name" || key === "from_email"}
+                placeholder={key === "tracking_domain" ? "Optional" : undefined}
                 value={form[key as keyof Identity] ?? ""}
                 disabled={!session.admin}
                 onChange={(e) => setForm({ ...form, [key]: e.target.value })}
