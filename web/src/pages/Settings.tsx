@@ -8,6 +8,7 @@ import {
   UsersRound,
   ListRestart,
   Cloud,
+  UserPlus,
   type LucideIcon,
 } from "lucide-react";
 import { useApp } from "../lib/app-context";
@@ -20,6 +21,7 @@ import { Suppressions } from "../components/settings/Suppressions";
 import { Users } from "../components/settings/Users";
 import { Jobs } from "../components/settings/Jobs";
 import { AmazonSES } from "../components/settings/AmazonSES";
+import { PublicSubscriptions } from "../components/settings/PublicSubscriptions";
 export function SettingsPage({ brandId }: { brandId: number }) {
   const { session } = useApp();
   const [tab, setTab] = useState("security");
@@ -32,6 +34,7 @@ export function SettingsPage({ brandId }: { brandId: number }) {
     users: UsersRound,
     jobs: ListRestart,
     ses: Cloud,
+    subscriptions: UserPlus,
   };
   const descriptions: Record<string, string> = {
     security: "Protect your account and manage your sign-in methods.",
@@ -42,9 +45,11 @@ export function SettingsPage({ brandId }: { brandId: number }) {
     users: "Manage teammates, roles and access to brands.",
     jobs: "Review jobs that exhausted their automatic retries.",
     ses: "Connect this brand to Amazon SES and inspect its current sending quota.",
+    subscriptions: "Control who can sign up through public pages and embedded forms.",
   };
   const tabs = [
     ["security", "Account security"],
+    ...(brandId || session.admin ? [["subscriptions", "Public subscriptions"]] : []),
     ...(brandId
       ? [
           ["brand", "Brand"],
@@ -113,6 +118,7 @@ export function SettingsPage({ brandId }: { brandId: number }) {
             <p className="page-subtitle">{descriptions[selected]}</p>
           </div>
           {selected === "security" && <Security />}
+          {selected === "subscriptions" && <PublicSubscriptions key={brandId} brandId={brandId} />}
           {selected === "brand" && (
             <BrandIdentity key={brandId} brandId={brandId} />
           )}

@@ -17,6 +17,7 @@ import (
 var subscriptionForm = template.Must(template.New("subscribe").Parse(`<!doctype html><html><head><meta charset="utf-8"><title>Subscribe</title></head><body><main><h1>{{.Name}}</h1><form method="post"><label>Email <input type="email" name="email" required></label><label>Name <input name="name"></label><div hidden><input name="website" tabindex="-1" autocomplete="off"></div><label><input type="checkbox" name="consent" required> I consent to receive this newsletter.</label>{{if .SiteKey}}<div class="cf-turnstile" data-sitekey="{{.SiteKey}}"></div><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{{end}}<button>Subscribe</button></form></main></body></html>`))
 
 func (a *API) registerPublic(m *http.ServeMux) {
+	a.registerSubscriptionSettings(m)
 	a.documentRoute("GET /subscribe/{uuid}")
 	m.HandleFunc("GET /subscribe/{uuid}", a.publicSubscribe)
 	a.documentRoute("POST /subscribe/{uuid}")
@@ -36,6 +37,9 @@ func (a *API) form(w http.ResponseWriter, r *http.Request) {
 		result(w, nil, e)
 		return
 	}
+	if !a.requirePublicSubscriptions(w, r, brand) {
+		return
+	}
 	respond(w, 200, map[string]string{"hosted_url": strings.TrimRight(a.cfg.BaseURL, "/") + "/subscribe/" + id, "html": "<iframe src=\"" + template.HTMLEscapeString(strings.TrimRight(a.cfg.BaseURL, "/")+"/subscribe/"+id) + "\" title=\"Subscribe\"></iframe>"})
 }
 func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +52,9 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 	e := a.db.Reader.QueryRowContext(r.Context(), "SELECT id,brand_id,name,opt_in FROM lists WHERE uuid=?", r.PathValue("uuid")).Scan(&list.ID, &list.BrandID, &list.Name, &list.OptIn)
 	if e != nil {
 		result(w, nil, e)
+		return
+	}
+	if !a.requirePublicSubscriptions(w, r, list.BrandID) {
 		return
 	}
 	if r.Method == "GET" {
@@ -75,7 +82,7 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	v, e := a.subscriberService().Upsert(r.Context(), subscribers.UpsertInput{BrandID: list.BrandID, Email: r.FormValue("email"), Name: r.FormValue("name"), ListIDs: []int64{list.ID}, Consent: true, ConsentIP: host, Resubscribe: true})
+	v, e := a.subscriberService().PublicSubscribe(r.Context(), subscribers.UpsertInput{BrandID: list.BrandID, Email: r.FormValue("email"), Name: r.FormValue("name"), ListIDs: []int64{list.ID}, Consent: true, ConsentIP: host, Resubscribe: true})
 	if e != nil {
 		result(w, nil, e)
 		return
