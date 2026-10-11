@@ -32,7 +32,7 @@ test("subscriber columns and row actions", async ({ page, context }) => {
   await expect(table.getByRole("columnheader")).toHaveText(["Name", "Email", "Last activity", "Action"]);
   await expect(table.locator(".avatar")).toHaveCount(0);
   await expect(table.getByText("complaint", { exact: true })).toBeVisible();
-  await page.screenshot({ path: "/private/tmp/postbox-subscribers.png", fullPage: true });
+  await page.screenshot({ path: test.info().outputPath("postbox-subscribers.png"), fullPage: true });
   await page.getByRole("button", { name: "Edit ada@example.com", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Subscriber profile" })).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
