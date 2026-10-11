@@ -1,4 +1,4 @@
-import{Y as e}from"./button-Bp0BdcZA.js";import{t}from"./badge-DbdArPKn.js";import"./RequestError-DR3RxzoX.js";var n=e(),r=`<!DOCTYPE html>
+import{Y as e}from"./button-Bp0BdcZA.js";import{l as t}from"./index-EvIStAmc.js";import"./RequestError-DR3RxzoX.js";var n=e(),r=`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
