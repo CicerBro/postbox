@@ -339,13 +339,18 @@ func (s *Service) Web(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(body))
 }
 func (s *Service) Goodbye(w http.ResponseWriter, r *http.Request) {
-	_, u, e := s.identity(r)
+	c, u, e := s.identity(r)
 	if e != nil {
 		http.NotFound(w, r)
 		return
 	}
 	var brandName string
 	if e = s.db.Reader.QueryRowContext(r.Context(), `SELECT b.name FROM brands b JOIN subscribers s ON s.brand_id=b.id WHERE s.id=?`, u).Scan(&brandName); e != nil {
+		http.Error(w, "unavailable", 503)
+		return
+	}
+	lists, e := currentMailingLists(r.Context(), s.db.Reader, c, u)
+	if e != nil {
 		http.Error(w, "unavailable", 503)
 		return
 	}
@@ -356,7 +361,18 @@ func (s *Service) Goodbye(w http.ResponseWriter, r *http.Request) {
 		goodbye = `<h1>Unsubscribe</h1><p class="muted">Stop receiving emails from this sender.</p>`
 	}
 	preferencePageStart(w, "Unsubscribe", brandName)
-	fmt.Fprint(w, goodbye+`<form method="post"><div class="actions"><button class="primary" name="list" value="all">Unsubscribe</button></div></form>`)
+	fmt.Fprint(w, goodbye+`<form method="post"><div class="actions">`)
+	if len(lists) > 0 {
+		label := "Unsubscribe from this list"
+		if len(lists) > 1 {
+			label = "Unsubscribe from these lists"
+		}
+		fmt.Fprintf(w, `<button class="primary" name="list" value="current">%s</button>`, label)
+		fmt.Fprint(w, `<button name="list" value="all">Unsubscribe from all emails</button>`)
+	} else {
+		fmt.Fprint(w, `<button class="primary" name="list" value="all">Unsubscribe from all emails</button>`)
+	}
+	fmt.Fprint(w, `</div></form>`)
 	preferencePageEnd(w)
 }
 func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
@@ -372,7 +388,8 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	list := r.FormValue("list")
 	var id int64
-	if list != "" && list != "all" {
+	var currentCount int
+	if list != "" && list != "all" && list != "current" {
 		id, e = strconv.ParseInt(list, 10, 64)
 		if e != nil || id <= 0 {
 			http.Error(w, "invalid list", 400)
@@ -385,27 +402,47 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		if e = conn.QueryRowContext(r.Context(), `SELECT c.brand_id FROM campaigns c JOIN campaign_recipients cr ON cr.campaign_id=c.id WHERE cr.campaign_id=? AND cr.subscriber_id=?`, c, u).Scan(&brand); e != nil {
 			return e
 		}
-		if id > 0 {
-			var found int
-			if e = conn.QueryRowContext(r.Context(), `SELECT 1 FROM lists WHERE id=? AND brand_id=?`, id, brand).Scan(&found); e != nil {
+		ids := []int64{id}
+		if list == "current" {
+			ids, e = currentMailingLists(r.Context(), conn, c, u)
+			if e != nil {
 				return e
 			}
+			if len(ids) == 0 {
+				return errors.New("campaign has no matching lists")
+			}
+			currentCount = len(ids)
+			if len(ids) == 1 {
+				id = ids[0]
+			}
 		}
-		if id == 0 {
-			if e = consent.RecordBrandOptOutTx(r.Context(), conn, brand, u, at); e != nil {
+		for _, id := range ids {
+			if id > 0 {
+				var found int
+				if e = conn.QueryRowContext(r.Context(), `SELECT 1 FROM lists WHERE id=? AND brand_id=?`, id, brand).Scan(&found); e != nil {
+					return e
+				}
+			}
+			if id == 0 && list != "current" {
+				if e = consent.RecordBrandOptOutTx(r.Context(), conn, brand, u, at); e != nil {
+					return e
+				}
+			}
+
+			if _, e = consent.UnsubscribeMembershipsTx(r.Context(), conn, u, id, at, "unsubscribe"); e != nil {
+				return e
+			}
+			if _, e = conn.ExecContext(r.Context(), `INSERT INTO subscriber_activity(brand_id,subscriber_id,kind,at,detail) VALUES(?,?,'unsubscribe',?,json_object('campaign_id',?,'list_id',?))`, brand, u, at, c, id); e != nil {
+				return e
+			}
+			if e = jobs.EmitTx(r.Context(), conn, brand, "unsubscribe", map[string]any{"subscriber_id": u, "campaign_id": c, "list_id": id}); e != nil {
+				return e
+			}
+			if e = skipAfterUnsubscribe(r.Context(), conn, u, id); e != nil {
 				return e
 			}
 		}
 
-		if _, e = consent.UnsubscribeMembershipsTx(r.Context(), conn, u, id, at, "unsubscribe"); e != nil {
-			return e
-		}
-		if _, e = conn.ExecContext(r.Context(), `INSERT INTO subscriber_activity(brand_id,subscriber_id,kind,at,detail) VALUES(?,?,'unsubscribe',?,json_object('campaign_id',?,'list_id',?))`, brand, u, at, c, id); e != nil {
-			return e
-		}
-		if e = jobs.EmitTx(r.Context(), conn, brand, "unsubscribe", map[string]any{"subscriber_id": u, "campaign_id": c, "list_id": id}); e != nil {
-			return e
-		}
 		res, e := conn.ExecContext(r.Context(), `UPDATE campaign_recipients SET unsubscribed_at=? WHERE campaign_id=? AND subscriber_id=? AND unsubscribed_at IS NULL`, at, c, u)
 		if e != nil {
 			return e
@@ -419,7 +456,7 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		if _, e = conn.ExecContext(r.Context(), `UPDATE campaign_stats SET unsubscribes=unsubscribes+? WHERE campaign_id=?`, n, c); e != nil {
 			return e
 		}
-		return skipAfterUnsubscribe(r.Context(), conn, u, id)
+		return nil
 	})
 	if e != nil {
 		http.Error(w, "unsubscribe could not be saved", 503)
@@ -434,7 +471,14 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	body, _ := subscribers.NotificationSetting(r.Context(), s.db.Reader, brand, id, "goodbye_html")
 	htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
 	if body == "" {
-		preferenceConfirmation(w, "You're unsubscribed", "You have been unsubscribed. You can close this page.", brandName)
+		message := "You have been unsubscribed from all emails from this sender. You can close this page."
+		if id > 0 || list == "current" {
+			message = "You have been unsubscribed from this list. Your other subscriptions are unchanged."
+			if currentCount > 1 {
+				message = "You have been unsubscribed from the lists associated with this email. Your other subscriptions are unchanged."
+			}
+		}
+		preferenceConfirmation(w, "You're unsubscribed", message, brandName)
 		return
 	}
 	fmt.Fprint(w, body)

@@ -1,6 +1,8 @@
 package tracking
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"html"
 	"net/http"
@@ -29,4 +31,24 @@ func preferenceConfirmation(w http.ResponseWriter, title, message, brandName str
 	preferencePageStart(w, title, brandName)
 	fmt.Fprintf(w, `<h1>%s</h1><p class="muted">%s</p>`, html.EscapeString(title), html.EscapeString(message))
 	preferencePageEnd(w)
+}
+
+// currentMailingLists resolves only included campaign lists the recipient belongs to.
+func currentMailingLists(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, campaign, subscriber int64) ([]int64, error) {
+	rows, err := q.QueryContext(ctx, `SELECT DISTINCT l.id FROM campaign_targets t JOIN campaigns c ON c.id=t.campaign_id JOIN lists l ON l.id=t.target_id AND l.brand_id=c.brand_id JOIN list_subscribers ls ON ls.list_id=l.id WHERE t.campaign_id=? AND t.target_type='list' AND t.mode='include' AND ls.subscriber_id=? ORDER BY l.id`, campaign, subscriber)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
