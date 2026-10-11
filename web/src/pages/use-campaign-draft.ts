@@ -41,7 +41,12 @@ export function useCampaignDraft(brandId: number, routeID: number) {
     }),
     [baseline, setBaseline] = useState(""),
     [error, setError] = useState<unknown>(null),
-    [notice, setNotice] = useState("");
+    [notice, updateNotice] = useState("");
+  const [noticeVariant, setNoticeVariant] = useState<"success" | "info">("success");
+  function setNotice(message: string, variant: "success" | "info" = "success") {
+    updateNotice(message);
+    setNoticeVariant(variant);
+  }
   const { subject, html, text, inline, targets } = draft;
   const setSubject = (subject: string) => setDraft((d) => ({ ...d, subject }));
   const setHtml = (html: string) => setDraft((d) => ({ ...d, html }));
@@ -96,7 +101,7 @@ export function useCampaignDraft(brandId: number, routeID: number) {
       targets: d.targets,
     });
     setBaseline(d.baseline);
-    setNotice("Unsaved edits restored. Review and save them when ready.");
+    setNotice("Unsaved edits restored. Review and save them when ready.", "info");
     recovery.current = undefined;
     forgetDraft(recoveryKey);
   }, [routeID, recoveryKey]);
@@ -114,7 +119,7 @@ export function useCampaignDraft(brandId: number, routeID: number) {
         targets: d.targets,
       });
       setBaseline(d.baseline);
-      setNotice("Unsaved edits restored. Review and save them when ready.");
+      setNotice("Unsaved edits restored. Review and save them when ready.", "info");
       hydrated.current = true;
       recovery.current = undefined;
       forgetDraft(recoveryKey);
@@ -193,6 +198,7 @@ export function useCampaignDraft(brandId: number, routeID: number) {
     targets,
     error,
     notice,
+    noticeVariant,
     campaign,
     targetQuery,
     choices,

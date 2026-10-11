@@ -1,3 +1,4 @@
+import { StatusMessage } from "../StatusMessage";
 import { SelectField } from "../ui/select";
 import { Checkbox } from "../ui/checkbox";
 import { useEffect, useState } from "react";
@@ -261,10 +262,10 @@ export function CSVImport({
         </div>
       )}
       {result && (
-        <p role="status" className="text-sm">
+        <StatusMessage>
           Imported {result.imported.toLocaleString()} rows. Skipped{" "}
           {result.invalid.toLocaleString()} invalid rows.
-        </p>
+        </StatusMessage>
       )}
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
@@ -539,9 +540,9 @@ export function MassOperations({
         </div>
       )}
       {result !== undefined && (
-        <p role="status" className="text-sm">
+        <StatusMessage>
           Server processed {result.toLocaleString()} matching subscribers.
-        </p>
+        </StatusMessage>
       )}
     </section>
   );
@@ -680,9 +681,7 @@ export function Housekeeping({ brandId }: { brandId: number }) {
         </Button>
       </div>
       <ErrorMessage error={action.error} />
-      <p role="status" className="text-sm">
-        {result}
-      </p>
+      <StatusMessage>{result}</StatusMessage>
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
           <DialogHeader>

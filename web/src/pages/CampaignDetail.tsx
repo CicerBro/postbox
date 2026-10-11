@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
+import { StatusMessage } from "../components/StatusMessage";
 import { ErrorMessage, StatusBadge, isFinishedCampaign } from "./campaign-shared";
 import { CampaignContent, CampaignAudience } from "./campaign-content";
 import {
@@ -37,6 +38,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
     targets,
     error,
     notice,
+    noticeVariant,
     campaign,
     targetQuery,
     choices,
@@ -203,11 +205,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
         </div>
       </div>
       <ErrorMessage error={error ?? choices.error} />
-      {notice && (
-        <p role="status" className="rounded-md border p-3 text-sm">
-          {notice}
-        </p>
-      )}
+      <StatusMessage variant={noticeVariant}>{notice}</StatusMessage>
       {!canSend && (
         <p className="text-sm text-muted-foreground">
           Duplicate this campaign to send it from your account.

@@ -1,3 +1,4 @@
+import { StatusMessage } from "../components/StatusMessage";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -127,7 +128,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
         ))}
       </div>
       <ErrorMessage error={query.error} />
-      {notice && <p role="status">{notice}</p>}
+      <StatusMessage>{notice}</StatusMessage>
       {query.isPending ? (
         <p role="status">Loading campaigns…</p>
       ) : (

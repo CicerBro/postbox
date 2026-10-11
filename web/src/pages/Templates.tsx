@@ -1,3 +1,4 @@
+import { StatusMessage } from "../components/StatusMessage";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { useTableSort } from "../lib/use-table-sort";
 import { Plus, Search, FileCode2, Pencil, Trash2 } from "lucide-react";
@@ -134,11 +135,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
         </Button>
       </div>
       <ErrorMessage error={query.error ?? error} />
-      {notice && (
-        <p role="status" className="rounded-md border p-3 text-sm">
-          {notice}
-        </p>
-      )}
+      <StatusMessage>{notice}</StatusMessage>
       {editing !== undefined && (
         <Card>
           <CardHeader>

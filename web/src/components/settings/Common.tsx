@@ -1,9 +1,10 @@
 import { useId, useState, type ReactNode } from "react";
-import { CheckCircle2, CircleAlert, Copy, KeyRound } from "lucide-react";
+import { CircleAlert, Copy, KeyRound } from "lucide-react";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Alert, AlertDescription } from "../ui/alert";
+import { StatusMessage } from "../StatusMessage";
 export function Section({
   title,
   description,
@@ -51,13 +52,7 @@ export function Message({
       <AlertDescription>{error instanceof Error ? error.message : String(error)}</AlertDescription>
     </Alert>
   ) : message ? (
-    <Alert
-      role="status"
-      className="border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
-    >
-      <CheckCircle2 size={16} className="mt-1 shrink-0" aria-hidden="true" />
-      <AlertDescription>{message}</AlertDescription>
-    </Alert>
+    <StatusMessage>{message}</StatusMessage>
   ) : null;
 }
 export function useAction() {
