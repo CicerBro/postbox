@@ -26,8 +26,27 @@ import {
   ChartTooltip,
   useChartInteraction,
 } from "../components/chart-tooltip";
+const overviewPeriodOptions = [
+  ...[7, 30, 90, 365].map((period) => ({
+    value: String(period),
+    label: `Last ${period} days`,
+  })),
+  { value: "all", label: "All" },
+];
+const overviewPeriodStorageKey = "postbox-overview-period";
+
+function savedOverviewPeriod() {
+  try {
+    const saved = localStorage.getItem(overviewPeriodStorageKey);
+    if (overviewPeriodOptions.some((option) => option.value === saved)) return saved!;
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
+  return "30";
+}
+
 interface Overview {
-  period: { days: number; end: number };
+  period: { days: number | null; end: number };
   current: Record<string, number | null>;
   change: Record<string, number | null>;
   growth: {
@@ -177,7 +196,15 @@ function Chart({
   );
 }
 export function OverviewPage({ brandId }: { brandId: number }) {
-  const [days, setDays] = useState("30");
+  const [days, setDays] = useState(savedOverviewPeriod);
+  const selectPeriod = (value: string) => {
+    setDays(value);
+    try {
+      localStorage.setItem(overviewPeriodStorageKey, value);
+    } catch {
+      // Keep the filter usable when browser storage is unavailable.
+    }
+  };
   const query = useQuery({
     queryKey: ["overview", brandId, days],
     queryFn: ({ signal }) =>
@@ -196,12 +223,9 @@ export function OverviewPage({ brandId }: { brandId: number }) {
         <SelectField
           aria-label="Campaign performance period"
           value={days}
-          onValueChange={setDays}
+          onValueChange={selectPeriod}
           className="w-auto"
-          options={[7, 30, 90, 365].map((period) => ({
-            value: String(period),
-            label: `Last ${period} days`,
-          }))}
+          options={overviewPeriodOptions}
         />
         <Button asChild>
           <Link to="/campaigns/new">
@@ -269,7 +293,7 @@ export function OverviewPage({ brandId }: { brandId: number }) {
             </strong>
             <small>
               {data.change[delta] == null ? (
-                "No previous-period comparison"
+                data.period.days === null ? "Entire campaign history" : "No previous-period comparison"
               ) : (
                 <>
                   <span
@@ -287,7 +311,9 @@ export function OverviewPage({ brandId }: { brandId: number }) {
         ))}
       </div>
       <p className="muted text-sm mb-8">
-        Campaigns starting in the last {data.period.days} days. Engagement is
+        {data.period.days === null
+          ? "Campaigns across the entire history."
+          : `Campaigns starting in the last ${data.period.days} days.`} Engagement is
         attributed to those campaigns. Rates use sent emails as denominator.
       </p>
       <div className="chart-panels">

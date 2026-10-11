@@ -29,3 +29,19 @@ func migrateSendy(ctx context.Context, db *store.DB) error {
 	}
 	return json.NewEncoder(os.Stdout).Encode(report)
 }
+
+func recoverSendyStats(ctx context.Context, db *store.DB) error {
+	dry := true
+	if value := os.Getenv("POSTBOX_SENDY_DRY_RUN"); value != "" {
+		var err error
+		dry, err = strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+	}
+	report, err := migrate.RecoverCampaignStats(ctx, db, os.Getenv("POSTBOX_SENDY_SOURCE_ID"), dry)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(report)
+}

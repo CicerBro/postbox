@@ -139,12 +139,14 @@ func (a *API) keys(w http.ResponseWriter, r *http.Request) {
 
 // overviewPeriodSQL reads only campaign counters. Late engagement remains attributed
 // to the campaign's start period, rather than claiming to count event timestamps.
-const overviewPeriodSQL = `SELECT
+const overviewHistorySQL = `SELECT
  COALESCE(SUM(s.sent),0), COALESCE(SUM(s.delivered),0),
  COALESCE(SUM(s.opens_unique),0), COALESCE(SUM(s.clicks_unique),0),
  COALESCE(SUM(s.bounces_hard),0), COALESCE(SUM(s.complaints),0)
  FROM campaigns c JOIN campaign_stats s ON s.campaign_id=c.id
- WHERE c.brand_id=? AND s.sent>0
+ WHERE c.brand_id=? AND s.sent>0`
+
+const overviewPeriodSQL = overviewHistorySQL + `
  AND COALESCE(c.started_at,c.finished_at,c.created_at)>=?
  AND COALESCE(c.started_at,c.finished_at,c.created_at)<?`
 
@@ -182,16 +184,20 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	days := 30
+	allHistory := false
 	if raw, exists := r.URL.Query()["days"]; exists {
 		var err error
 		if len(raw) != 1 {
-			respond(w, 400, map[string]string{"error": "days must be an integer between 1 and 365"})
+			respond(w, 400, map[string]string{"error": "days must be all or an integer between 1 and 365"})
 			return
 		}
-		days, err = strconv.Atoi(raw[0])
-		if err != nil || days < 1 || days > 365 {
-			respond(w, 400, map[string]string{"error": "days must be an integer between 1 and 365"})
-			return
+		allHistory = raw[0] == "all"
+		if !allHistory {
+			days, err = strconv.Atoi(raw[0])
+			if err != nil || days < 1 || days > 365 {
+				respond(w, 400, map[string]string{"error": "days must be all or an integer between 1 and 365"})
+				return
+			}
 		}
 	}
 	now := time.Now().UTC()
@@ -203,9 +209,13 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 		result(w, nil, e)
 		return
 	}
-	readPeriod := func(from, to int64) (overviewKPI, error) {
+	readPeriod := func(from, to int64, entireHistory bool) (overviewKPI, error) {
 		var k overviewKPI
-		err := a.db.Reader.QueryRowContext(r.Context(), overviewPeriodSQL, id, from, to).Scan(&k.Sent, &k.Delivered, &k.Opened, &k.Clicked, &k.Bounced, &k.Complaints)
+		query, args := overviewPeriodSQL, []any{id, from, to}
+		if entireHistory {
+			query, args = overviewHistorySQL, []any{id}
+		}
+		err := a.db.Reader.QueryRowContext(r.Context(), query, args...).Scan(&k.Sent, &k.Delivered, &k.Opened, &k.Clicked, &k.Bounced, &k.Complaints)
 		k.DeliveredPercent = overviewPercent(k.Delivered, k.Sent)
 		k.OpenedPercent = overviewPercent(k.Opened, k.Sent)
 		k.ClickedPercent = overviewPercent(k.Clicked, k.Sent)
@@ -213,15 +223,18 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 		k.ComplaintsPercent = overviewPercent(k.Complaints, k.Sent)
 		return k, err
 	}
-	current, e := readPeriod(start, end)
+	current, e := readPeriod(start, end, allHistory)
 	if e != nil {
 		result(w, nil, e)
 		return
 	}
-	previous, e := readPeriod(previousStart, start)
-	if e != nil {
-		result(w, nil, e)
-		return
+	var previous overviewKPI
+	if !allHistory {
+		previous, e = readPeriod(previousStart, start, false)
+		if e != nil {
+			result(w, nil, e)
+			return
+		}
 	}
 	change := map[string]any{
 		"sent_percent":      overviewPercent(current.Sent-previous.Sent, previous.Sent),
@@ -270,5 +283,9 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 	for i := 0; i < 24; i++ {
 		comparison = append(comparison, map[string]any{"hour": i, "today": hours[i+24]["sent"], "yesterday": hours[i]["sent"]})
 	}
-	result(w, map[string]any{"stats": stats, "period": map[string]any{"days": days, "basis": "campaign_start", "current_start": start, "previous_start": previousStart, "end": end, "timezone": "UTC"}, "current": current, "previous": previous, "change": change, "growth": growth, "hourly": hours, "hourly_comparison": comparison}, nil)
+	var periodDays, currentStart, comparisonStart any = days, start, previousStart
+	if allHistory {
+		periodDays, currentStart, comparisonStart = nil, nil, nil
+	}
+	result(w, map[string]any{"stats": stats, "period": map[string]any{"days": periodDays, "basis": "campaign_start", "current_start": currentStart, "previous_start": comparisonStart, "end": end, "timezone": "UTC"}, "current": current, "previous": previous, "change": change, "growth": growth, "hourly": hours, "hourly_comparison": comparison}, nil)
 }

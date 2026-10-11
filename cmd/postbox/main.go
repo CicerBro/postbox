@@ -38,16 +38,16 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: postbox <serve|init|admin|migrate-sendy|backup> [flags]")
+		return errors.New("usage: postbox <serve|init|admin|migrate-sendy|recover-sendy-stats|backup> [flags]")
 	}
 	command := args[0]
 	args = args[1:]
 	if command == "help" || command == "--help" {
-		fmt.Println("postbox <serve|init|admin|migrate-sendy|backup> [--db path] [--base-url https://mail.example.com]\nAdmin: POSTBOX_ADMIN_EMAIL, POSTBOX_ADMIN_PASSWORD, POSTBOX_ADMIN_TOTP\nMigration: POSTBOX_SENDY_DUMP or POSTBOX_SENDY_DSN\nBackup: POSTBOX_BACKUP_FILE")
+		fmt.Println("postbox <serve|init|admin|migrate-sendy|recover-sendy-stats|backup> [--db path] [--base-url https://mail.example.com]\nAdmin: POSTBOX_ADMIN_EMAIL, POSTBOX_ADMIN_PASSWORD, POSTBOX_ADMIN_TOTP\nMigration: POSTBOX_SENDY_DUMP or POSTBOX_SENDY_DSN\nStats recovery: POSTBOX_SENDY_SOURCE_ID, POSTBOX_SENDY_DRY_RUN (default true)\nBackup: POSTBOX_BACKUP_FILE")
 		return nil
 	}
 	switch command {
-	case "serve", "init", "admin", "migrate-sendy", "backup":
+	case "serve", "init", "admin", "migrate-sendy", "recover-sendy-stats", "backup":
 	default:
 		return fmt.Errorf("unknown command %q", command)
 	}
@@ -63,14 +63,21 @@ func run(args []string) error {
 			return err
 		}
 	}
+	if command == "recover-sendy-stats" {
+		if _, err := os.Stat(c.DB); err != nil {
+			return fmt.Errorf("stats recovery requires an existing database: %w", err)
+		}
+	}
 	db, err := store.Open(c.DB)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	ctx := context.Background()
-	if err = bootstrapSending(ctx, db); err != nil {
-		return err
+	if command != "recover-sendy-stats" {
+		if err = bootstrapSending(ctx, db); err != nil {
+			return err
+		}
 	}
 	switch command {
 	case "init":
@@ -93,6 +100,8 @@ func run(args []string) error {
 		return jobs.New(db, jobs.Config{}).Backup(ctx, path)
 	case "migrate-sendy":
 		return migrateSendy(ctx, db)
+	case "recover-sendy-stats":
+		return recoverSendyStats(ctx, db)
 	case "serve":
 		return serve(db, c)
 	default:

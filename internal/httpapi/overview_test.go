@@ -24,7 +24,7 @@ func TestOverviewPeriodCountersAndRollups(t *testing.T) {
 		sent, delivered, opened, clicked, bounced, complaints int
 		fallback                                              bool
 	}{
-		{2, 200, 180, 80, 20, 10, 2, false}, {35, 100, 80, 20, 5, 10, 2, false}, {90, 300, 200, 30, 3, 2, 1, false}, {3, 20, 20, 10, 2, 0, 0, true},
+		{2, 200, 180, 80, 20, 10, 2, false}, {35, 100, 80, 20, 5, 10, 2, false}, {730, 300, 200, 30, 3, 2, 1, false}, {3, 20, 20, 10, 2, 0, 0, true},
 	} {
 		at := now.AddDate(0, 0, -fixture.age).UnixMilli()
 		var started any = at
@@ -85,6 +85,30 @@ func TestOverviewPeriodCountersAndRollups(t *testing.T) {
 	if len(response.Hourly) != 48 || response.Hourly[3]["sent"] != 7 || response.Hourly[27]["sent"] != 0 || len(response.Comparison) != 24 || response.Comparison[3]["yesterday"] != 7 {
 		t.Fatal(response.Hourly, response.Comparison)
 	}
+	all := request(m, "GET", fmt.Sprintf("/api/v1/overview?brand_id=%d&days=all", brand.ID), "", &c, "")
+	var history struct {
+		Current  overviewKPI
+		Previous overviewKPI
+		Period   map[string]any
+		Change   map[string]*float64
+	}
+	if all.Code != 200 {
+		t.Fatal(all.Code, all.Body.String())
+	}
+	if err = json.Unmarshal(all.Body.Bytes(), &history); err != nil {
+		t.Fatal(err)
+	}
+	if history.Current.Sent != 620 || history.Current.Opened != 140 || history.Previous.Sent != 0 {
+		t.Fatal(all.Body.String())
+	}
+	if history.Period["days"] != nil || history.Period["current_start"] != nil || history.Period["previous_start"] != nil {
+		t.Fatal(history.Period)
+	}
+	for name, change := range history.Change {
+		if change != nil {
+			t.Fatalf("all history has a %s comparison: %v", name, *change)
+		}
+	}
 	rows, err := db.Reader.Query("EXPLAIN QUERY PLAN "+overviewPeriodSQL, brand.ID, now.AddDate(0, 0, -60).UnixMilli(), now.UnixMilli())
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +138,7 @@ func TestOverviewEmptyAndDaysValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := fmt.Sprintf("/api/v1/overview?brand_id=%d", brand.ID)
-	for _, days := range []string{"0", "366", "abc", "", "1&days=2"} {
+	for _, days := range []string{"0", "366", "abc", "", "1&days=2", "all&days=7"} {
 		w := request(m, "GET", path+"&days="+days, "", &c, "")
 		if w.Code != 400 {
 			t.Fatalf("days %q: %d %s", days, w.Code, w.Body.String())

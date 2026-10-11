@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
 
 async function fixture(context: BrowserContext, configured = true) {
-  const state = { checks: [] as number[], sent: 1250, failed: false };
+  const state = { checks: [] as number[], periods: [] as string[], sent: 1250, failed: false };
   await context.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -11,10 +11,15 @@ async function fixture(context: BrowserContext, configured = true) {
     let body: unknown = [];
     if (path === "/auth/session") body = { user_id: 1, admin: false, csrf_token: "session-token" };
     else if (path === "/brands") body = [{ id: 1, name: "Acme" }, { id: 2, name: "Other" }];
-    else if (path === "/overview") body = {
-      period: { days: 30, end: Date.now() }, current: { sent: 0 }, change: {}, growth: [],
-      hourly_comparison: Array.from({ length: 24 }, (_, hour) => ({ hour, today: 0, yesterday: 0 })),
-    };
+    else if (path === "/overview") {
+      const period = url.searchParams.get("days") ?? "30";
+      state.periods.push(period);
+      body = {
+        period: { days: period === "all" ? null : Number(period), end: Date.now() },
+        current: { sent: period === "all" ? 1250 : 0 }, change: {}, growth: [],
+        hourly_comparison: Array.from({ length: 24 }, (_, hour) => ({ hour, today: 0, yesterday: 0 })),
+      };
+    }
     else if (path === "/aws-settings") body = { has_credentials: configured, updated_at: 1 };
     else if (path === "/aws-settings/check") {
       expect(request.method()).toBe("POST");
@@ -81,4 +86,32 @@ test("switching brands shows that brand's region and sending status", async ({ p
   await expect(card.getByText("US East (N. Virginia) (us-east-1)", { exact: true })).toBeVisible();
   await expect(card.getByText("Healthy", { exact: true })).toHaveCount(0);
   expect(state.checks).toEqual([1, 2]);
+});
+
+test("overview includes All and remembers the last selected period", async ({ page, context }) => {
+  const state = await fixture(context, false);
+  await page.goto("/?brand_id=1");
+  const filter = page.getByRole("combobox", { name: "Campaign performance period" });
+  await expect(filter).toHaveText("Last 30 days");
+  await filter.click();
+  await page.getByRole("option", { name: "All", exact: true }).click();
+  await expect(page.getByText("Campaigns across the entire history.", { exact: false })).toBeVisible();
+  await expect(page.locator(".kpi").first()).toContainText("1,250");
+  expect(await page.evaluate(() => localStorage.getItem("postbox-overview-period"))).toBe("all");
+  await page.reload();
+  await expect(filter).toHaveText("All");
+  await expect(page.getByText("Campaigns across the entire history.", { exact: false })).toBeVisible();
+  expect(state.periods.filter((period) => period === "all").length).toBeGreaterThanOrEqual(2);
+  await filter.click();
+  await page.getByRole("option", { name: "Last 365 days", exact: true }).click();
+  await expect(page.getByText("Campaigns starting in the last 365 days.", { exact: false })).toBeVisible();
+  await page.reload();
+  await expect(filter).toHaveText("Last 365 days");
+});
+
+test("overview ignores an invalid saved period", async ({ page, context }) => {
+  await fixture(context, false);
+  await page.addInitScript(() => localStorage.setItem("postbox-overview-period", "invalid"));
+  await page.goto("/?brand_id=1");
+  await expect(page.getByRole("combobox", { name: "Campaign performance period" })).toHaveText("Last 30 days");
 });

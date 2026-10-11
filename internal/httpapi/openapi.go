@@ -60,7 +60,7 @@ func (a *API) documentRoute(pattern string) {
 		op["parameters"] = append(parameters, map[string]any{"name": "X-CSRF-Token", "in": "header", "required": false, "description": "Required for mutations authenticated by the session cookie. Returned by login or session endpoint; Scalar adds it automatically for the signed-in user.", "schema": map[string]any{"type": "string"}})
 	}
 	if method == "GET" && path == "/api/v1/overview" {
-		op["parameters"] = append(parameters, map[string]any{"name": "days", "in": "query", "description": "Campaign start comparison window in days. Defaults to 30; preceding window has the same duration.", "schema": map[string]any{"type": "integer", "minimum": 1, "maximum": 365, "default": 30}})
+		op["parameters"] = append(parameters, map[string]any{"name": "days", "in": "query", "description": "Campaign start comparison window in days, or all for the entire history without a previous-period comparison. Defaults to 30; numeric windows compare the preceding window of the same duration.", "schema": map[string]any{"default": 30, "oneOf": []any{map[string]any{"type": "integer", "minimum": 1, "maximum": 365}, map[string]any{"type": "string", "enum": []string{"all"}}}}})
 		op["description"] = "KPIs use campaign_stats attributed to started_at, falling back to finished_at then created_at for imported history. Rates use sent as denominator and are null when sent is zero. Changes are percentage points, except sent_percent (relative percentage, null with zero previous sent). All-time stats remain available. Growth contains 60 UTC calendar days including today. Hourly contains 48 UTC calendar buckets for yesterday and today, with zero-filled missing buckets including future hours today."
 		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Brand overview counters and comparisons", "content": map[string]any{"application/json": map[string]any{"schema": overviewResponseSchema()}}}
 	}
@@ -282,6 +282,7 @@ func apiTag(path string) string {
 
 func overviewResponseSchema() map[string]any {
 	integer := map[string]any{"type": "integer", "format": "int64"}
+	nullableInteger := map[string]any{"type": "integer", "format": "int64", "nullable": true}
 	percent := map[string]any{"type": "number", "nullable": true}
 	kpi := map[string]any{}
 	for _, name := range []string{"sent", "delivered", "opened", "clicked", "bounced", "complaints"} {
@@ -302,7 +303,7 @@ func overviewResponseSchema() map[string]any {
 	}
 	return object(map[string]any{
 		"stats":   array(map[string]any{"sent": integer, "delivered": integer, "opened": integer, "clicked": integer, "bounced": integer, "complaints": integer}),
-		"period":  object(map[string]any{"days": integer, "basis": map[string]any{"type": "string", "enum": []string{"campaign_start"}}, "timezone": map[string]any{"type": "string", "enum": []string{"UTC"}}, "current_start": integer, "previous_start": integer, "end": integer}),
+		"period":  object(map[string]any{"days": nullableInteger, "basis": map[string]any{"type": "string", "enum": []string{"campaign_start"}}, "timezone": map[string]any{"type": "string", "enum": []string{"UTC"}}, "current_start": nullableInteger, "previous_start": nullableInteger, "end": integer}),
 		"current": object(kpi), "previous": object(kpi), "change": object(change),
 		"growth":            array(map[string]any{"day": integer, "active": integer, "subscribed": integer, "unsubscribed": integer}),
 		"hourly":            array(map[string]any{"hour": integer, "sent": integer}),

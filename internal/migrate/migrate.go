@@ -30,14 +30,15 @@ type Options struct {
 	BatchSize int    `json:"batch_size"`
 }
 type Report struct {
-	SourceID     string           `json:"source_id"`
-	DryRun       bool             `json:"dry_run"`
-	Rows         map[string]int64 `json:"rows"`
-	Imported     map[string]int64 `json:"imported"`
-	Statuses     map[string]int64 `json:"statuses"`
-	Deduplicated int64            `json:"deduplicated"`
-	Suppressed   int64            `json:"suppressed"`
-	Warnings     []string         `json:"warnings"`
+	SourceID      string               `json:"source_id"`
+	DryRun        bool                 `json:"dry_run"`
+	Rows          map[string]int64     `json:"rows"`
+	Imported      map[string]int64     `json:"imported"`
+	Statuses      map[string]int64     `json:"statuses"`
+	Deduplicated  int64                `json:"deduplicated"`
+	Suppressed    int64                `json:"suppressed"`
+	Warnings      []string             `json:"warnings"`
+	StatsRecovery *StatsRecoveryReport `json:"stats_recovery,omitempty"`
 }
 
 func Run(ctx context.Context, db *store.DB, opt Options) (Report, error) {
@@ -170,7 +171,7 @@ func Import(ctx context.Context, db *store.DB, source Source, opt Options) (repo
 			order = append(order, table)
 		}
 	}
-	im := importer{ctx: ctx, source: opt.SourceID, report: &report, warn: warn, now: time.Now().UnixMilli()}
+	im := importer{ctx: ctx, source: opt.SourceID, report: &report, warn: warn, now: time.Now().UnixMilli(), newCampaigns: map[int64]bool{}}
 	for _, table := range order {
 		im.ordinal = 0
 		path, ok := paths[table]
@@ -227,6 +228,14 @@ func Import(ctx context.Context, db *store.DB, source Source, opt Options) (repo
 		}
 		f.Close()
 	}
+	if len(im.newCampaigns) > 0 {
+		recovered, e := recoverCampaignStats(ctx, db, opt.SourceID, false, im.newCampaigns)
+		if e != nil {
+			return report, e
+		}
+		recovered.DryRun = opt.DryRun
+		report.StatsRecovery = &recovered
+	}
 	if err = db.Analyze(ctx); err != nil {
 		return report, err
 	}
@@ -235,14 +244,15 @@ func Import(ctx context.Context, db *store.DB, source Source, opt Options) (repo
 }
 
 type importer struct {
-	ctx        context.Context
-	conn       *sql.Conn
-	source     string
-	report     *Report
-	warn       func(string)
-	now        int64
-	ordinal    int64
-	statements map[string]*sql.Stmt
+	ctx          context.Context
+	conn         *sql.Conn
+	source       string
+	report       *Report
+	warn         func(string)
+	now          int64
+	ordinal      int64
+	statements   map[string]*sql.Stmt
+	newCampaigns map[int64]bool
 }
 
 func (i *importer) statement(q string) (*sql.Stmt, error) {
@@ -462,9 +472,14 @@ func (i *importer) row(r Row) error {
 			return e
 		}
 		sent := i.number(r, "recipients", "sent_count", "sent_to", "to_send")
-		if e = i.exec("INSERT INTO campaign_stats(campaign_id,recipients,sent,opens_total,opens_unique,clicks_total,clicks_unique,unsubscribes,bounces_hard,complaints) VALUES(?,?,?,?,?,?,?,?,?,?)", target, sent, sent, i.number(r, "opens", "opens_total"), i.number(r, "unique_opens", "opens_unique"), i.number(r, "clicks", "clicks_total"), i.number(r, "unique_clicks", "clicks_unique"), i.number(r, "unsubscribes"), i.number(r, "bounces"), i.number(r, "complaints")); e != nil {
+		opens, uniqueOpens, _, e := campaignOpens(r)
+		if e != nil {
 			return e
 		}
+		if e = i.exec("INSERT INTO campaign_stats(campaign_id,recipients,sent,opens_total,opens_unique,clicks_total,clicks_unique,unsubscribes,bounces_hard,complaints) VALUES(?,?,?,?,?,?,?,?,?,?)", target, sent, sent, opens, uniqueOpens, i.number(r, "clicks", "clicks_total"), i.number(r, "unique_clicks", "clicks_unique"), i.number(r, "unsubscribes"), i.number(r, "bounces"), i.number(r, "complaints")); e != nil {
+			return e
+		}
+		i.newCampaigns[target] = true
 		i.warn("historical campaign report source rows are preserved; recipient-level delivery and human/machine classification cannot be reconstructed from aggregate counters")
 	default:
 		if isSuppressionTable(r.Table) {
@@ -833,6 +848,7 @@ var knownColumns = func() map[string]map[string]bool {
 		"subscribers": "id list list_id email name custom_fields fields status confirmed unconfirmed unsubscribed bounced complaint complained blocklisted suppressed join_date timestamp created_at",
 		"templates":   "id app app_id brand_id name title html html_text created_at timestamp",
 		"campaigns":   "id app app_id brand_id subject title html_text html plain_text text sent status recipients sent_count sent_to to_send opens opens_total unique_opens opens_unique clicks clicks_total unique_clicks clicks_unique unsubscribes bounces complaints timestamp created_at",
+		"links":       "id campaign_id ares_emails_id link url clicks",
 	} {
 		m[table] = map[string]bool{}
 		for _, c := range strings.Fields(cols) {
