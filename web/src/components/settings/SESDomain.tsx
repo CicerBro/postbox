@@ -96,6 +96,15 @@ function DomainIdentity({ brandId, domain, connectionVersion, region }: { brandI
   const missing = q.error instanceof ApiError && q.error.status === 404;
   const denied = q.error instanceof ApiError && q.error.status === 403;
   const identity = missing || denied ? undefined : q.data;
+  const renderDNSRecord = (record: DNSRecord) => <div key={`${record.type}:${record.name}`} className="space-y-3 rounded-lg bg-muted/50 p-3 text-sm">
+    <div className="font-medium">{record.type === "CNAME" ? "DKIM" : "MAIL FROM"} · {record.type}{record.priority !== undefined ? ` · Priority ${record.priority}` : ""}</div>
+    {[["Name", record.name], ["Value", record.value]].map(([label, value]) => <div key={label} className="flex items-start gap-2">
+      <div className="min-w-0 flex-1"><span className="text-muted-foreground">{label}</span><code className="block break-all">{value}</code></div>
+      <Button variant="outline" size="sm" aria-label={`Copy ${record.type} ${label.toLowerCase()} for ${record.name}`} onClick={() => void copy.run(() => navigator.clipboard.writeText(value), `${label} copied.`)}>
+        <Copy size={14} aria-hidden="true" /> Copy
+      </Button>
+    </div>)}
+  </div>;
   return (
     <div className="space-y-4 rounded-lg border p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -130,15 +139,13 @@ function DomainIdentity({ brandId, domain, connectionVersion, region }: { brandI
         <div className="space-y-3">
           <h4 className="font-medium">DNS records</h4>
           <p className="text-sm text-muted-foreground">Add these records at your DNS provider. AWS verifies them automatically; detection can take up to 72 hours. These are full hostnames, so avoid adding your domain twice if your provider appends it.</p>
-          {identity.dns_records.map((record) => <div key={`${record.type}:${record.name}`} className="space-y-3 rounded-lg bg-muted/50 p-3 text-sm">
-            <div className="font-medium">{record.type === "CNAME" ? "DKIM" : "MAIL FROM"} · {record.type}{record.priority !== undefined ? ` · Priority ${record.priority}` : ""}</div>
-            {[["Name", record.name], ["Value", record.value]].map(([label, value]) => <div key={label} className="flex items-start gap-2">
-              <div className="min-w-0 flex-1"><span className="text-muted-foreground">{label}</span><code className="block break-all">{value}</code></div>
-              <Button variant="outline" size="sm" aria-label={`Copy ${record.type} ${label.toLowerCase()} for ${record.name}`} onClick={() => void copy.run(() => navigator.clipboard.writeText(value), `${label} copied.`)}>
-                <Copy size={14} aria-hidden="true" /> Copy
-              </Button>
-            </div>)}
-          </div>)}
+          {identity.dns_records.some((record) => record.type === "CNAME") && <details open={!(identity.dkim_status === "SUCCESS" && identity.dkim_signing_enabled)} className="space-y-3">
+            <summary className="cursor-pointer font-medium">DKIM DNS records</summary>
+            <div className="space-y-3">
+              {identity.dns_records.filter((record) => record.type === "CNAME").map(renderDNSRecord)}
+            </div>
+          </details>}
+          {identity.dns_records.filter((record) => record.type !== "CNAME").map(renderDNSRecord)}
           {identity.dkim_origin === "EXTERNAL" ? <p className="text-sm text-muted-foreground">This identity uses Bring Your Own DKIM. Publish the TXT record for your own public key; Postbox cannot derive that key from SES.</p> :
             identity.dkim_origin?.startsWith("AWS_SES_") ? <p className="text-sm text-muted-foreground">This identity uses Deterministic Easy DKIM. Its parent identity supplies DKIM; no additional DKIM records are required here.</p> :
             !identity.dns_records.some((record) => record.type === "CNAME") ? <p className="text-sm text-muted-foreground">AWS did not return Easy DKIM DNS records. Check the identity’s authentication settings in Amazon SES.</p> : null}

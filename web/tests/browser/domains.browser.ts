@@ -77,6 +77,10 @@ test("Domains creates the identity, copies AWS records, refreshes verification a
   await page.getByRole("button", { name: "Refresh status", exact: true }).click();
   await expect(page.getByRole("button", { name: "Save MAIL FROM settings", exact: true })).toBeEnabled();
   await expect(page.getByText("Verified", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeHidden();
+  await page.getByText("DKIM DNS records", { exact: true }).click();
+  await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeVisible();
+  await page.getByText("DKIM DNS records", { exact: true }).click();
   await page.getByLabel("MAIL FROM subdomain", { exact: true }).fill("bounce.example.org");
   await page.getByRole("combobox", { name: "If the MX record cannot be verified" }).click();
   await page.getByRole("option", { name: "Reject sending", exact: true }).click();
@@ -84,6 +88,13 @@ test("Domains creates the identity, copies AWS records, refreshes verification a
   await expect(page.getByText("feedback-smtp.eu-west-1.amazonses.com", { exact: true })).toBeVisible();
   await expect(page.getByText("v=spf1 include:amazonses.com ~all", { exact: true })).toBeVisible();
   await expect(page.getByText("MAIL FROM · MX · Priority 10", { exact: true })).toBeVisible();
+  await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeHidden();
+  state.verified = false;
+  await page.getByRole("button", { name: "Refresh status", exact: true }).click();
+  await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeVisible();
+  state.verified = true;
+  await page.getByRole("button", { name: "Refresh status", exact: true }).click();
+  await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeHidden();
   expect(state.behavior).toBe("REJECT_MESSAGE");
   await page.screenshot({ path: testInfo.outputPath("domains-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -106,6 +117,8 @@ test("Domains keeps AWS failures local and permits a status retry", async ({ pag
   state.created = true;
   state.verified = true;
   await page.getByRole("button", { name: "Refresh status", exact: true }).click();
+  await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeHidden();
+  await page.getByText("DKIM DNS records", { exact: true }).click();
   await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeVisible();
   state.failure = 502;
   await page.getByRole("button", { name: "Refresh status", exact: true }).click();
@@ -125,6 +138,8 @@ test("brand readers view records without AWS mutation controls", async ({ page, 
   state.created = true;
   state.verified = true;
   await page.goto("/domains");
+  await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeHidden();
+  await page.getByText("DKIM DNS records", { exact: true }).click();
   await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Verify domain", exact: true })).toHaveCount(0);
   await expect(page.getByLabel("MAIL FROM subdomain", { exact: true })).toHaveCount(0);
@@ -137,6 +152,8 @@ test("switching brands clears the previous identity and records on narrow screen
   state.created = true;
   state.verified = true;
   await page.goto("/domains");
+  await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeHidden();
+  await page.getByText("DKIM DNS records", { exact: true }).click();
   await expect(page.getByText("one.dkim.eu-west-1.amazonses.com", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Switch brand", exact: true }).click();
   await page.getByRole("menuitem", { name: /Other/ }).click();
