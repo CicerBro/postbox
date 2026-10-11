@@ -3,6 +3,7 @@
 Deployment, administration and operational reference. See the [README](README.md) for the project overview and development commands.
 
 - [First run and configuration](#first-run-and-configuration)
+- [Environment variables and CLI flags](#environment-variables-and-cli-flags)
 - [AWS and SES events](#aws-and-ses-events)
 - [Deployment](#deployment)
 - [Authentication and sessions](#authentication-and-sessions)
@@ -41,6 +42,140 @@ The public base URL is required for service startup. Production requires HTTPS a
 The configured base URL is also the trust anchor for passkeys. Set `POSTBOX_BASE_URL` or `--base-url` to the exact browser origin, such as `https://mail.example.com` or `https://mail.example.com:8443`, with no path, query or fragment. Postbox derives the WebAuthn relying-party domain from that configured origin and checks browser request origins against it. It never derives either value from the request Host header. Passkeys require HTTPS, except that HTTP on `localhost` is allowed for development. IP addresses are not supported as relying-party domains. For local passkey testing, serve the embedded Go application at its configured localhost origin so the browser origin matches exactly.
 
 The tracking HMAC key is generated once using cryptographic randomness at `DB.secret`, or `--secret-file`. Its permissions must be 0600. Back it up with the database. Changing or losing it invalidates links in already delivered messages and prevents decryption of saved brand AWS credentials. Preserve it across redeployments and restores.
+
+## Environment variables and CLI flags
+
+### Commands and precedence
+
+The main binary accepts `postbox <command> [flags]`. Put flags after the command. `postbox help` lists commands; `postbox <command> --help` lists the shared flags. Single-dash and double-dash forms work, such as `-db` and `--db`. Use `--secure-cookies=false` to disable a boolean flag; a separate `false` argument is not a flag value.
+
+| Command | Purpose | Additional required environment |
+| --- | --- | --- |
+| `serve` | Apply migrations, load the secret, start HTTP, sending, jobs, tracking and brand SQS polling. | A public origin through `POSTBOX_BASE_URL` or `--base-url`. |
+| `init` | Apply migrations and create or validate the tracking/credential secret. | None. |
+| `admin` | Create an administrator with password and TOTP. | `POSTBOX_ADMIN_EMAIL`, `POSTBOX_ADMIN_PASSWORD`, `POSTBOX_ADMIN_TOTP`. |
+| `backup` | Create an online SQLite backup. | `POSTBOX_BACKUP_FILE`. |
+| `migrate-sendy` | Import a Sendy database or dump and print a JSON report. | `POSTBOX_SENDY_SOURCE_ID` and exactly one of `POSTBOX_SENDY_DSN` or `POSTBOX_SENDY_DUMP`. |
+
+Every command opens the configured database, applies pending migrations and initializes the sending safety switch if it has not previously been initialized. The same flags are parsed and validated for all commands, although most service options only affect `serve`. Only `serve` requires a valid public origin and checks production HTTPS/cookie requirements.
+
+Explicit flags override the matching environment variable, which overrides the built-in default below. The native binary does not load `.env` files itself: export variables, use a supervisor environment file, or use Compose. Configuration is read when the process starts; restart after changing it. Persisted brand settings, sending controls and public subscription controls are managed through Settings or the API and take effect without an environment change.
+
+String variables explicitly set to an empty string override their defaults. Empty boolean, integer and duration variables use their defaults. Environment booleans accept Go boolean forms (`true`, `false`, `1`, `0`, `t`, `f` and their supported capitalization); an invalid boolean environment value silently uses the default. Invalid integer or duration environment values become zero and fail positive-value validation unless overridden by a valid flag. Invalid flag values are errors. Durations use Go syntax, such as `30s`, `5m`, `24h` or `1h30m`; `1d` is not supported. Worker counts, retention days, bounce thresholds and both durations must be positive.
+
+### Shared flags and matching environment variables
+
+Defaults in this table are for the native binary. Container overrides are listed below.
+
+| Flag | Environment variable | Default | Meaning |
+| --- | --- | --- | --- |
+| `--db` | `POSTBOX_DB` | `./data/postbox.db` | SQLite file to open or create. Relative paths resolve from the working directory. The default secret path and CSV job directory are derived from this path. |
+| `--listen` | `POSTBOX_LISTEN` | `127.0.0.1:8080` | HTTP bind address and port. Use `0.0.0.0:8080` when the listener must be reachable outside its network namespace. This does not change the public URL. |
+| `--base-url` | `POSTBOX_BASE_URL` | Empty | Public origin used for email links, tracking, hosted forms and passkey validation. Required for `serve`; use an absolute origin without credentials, a non-root path, query or fragment. HTTPS is required outside development mode. |
+| `--region` | `POSTBOX_AWS_REGION` | `AWS_REGION`, otherwise empty | Default region offered for a brand without saved AWS settings. A brand's saved region controls its AWS requests. This is a region, such as `eu-west-1`, not an availability zone. An explicitly empty `POSTBOX_AWS_REGION` suppresses the `AWS_REGION` fallback. |
+| `--secret-file` | `POSTBOX_SECRET_FILE` | Configured database path plus `.secret` | File holding the generated 32-byte base64 tracking/credential encryption secret. An empty value uses the derived path. Existing files must be regular files with no group/other access; generated files use mode 0600. Back it up with the database. |
+| `--geoip` | `POSTBOX_GEOIP` | Empty | Optional local MaxMind database path for tracking geolocation. Empty disables GeoIP lookup. An unreadable or invalid configured database prevents `serve` from starting. |
+| `--backup-dir` | `POSTBOX_BACKUP_DIR` | `./data/backups` | Directory for recurring online backups. An empty string disables recurring backups. It does not set the output path for the `backup` command. |
+| `--trusted-proxies` | `POSTBOX_TRUSTED_PROXIES` | Empty, trust none | Comma-separated proxy IP addresses or CIDRs allowed to supply `X-Forwarded-For`. Whitespace around entries is accepted; invalid addresses and empty entries are rejected. See [proxy configuration](#reverse-proxies-and-rate-limits). |
+| `--turnstile-site-key` | `POSTBOX_TURNSTILE_SITE_KEY` | Empty | Cloudflare Turnstile public site key displayed by hosted signup forms. Set it together with the matching secret when enabling Turnstile. |
+| `--turnstile-secret` | `POSTBOX_TURNSTILE_SECRET` | Empty | Secret used to verify submitted Turnstile tokens. Empty disables server-side Turnstile verification. Supply it through a protected environment rather than command arguments. Environment-loaded secrets are hidden in flag help. |
+| `--secure-cookies` | `POSTBOX_SECURE_COOKIES` | `true` | Set the Secure attribute on authentication cookies. Production requires `true`; local HTTP development normally uses `false`. |
+| `--development` | `POSTBOX_DEVELOPMENT` | `false` | Allow an HTTP public origin and non-secure cookies for local development. It does not enable sending or select a fake AWS sender. |
+| `--max-workers` | `POSTBOX_MAX_WORKERS` | `512` | Upper bound on campaign sender concurrency. Actual concurrency adapts to SES quota and measured latency; increasing this does not raise the account quota. |
+| `--retention-days` | `POSTBOX_RETENTION_DAYS` | `90` | Number of days of raw tracking and SES history retained by housekeeping. Aggregate reports remain. Unconfirmed membership retention is separately fixed at 30 days. |
+| `--soft-bounce-limit` | `POSTBOX_SOFT_BOUNCE_LIMIT` | `3` | Number of transient bounces after which an address is suppressed within the originating brand. Hard bounces and complaints do not wait for this threshold. |
+| `--recovery-policy` | `POSTBOX_RECOVERY_POLICY` | `unknown` | Policy for interrupted or uncertain dispatches. Only `unknown` is supported. `retry` and every other value are rejected to avoid another potentially accepted send. |
+| `--session-ttl` | `POSTBOX_SESSION_TTL` | `24h` | Lifetime assigned to newly created authentication sessions. Existing sessions retain their recorded expiry. |
+| `--shutdown-timeout` | `POSTBOX_SHUTDOWN_TIMEOUT` | `60s` | Maximum graceful shutdown period for HTTP requests and background work. Give the process supervisor a longer stop grace period. |
+
+`--help` and `-h` print flag help for a subcommand and exit without opening the database. They have no environment equivalent.
+
+### Environment-only application options
+
+These variables have no matching CLI flag. Unset variables are empty unless a default is shown.
+
+| Variable | Command or feature | Meaning |
+| --- | --- | --- |
+| `POSTBOX_ADMIN_EMAIL` | `admin` | Required email address for the administrator to create. |
+| `POSTBOX_ADMIN_PASSWORD` | `admin` | Required initial password, at least 8 characters. It is hashed before storage. Remove this variable from the environment after creating the account. |
+| `POSTBOX_ADMIN_TOTP` | `admin` | Required base32 authenticator secret used to enable TOTP on the new administrator. Supply the secret, not a current six-digit code. Remove it after account creation. |
+| `POSTBOX_BACKUP_FILE` | `backup` | Required new output filename for the manual SQLite backup. An existing file is rejected. The tracking secret is backed up separately. |
+| `POSTBOX_NOTIFICATION_TO` | `serve`, campaign notifications | Comma-separated recipient addresses for campaign start/finish notifications. Empty disables notifications. Addresses are normalized when the notification job runs; invalid addresses cause job errors. |
+| `POSTBOX_NOTIFICATION_FROM` | `serve`, campaign notifications | Verified sender address for notifications. Required at startup when `POSTBOX_NOTIFICATION_TO` is nonempty. Delivery uses the event's brand AWS connection, rate limiter and sending switch. |
+| `POSTBOX_SENDY_SOURCE_ID` | `migrate-sendy` | Required stable identifier for the source installation. Reuse it on retries so source identities remain idempotent. |
+| `POSTBOX_SENDY_DSN` | `migrate-sendy` | MySQL DSN, such as `reader:password@tcp(127.0.0.1:3306)/sendy`. Use a SELECT-only account. Exactly one of this variable and `POSTBOX_SENDY_DUMP` must be nonempty. |
+| `POSTBOX_SENDY_DUMP` | `migrate-sendy` | Path to a Sendy SQL dump parsed as data. Exactly one of this variable and `POSTBOX_SENDY_DSN` must be nonempty. |
+| `POSTBOX_SENDY_DRY_RUN` | `migrate-sendy` | Default `false`. A valid Go boolean enables validation/reporting without committing imported records. Invalid values are errors. Opening the target database can still initialize its schema and sending safety setting. |
+| `POSTBOX_AMBIGUOUS_POLICY` | Legacy compatibility check | Empty or `unknown` is accepted. Any other value, including `retry`, fails configuration before flags are parsed. This is not a retry override and has no flag equivalent. Use `POSTBOX_RECOVERY_POLICY=unknown` for the current setting. |
+
+There is no environment variable or CLI flag for the persisted sending switch or the application/brand public signup switches. Set them in the WebUI or API. Brand AWS access keys, optional session tokens, SES configuration sets, SNS topics and SQS queues are also configured per brand, not through main-binary flags.
+
+### AWS environment compatibility
+
+Postbox supplies the AWS SDK with each brand's saved region and static credentials. `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`, shared credential files, IAM instance roles and profile credentials do not replace that brand configuration. Setting `AWS_ACCESS_KEY_ID=fake` in the shell alone does not configure a brand or activate fake sending.
+
+The SDK still reads endpoint configuration when constructing brand SES v2, STS and SQS clients. The following controls are useful for local AWS emulation:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `AWS_REGION` | Empty | Fallback for the app's default brand region when neither `--region` nor `POSTBOX_AWS_REGION` provides one. Saved brand regions take precedence for requests. |
+| `AWS_ENDPOINT_URL` | Normal AWS endpoints | SDK-wide endpoint override, such as `http://127.0.0.1:9001`. Applies to SES v2, STS and SQS unless a service-specific override takes precedence. |
+| `AWS_ENDPOINT_URL_SESV2` | Unset | Endpoint override for SES v2 requests only. |
+| `AWS_ENDPOINT_URL_STS` | Unset | Endpoint override for STS account identity checks only. A local emulator must support `GetCallerIdentity` for connection checks and sending. |
+| `AWS_ENDPOINT_URL_SQS` | Unset | Endpoint override for brand SQS clients. |
+| `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS` | `false` | SDK boolean that ignores configured environment/shared-config endpoint URLs when enabled. |
+
+Outbound HTTP clients also inherit the standard Go `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` environment settings through the default transport. `HTTP_PROXY` applies to HTTP requests, `HTTPS_PROXY` to HTTPS requests, and `NO_PROXY` lists hosts or networks that bypass the proxy. Other standard AWS SDK and Go runtime environment settings belong to those libraries, not to Postbox's application configuration. Endpoint overrides route real SDK requests; they do not swap in the in-process fake sender. For local QA, save fake credentials and a region for the test brand, start `cmd/fakeses`, and set `AWS_ENDPOINT_URL` on `postbox serve`. Do not use real brand keys against a test endpoint.
+
+### Container, build and browser-test settings
+
+| Setting | Type and default | Meaning |
+| --- | --- | --- |
+| `POSTBOX_PORT` | Compose interpolation variable, `8080` | Host loopback port published as `127.0.0.1:PORT:8080`. It is not read by the binary and does not change the container listener or public origin. |
+| `GO_VERSION` | Docker build argument, `1.27.2` | Go builder image version. Override with `docker build --build-arg GO_VERSION=...`; keep it aligned with `go.mod`. |
+| `BUN_VERSION` | Docker build argument, `1.4.3` | Bun frontend builder image version. Override with `docker build --build-arg BUN_VERSION=...`. |
+| `TARGETOS`, `TARGETARCH` | BuildKit platform arguments | Target operating system and architecture for the Go build, normally supplied by `docker buildx --platform`. These are build inputs, not runtime settings. |
+| `GOVULNCHECK_VERSION` | Make variable, `v1.8.0` | Version used by `make security-go`. Override as `make security-go GOVULNCHECK_VERSION=...`. |
+| `CI` | Browser-test environment variable, unset | Any nonempty value prevents Playwright from reusing an existing Vite server. The browser suite starts its own server at `127.0.0.1:5174`. |
+
+The image itself defaults to `POSTBOX_DB=/var/lib/postbox/postbox.db`, `POSTBOX_SECRET_FILE=/var/lib/postbox/tracking.secret`, `POSTBOX_BACKUP_DIR=/var/lib/postbox/backups` and `POSTBOX_LISTEN=0.0.0.0:8080`. Its working directory and `HOME` are `/var/lib/postbox`.
+
+The supplied Compose file loads `.env` through `env_file`. Its explicit `environment` entries override same-named values in that file: it fixes the four container paths/listener above, `POSTBOX_SECURE_COOKIES=true`, `POSTBOX_DEVELOPMENT=false` and `POSTBOX_SHUTDOWN_TIMEOUT=60s`. It requires `POSTBOX_BASE_URL` for interpolation and defaults `POSTBOX_AWS_REGION` to `eu-west-1`. Other supported options in `.env`, such as retention, workers, notifications or trusted proxies, are passed through. To change a fixed entry, edit or override the Compose service. A shell variable can affect Compose interpolation without automatically becoming an additional container variable.
+
+### Bundled development command flags
+
+These tools use their own flag sets and do not load the main binary's `POSTBOX_*` configuration. Each accepts `--help` or `-h`. Their test data and fake AWS calls are for development and capacity measurements.
+
+`go run ./cmd/fakeses [flags]` starts a local SES/STS emulator:
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--listen` | `:9001` | Emulator HTTP bind address. Use `127.0.0.1:9001` for a listener limited to the local host. |
+| `--rate` | `175` | Advertised account maximum send rate in messages per second. |
+| `--latency` | `100ms` | Base simulated request latency. |
+| `--jitter` | `50ms` | Uniform additional simulated latency. |
+| `--reject-every` | `0` | Reject each Nth send. Zero disables this fault. |
+| `--throttle-every` | `0` | Throttle each Nth send. Zero disables this fault. |
+| `--server-error-every` | `0` | Return HTTP 500 for each Nth send. Zero disables this fault. |
+| `--timeout-every` | `0` | Accept each Nth send, then delay its response to simulate an uncertain outcome. Zero disables this fault. |
+
+`go run ./cmd/loadtest [flags]` seeds synthetic campaign data and runs delivery through its own local fake SES server. Use a dedicated test database; it does not require live AWS credentials or `cmd/fakeses` to be running.
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--recipients` | `350000` | Number of synthetic recipients; must be positive. |
+| `--rate` | `175` | Simulated SES account quota in messages per second; must be positive. |
+| `--message-bytes` | `100000` | Approximate HTML template size in bytes. |
+| `--latency` | `100ms` | Base simulated SES request latency. |
+| `--jitter` | `50ms` | Uniform additional simulated latency. |
+| `--db` | New temporary SQLite file | Database path for the generated test data. |
+| `--output` | Empty | Optional JSON report output path. Without it, the report is printed only to stdout. |
+| `--workers` | `1024` | Sender concurrency cap for this load run. |
+| `--cpu-profile` | Empty | Optional output path for a send-phase Go CPU profile. |
+| `--heap-profile` | Empty | Optional output path for a live heap profile after completion. |
+| `--background-write-interval` | `0` | Interval between concurrent settings commits to simulate writer contention, such as `10ms`. Zero disables these writes. |
+
+`go run ./cmd/contractgen --check` verifies generated frontend contracts against Go API types and exits with an error if they differ. Its only application flag is `--check`, default `false`; without it the generator writes updated contracts.
 
 ## AWS and SES events
 
