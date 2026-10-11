@@ -15,13 +15,14 @@ import {
 import { SortableTableHead } from "../components/SortableTableHead";
 import {
   StatusBadge,
-  contentExcerpt,
   bytes,
   Campaign,
   ErrorMessage,
   number,
   tableClass,
 } from "./campaign-shared";
+
+type CampaignSummary = Pick<Campaign, "id" | "subject" | "status" | "created_at" | "scheduled_at"> & { excerpt: string };
 
 export function CampaignsPage({ brandId }: { brandId: number }) {
   const [offset, setOffset] = useState(0);
@@ -40,9 +41,9 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
     queryKey: ["campaigns", brandId, offset, sort, direction, filter, search],
     queryFn: () => {
       const params = new URLSearchParams({
-        offset: String(offset), limit: "50", sort, direction, status: filter, search,
+        offset: String(offset), limit: "50", sort, direction, status: filter, search, summary: "true",
       });
-      return api<Campaign[]>(`/campaigns?${params}`, { brandId });
+      return api<CampaignSummary[]>(`/campaigns?${params}`, { brandId });
     },
     enabled: brandId > 0,
   });
@@ -140,7 +141,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                           {c.subject}
                         </Link>
                         <p className="row-subtitle max-w-sm truncate">
-                          {contentExcerpt(c.html) || `Campaign #${c.id}`}
+                          {c.excerpt || `Campaign #${c.id}`}
                         </p>
                       </td>
                       <td>

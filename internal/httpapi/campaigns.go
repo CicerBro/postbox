@@ -6,8 +6,6 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -21,6 +19,7 @@ type campaignInput struct {
 
 func (a *API) registerCampaigns(m *http.ServeMux) {
 	a.route(m, "POST /api/v1/email-preview", a.editorPreview)
+	a.route(m, "GET /api/v1/campaigns/options", a.campaignOptions)
 	a.route(m, "POST /api/v1/email-preview/recipients", a.editorRecipients)
 	for _, p := range []string{"GET /api/v1/campaigns", "POST /api/v1/campaigns", "GET /api/v1/campaigns/{id}", "PATCH /api/v1/campaigns/{id}", "DELETE /api/v1/campaigns/{id}"} {
 		a.route(m, p, a.campaigns)
@@ -64,43 +63,7 @@ func (a *API) campaigns(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.Method == "GET" {
-		after, limit := page(r)
-		q := "SELECT * FROM campaigns WHERE brand_id=? AND id>? ORDER BY id LIMIT ?"
-		args := []any{brand, after, limit}
-		// Offset pagination supports globally sorted and filtered table views.
-		// Keep the existing ID cursor contract for integrations using after.
-		if id == 0 && r.URL.Query().Has("offset") {
-			offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-			if offset < 0 {
-				offset = 0
-			}
-			order := "CASE WHEN status='draft' AND scheduled_at IS NULL THEN 0 ELSE 1 END, created_at DESC, id DESC"
-			columns := map[string]string{"subject": "subject COLLATE NOCASE", "status": "status", "created_at": "created_at", "scheduled_at": "scheduled_at"}
-			if column, ok := columns[r.URL.Query().Get("sort")]; ok {
-				direction := "ASC"
-				if r.URL.Query().Get("direction") == "desc" {
-					direction = "DESC"
-				}
-				order = column + " " + direction + ", id " + direction
-			}
-			q = "SELECT * FROM campaigns WHERE brand_id=?"
-			args = []any{brand}
-			if status := r.URL.Query().Get("status"); status != "" && status != "all" {
-				q += " AND status=?"
-				args = append(args, status)
-			}
-			if search := strings.TrimSpace(r.URL.Query().Get("search")); search != "" {
-				q += " AND instr(lower(subject), lower(?)) > 0"
-				args = append(args, search)
-			}
-			q += " ORDER BY " + order + " LIMIT ? OFFSET ?"
-			args = append(args, limit, offset)
-		}
-		if id != 0 {
-			q = "SELECT * FROM campaigns WHERE brand_id=? AND id=?"
-			args = []any{brand, id}
-		}
-		v, e := queryRows(r.Context(), a.db.Reader, q, args...)
+		v, e := a.campaignRows(r, brand, id)
 		result(w, v, e)
 		return
 	}

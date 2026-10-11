@@ -1,0 +1,142 @@
+package httpapi
+
+import (
+	"context"
+	"database/sql"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"golang.org/x/net/html"
+)
+
+func (a *API) campaignRows(r *http.Request, brand, id int64) ([]map[string]any, error) {
+	summary := id == 0 && r.URL.Query().Get("summary") == "true"
+	projection := "*"
+	if summary {
+		projection = "id,subject,status,created_at,scheduled_at,html"
+	}
+	after, limit := page(r)
+	q := "SELECT " + projection + " FROM campaigns WHERE brand_id=? AND id>? ORDER BY id LIMIT ?"
+	args := []any{brand, after, limit}
+	// Offset pagination supports globally sorted and filtered table views.
+	// Keep the existing ID cursor contract for integrations using after.
+	if id == 0 && r.URL.Query().Has("offset") {
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		if offset < 0 {
+			offset = 0
+		}
+		order := "CASE WHEN status='draft' AND scheduled_at IS NULL THEN 0 ELSE 1 END, created_at DESC, id DESC"
+		columns := map[string]string{"subject": "subject COLLATE NOCASE", "status": "status", "created_at": "created_at", "scheduled_at": "scheduled_at"}
+		if column, ok := columns[r.URL.Query().Get("sort")]; ok {
+			direction := "ASC"
+			if r.URL.Query().Get("direction") == "desc" {
+				direction = "DESC"
+			}
+			order = column + " " + direction + ", id " + direction
+		}
+		q = "SELECT " + projection + " FROM campaigns WHERE brand_id=?"
+		args = []any{brand}
+		if status := r.URL.Query().Get("status"); status != "" && status != "all" {
+			q += " AND status=?"
+			args = append(args, status)
+		}
+		if search := strings.TrimSpace(r.URL.Query().Get("search")); search != "" {
+			q += " AND instr(lower(subject), lower(?)) > 0"
+			args = append(args, search)
+		}
+		q += " ORDER BY " + order + " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+	}
+	if id != 0 {
+		q = "SELECT " + projection + " FROM campaigns WHERE brand_id=? AND id=?"
+		args = []any{brand, id}
+	}
+	if summary {
+		return a.queryCampaignSummaries(r.Context(), q, args...)
+	}
+	return queryRows(r.Context(), a.db.Reader, q, args...)
+}
+
+func (a *API) campaignOptions(w http.ResponseWriter, r *http.Request) {
+	brand, ok := a.scoped(w, r)
+	if !ok {
+		return
+	}
+	after, limit := page(r)
+	v, err := queryRows(r.Context(), a.db.Reader, "SELECT id,subject FROM campaigns WHERE brand_id=? AND id>? ORDER BY id LIMIT ?", brand, after, limit)
+	result(w, v, err)
+}
+
+// Read one message at a time, retaining only the bounded text excerpt for the
+// table. Integrations requesting the default representation keep full content.
+func (a *API) queryCampaignSummaries(ctx context.Context, query string, args ...any) ([]map[string]any, error) {
+	rows, err := a.db.Reader.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, created int64
+		var scheduled sql.NullInt64
+		var subject, status, content string
+		if err := rows.Scan(&id, &subject, &status, &created, &scheduled, &content); err != nil {
+			return nil, err
+		}
+		var scheduledAt any
+		if scheduled.Valid {
+			scheduledAt = scheduled.Int64
+		}
+		out = append(out, map[string]any{"id": id, "subject": subject, "status": status, "created_at": created, "scheduled_at": scheduledAt, "excerpt": campaignExcerpt(content)})
+	}
+	return out, rows.Err()
+}
+
+func campaignExcerpt(content string) string {
+	tokens := html.NewTokenizer(strings.NewReader(content))
+	ignored := ""
+	var text strings.Builder
+	for {
+		switch tokens.Next() {
+		case html.ErrorToken:
+			return truncateExcerpt(text.String())
+		case html.StartTagToken:
+			name, _ := tokens.TagName()
+			tag := string(name)
+			if ignored == "" && (tag == "head" || tag == "style" || tag == "script") {
+				ignored = tag
+			}
+		case html.EndTagToken:
+			name, _ := tokens.TagName()
+			if string(name) == ignored {
+				ignored = ""
+			}
+		case html.TextToken:
+			if ignored != "" {
+				continue
+			}
+			for word := range strings.FieldsSeq(string(tokens.Text())) {
+				if text.Len() > 0 {
+					text.WriteByte(' ')
+				}
+				// A large text token need not be copied in full for an excerpt.
+				text.WriteString(truncateExcerpt(word))
+				if len([]rune(text.String())) >= 110 {
+					return truncateExcerpt(text.String())
+				}
+			}
+		}
+	}
+}
+
+func truncateExcerpt(text string) string {
+	count := 0
+	for offset := range text {
+		if count == 110 {
+			return text[:offset]
+		}
+		count++
+	}
+	return text
+}

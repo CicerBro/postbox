@@ -328,7 +328,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
   });
   const campaigns = useQuery({
     queryKey: ["subscribers", brandId, "segment-campaigns"],
-    queryFn: ({ signal }) => allPages<Campaign>("/campaigns", brandId, signal),
+    queryFn: ({ signal }) => allPages<Campaign>("/campaigns/options", brandId, signal),
     enabled: brandId > 0,
   });
   const visibleSegments = sorting.sort(
