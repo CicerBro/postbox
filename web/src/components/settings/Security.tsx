@@ -42,7 +42,7 @@ export function Security() {
       title="Sign-in protection"
       description="Add another layer of protection to your Postbox account."
     >
-      <div className="grid gap-3 xl:grid-cols-2">
+      <div className="grid gap-3">
         <div className="flex items-center gap-3 rounded-xl border bg-muted/40 p-4">
           <span className="avatar">
             <Smartphone size={19} aria-hidden="true" />
