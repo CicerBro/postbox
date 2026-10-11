@@ -32,7 +32,7 @@ Anonymous signup does not overwrite an existing subscriber's name, custom fields
 
 Start with a reusable template or edit the campaign's HTML directly. The raw HTML is authoritative: complete documents, head styles, table layouts and MSO conditional comments are preserved. If you use the visual editor, review its proposed source diff before accepting a conversion.
 
-Check the subject, plain-text content, personalisation and links. Send a test to addresses you control and inspect it in the email clients your audience uses. Test messages have a `[Test]` subject prefix. Addresses are normalised and deduplicated within each test request; another requested test is a new send.
+Check the subject, plain-text content, personalisation and links. Send a test to addresses you control and inspect it in the email clients your audience uses. Test messages have a `[Test]` subject prefix. Their browser-view and unsubscribe links open previews that expire after seven days. Unsubscribe previews never change subscriptions, and test messages do not record opens or clicks. Addresses are normalised and deduplicated within each test request; another requested test is a new send.
 
 ## Send or schedule
 

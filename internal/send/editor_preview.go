@@ -63,18 +63,11 @@ func (e *Engine) EditorPreview(ctx context.Context, brandID, subscriberID int64,
 		}
 	}
 	if options.CampaignID > 0 {
-		appBase := strings.TrimRight(e.cfg.BaseURL, "/")
-		parsed, err := url.Parse(appBase)
-		if err != nil || parsed.Host == "" {
-			return "", "", "", fmt.Errorf("invalid preview base URL")
-		}
-		tok, err := previewtoken.Encode(e.cfg.TokenSecret, previewtoken.Claims{Brand: brandID, Campaign: options.CampaignID, Subscriber: subscriberID, Host: parsed.Host, Expires: time.Now().Add(time.Hour).Unix()})
+		tok, unsubscribe, browser, err := e.previewURLs(brandID, options.CampaignID, subscriberID, time.Hour)
 		if err != nil {
 			return "", "", "", err
 		}
-		r.Token = tok
-		r.UnsubscribeURL = appBase + "/preview/unsubscribe/" + tok
-		r.WebVersionURL = appBase + "/preview/campaign/" + tok
+		r.Token, r.UnsubscribeURL, r.WebVersionURL = tok, unsubscribe, browser
 	}
 
 	options.Fields = fields
@@ -152,4 +145,18 @@ func (e *Engine) SavedEditorPreview(ctx context.Context, c previewtoken.Claims) 
 	o.CampaignID, o.InlineCSS = c.Campaign, inline != 0
 	_, body, _, err := e.EditorPreview(ctx, c.Brand, c.Subscriber, o)
 	return body, err
+}
+
+// previewURLs keeps preview capabilities separate from live subscription actions.
+func (e *Engine) previewURLs(brandID, campaignID, subscriberID int64, lifetime time.Duration) (string, string, string, error) {
+	base := strings.TrimRight(e.cfg.BaseURL, "/")
+	parsed, err := url.Parse(base)
+	if err != nil || parsed.Host == "" {
+		return "", "", "", fmt.Errorf("invalid preview base URL")
+	}
+	tok, err := previewtoken.Encode(e.cfg.TokenSecret, previewtoken.Claims{Brand: brandID, Campaign: campaignID, Subscriber: subscriberID, Host: parsed.Host, Expires: time.Now().Add(lifetime).Unix()})
+	if err != nil {
+		return "", "", "", err
+	}
+	return tok, base + "/preview/unsubscribe/" + tok, base + "/preview/campaign/" + tok, nil
 }

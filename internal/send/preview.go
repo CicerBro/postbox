@@ -2,7 +2,6 @@ package send
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/mail"
@@ -62,6 +61,18 @@ func (e *Engine) TestCampaign(ctx context.Context, id int64, addresses []string,
 	if err != nil {
 		return err
 	}
+	// Test mail uses current saved source without live click/open tracking.
+	var options render.Options
+	var inline int
+	if err = e.db.Reader.QueryRowContext(ctx, `SELECT subject,html,coalesce(text,''),inline_css FROM campaigns WHERE id=? AND brand_id=?`, id, c.brand).Scan(&options.Subject, &options.HTML, &options.Text, &inline); err != nil {
+		return err
+	}
+	options.InlineCSS, options.Fields = inline != 0, c.fields
+	c.prepared, err = render.Prepare(options)
+	if err != nil {
+		return err
+	}
+
 	delivery, err := e.resolveBrand(ctx, c.brand)
 	if err != nil {
 		return err
@@ -76,7 +87,7 @@ func (e *Engine) TestCampaign(ctx context.Context, id int64, addresses []string,
 	r := recipient{ID: subscriberID, Name: "Test recipient", Fields: "{}"}
 	if subscriberID > 0 {
 		err = e.db.Reader.QueryRowContext(ctx, `SELECT name,fields FROM subscribers WHERE id=? AND brand_id=?`, subscriberID, c.brand).Scan(&r.Name, &r.Fields)
-		if err != nil && err != sql.ErrNoRows {
+		if err != nil {
 			return err
 		}
 	}
@@ -85,7 +96,7 @@ func (e *Engine) TestCampaign(ctx context.Context, id int64, addresses []string,
 	}
 	for _, address := range addresses {
 		r.Email = address
-		raw, err := e.renderWithSubjectPrefix(c, r, "[Test] ")
+		raw, err := e.renderTestMessage(c, r)
 		if err != nil {
 			return err
 		}
@@ -151,4 +162,24 @@ func (e *Engine) SendNotificationChecked(ctx context.Context, r Request, check f
 	e.observe(time.Since(start), false)
 	e.requests.Add(1)
 	return id, err
+}
+
+func (e *Engine) renderTestMessage(c campaign, r recipient) ([]byte, error) {
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(r.Fields), &fields); err != nil {
+		return nil, err
+	}
+	values := make(map[string]string, len(fields))
+	for key, value := range fields {
+		values[key] = fmt.Sprint(value)
+	}
+	tok, unsubscribe, browser, err := e.previewURLs(c.brand, c.id, r.ID, 7*24*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	subject, body, text, err := c.prepared.Render(render.Recipient{ID: r.ID, Email: r.Email, Name: r.Name, Fields: values, Token: tok, UnsubscribeURL: unsubscribe, WebVersionURL: browser})
+	if err != nil {
+		return nil, err
+	}
+	return render.BuildMIME(render.Message{FromName: c.fromName, FromEmail: c.fromEmail, ReplyTo: c.replyTo, ToName: r.Name, ToEmail: r.Email, Subject: "[Test] " + subject, HTML: body, Text: text, UnsubscribeURL: unsubscribe, Date: time.Now()})
 }
