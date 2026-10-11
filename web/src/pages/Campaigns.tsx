@@ -188,27 +188,36 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                         ? new Date(c.scheduled_at).toLocaleString()
                         : "Unscheduled"}
                     </td>
-                    <td>
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link to={`/campaigns/${c.id}/report`}>
-                          Report <ArrowUpRight size={14} />
-                        </Link>
-                      </Button>
-                      {session.admin &&
-                        ["draft", "sent", "cancelled"].includes(c.status) && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Delete campaign ${c.subject}`}
-                            onClick={() => {
-                              deletion.reset();
-                              setNotice("");
-                              setDeleting(c);
-                            }}
-                          >
-                            <Trash2 size={16} aria-hidden="true" />
-                          </Button>
-                        )}
+                    <td className="campaign-actions-cell">
+                      <div className="campaign-row-actions">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="campaign-report-action"
+                          asChild
+                        >
+                          <Link to={`/campaigns/${c.id}/report`}>
+                            Report <ArrowUpRight size={14} />
+                          </Link>
+                        </Button>
+                        {session.admin &&
+                          ["draft", "sent", "cancelled"].includes(c.status) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="campaign-delete-action"
+                              aria-label={`Delete campaign ${c.subject}`}
+                              title={`Delete campaign ${c.subject}`}
+                              onClick={() => {
+                                deletion.reset();
+                                setNotice("");
+                                setDeleting(c);
+                              }}
+                            >
+                              <Trash2 size={16} aria-hidden="true" />
+                            </Button>
+                          )}
+                      </div>
                     </td>
                   </tr>
                 ))}

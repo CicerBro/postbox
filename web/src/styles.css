@@ -1069,6 +1069,43 @@
     height: 36px;
     padding: 8px;
   }
+  .campaign-actions-cell {
+    width: 1%;
+    white-space: nowrap;
+  }
+  .campaign-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 128px;
+  }
+  .campaign-row-actions .button.button-ghost {
+    height: 32px;
+    min-height: 32px;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+  .campaign-row-actions .campaign-report-action {
+    padding: 5px 8px;
+    gap: 6px;
+  }
+  .campaign-row-actions .button.campaign-report-action:hover {
+    background: var(--secondary);
+  }
+  .campaign-row-actions .campaign-delete-action {
+    width: 32px;
+    padding: 7px;
+    color: var(--muted);
+  }
+  .campaign-row-actions .button.campaign-delete-action:hover {
+    color: #b42330;
+    background: color-mix(in srgb, #b42330 8%, var(--background));
+  }
+  .dark .campaign-row-actions .button.campaign-delete-action:hover {
+    color: #ff909b;
+    background: color-mix(in srgb, #ff909b 12%, var(--background));
+  }
   .input {
     display: block;
     width: 100%;
