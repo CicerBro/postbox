@@ -9,6 +9,10 @@
 !internal/**
 !web/
 !web/**
+!README.md
+!MANUAL.md
+!docs/
+!docs/**
 web/node_modules/
 web/dist/
 internal/web/dist/

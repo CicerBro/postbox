@@ -34,42 +34,17 @@ unset POSTBOX_ADMIN_PASSWORD POSTBOX_ADMIN_TOTP
 
 Open <http://localhost:8080>. Sending starts disabled. Configure a brand's AWS keys and SES region under **Settings > Amazon SES**, review sending identities and consent, then enable sending in Settings.
 
-For production, use an HTTPS origin, secure cookies and a TLS reverse proxy. The [manual](MANUAL.md) covers Docker Compose, systemd, AWS/IAM, event ingestion, security, backups and migration. Back up the database and its tracking/credential encryption secret together.
+After signing in, open **Documentation** in the sidebar or visit `/docs`. Searchable guides and the Scalar API reference are bundled into the binary, including their JavaScript, styles and images. The docs, their assets and the OpenAPI downloads require an active user session. The guides are authored in [docs/handbook](docs/handbook/welcome.md), with detailed references included at build time.
 
-## Architecture
+For production, use an HTTPS origin, secure cookies and a TLS reverse proxy. Start with [Getting started](docs/handbook/getting-started.md) or [Running Postbox](docs/handbook/running-postbox.md). Back up the database and its tracking/credential encryption secret together.
 
-Postbox is a modular Go application with one deployable process:
+## Handbook
 
-| Module | Responsibility |
-| --- | --- |
-| `web` / `internal/httpapi` | React workflows, generated API contracts, authentication and HTTP transport |
-| `internal/subscribers` | Subscriber profiles, subscription and confirmation lifecycle, batched imports |
-| `internal/consent` | Transaction-scoped consent transitions shared by subscribers, tracking and SES events |
-| `internal/send` | Audience snapshots, dispatch reservations, SES pacing and send outcomes |
-| `internal/events` / `internal/tracking` | Verified SES events, acceptance reconciliation and signed tracking links |
-| `internal/jobs` | Durable job leases, independent recurring schedules, imports and maintenance |
-| `internal/store` | Migrations, pooled reads and serialized write transactions |
+- [Welcome](docs/handbook/welcome.md): overview and where to start.
+- [Getting started](docs/handbook/getting-started.md): installation, brand connection, domains and SES events.
+- [Sending newsletters](docs/handbook/sending-newsletters.md): audiences, consent, content and delivery outcomes.
+- [Running Postbox](docs/handbook/running-postbox.md): deployment, access, backups and configuration.
+- [Moving from Sendy](docs/handbook/moving-from-sendy.md): preview, import, review and retry.
+- [Development](docs/handbook/development.md): architecture, build, tests and performance evidence.
 
-Subscriber services, tracking endpoints and SES ingestion reuse transaction-scoped consent transitions. HTTP authorization also supplies the identity checks used by live report streams, and job recurrence is managed independently of handler success. Campaign dispatch reserves a durable attempt before contacting SES. An uncertain outcome blocks another potentially accepted send; a later SES event can reconcile the original attempt.
-
-SQLite uses WAL, one writer and a reader pool. This keeps deployment simple and makes short write transactions important. Imports prepare and reuse list metadata per batch, event matching uses indexed keys, and maintenance runs in bounded batches. WAL `synchronous=NORMAL` protects against process crashes but recent commits can be lost after a host crash or power failure. See [performance and durability evidence](docs/performance-profile.md) for measurements and limits.
-
-## Development and tests
-
-Use Bun for frontend dependencies. Build embedded frontend assets before compiling or testing a fresh checkout:
-
-```sh
-make build
-(cd web && bunx playwright install chromium)
-make test
-make race
-go vet ./...
-go run ./cmd/contractgen -check
-make security
-```
-
-`make test` runs Go tests, frontend unit tests and Playwright browser tests. `make test-browser` runs the browser suite alone. Browser tests use a local Vite server and mocked API responses, while Go integration tests exercise SQLite and fake SES delivery.
-
-After editing Go API response structs, regenerate frontend contracts with `go run ./cmd/contractgen`. For UI development run `cd web && bun run dev`; `bun run build` checks TypeScript and builds the embedded assets. CI checks contracts, builds, dependencies, Go race tests, vet, frontend unit/browser tests and CGO-free Linux builds.
-
-`make bench` benchmarks MIME/rendering and sending. `make release` creates Linux amd64 and arm64 binaries. See the [manual](MANUAL.md#capacity-testing) for representative full-campaign load tests and [Sendy migration reference](docs/migration.md) for importer mappings and limits.
+`make build` embeds the handbook and Scalar API reference in the binary. In the application, open `/docs` after signing in. README and MANUAL are entry points; edit `docs/handbook/*.md` to change the guide pages.

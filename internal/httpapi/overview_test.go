@@ -135,7 +135,7 @@ func TestOverviewEmptyAndDaysValidation(t *testing.T) {
 	if v.Current.Sent != 0 || v.Current.OpenedPercent != nil || v.Change["sent_percent"] != nil || v.Change["opened_points"] != nil || v.Period["days"] != float64(7) {
 		t.Fatal(w.Body.String())
 	}
-	w = request(m, "GET", "/api/v1/openapi.json", "", nil, "")
+	w = request(m, "GET", "/api/v1/openapi.json", "", &c, "")
 	var spec map[string]any
 	if err = json.Unmarshal(w.Body.Bytes(), &spec); err != nil {
 		t.Fatal(err)

@@ -3,5 +3,8 @@ export default defineConfig({
   testDir: './tests/browser',
   testMatch: '**/*.browser.ts',
   use: { baseURL: 'http://127.0.0.1:5174', headless: true },
-  webServer: { command: 'bun run dev --host 127.0.0.1 --port 5174', url: 'http://127.0.0.1:5174', reuseExistingServer: !process.env.CI },
+  webServer: [
+    { command: 'bun run dev --host 127.0.0.1 --port 5174', url: 'http://127.0.0.1:5174', reuseExistingServer: !process.env.CI },
+    { command: 'bun run dev:docs --host 127.0.0.1 --port 5175', url: 'http://127.0.0.1:5175/docs/', reuseExistingServer: !process.env.CI },
+  ],
 });

@@ -33,16 +33,23 @@ func (a *API) documentRoute(pattern string) {
 		}
 	}
 	op := map[string]any{"operationId": strings.ToLower(method) + strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_").Replace(path), "summary": method + " " + path, "parameters": parameters, "security": []map[string]any{{"bearerAuth": []string{}}, {"cookieAuth": []string{}}}, "responses": map[string]any{"200": map[string]any{"description": "Successful operation", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{}}}}, "400": map[string]any{"description": "Invalid request; JSON error contains actionable message"}, "401": map[string]any{"description": "Authentication required"}, "403": map[string]any{"description": "Brand, scope, or CSRF access denied"}, "404": map[string]any{"description": "Resource not found"}, "429": map[string]any{"description": "Rate limit exceeded"}}}
+	op["tags"] = []string{apiTag(path)}
 	documentSubscriberRead(method, path, op)
 	documentCampaignReport(method, path, op)
 	documentCampaignReads(method, path, op)
-	if path == "/api/v1/auth/login" || path == "/api/v1/openapi.json" || strings.HasPrefix(path, "/subscribe/") || strings.HasPrefix(path, "/confirm/") {
+	if path == "/api/v1/auth/login" || strings.HasPrefix(path, "/subscribe/") || strings.HasPrefix(path, "/confirm/") {
 		op["security"] = []any{}
+	}
+	if path == "/api/v1/openapi.json" {
+		op["security"] = []map[string]any{{"cookieAuth": []string{}}}
+		op["description"] = "Download the generated API specification. Requires an active user session; API keys do not grant documentation access."
+		op["parameters"] = []map[string]any{}
 	}
 	if method != "GET" && method != "DELETE" {
 		op["requestBody"] = map[string]any{"required": true, "content": map[string]any{"application/json": map[string]any{"schema": requestSchema(path)}}}
-		parameters = append(parameters, map[string]any{"name": "X-CSRF-Token", "in": "header", "required": false, "description": "Required for all mutations authenticated by the session cookie. Returned by login or session endpoint.", "schema": map[string]any{"type": "string"}})
-		op["parameters"] = parameters
+	}
+	if method != "GET" && path != "/api/v1/auth/login" && !strings.HasPrefix(path, "/subscribe/") && !strings.HasPrefix(path, "/confirm/") {
+		op["parameters"] = append(parameters, map[string]any{"name": "X-CSRF-Token", "in": "header", "required": false, "description": "Required for mutations authenticated by the session cookie. Returned by login or session endpoint; Scalar adds it automatically for the signed-in user.", "schema": map[string]any{"type": "string"}})
 	}
 	if method == "GET" && path == "/api/v1/overview" {
 		op["parameters"] = append(parameters, map[string]any{"name": "days", "in": "query", "description": "Campaign start comparison window in days. Defaults to 30; preceding window has the same duration.", "schema": map[string]any{"type": "integer", "minimum": 1, "maximum": 365, "default": 30}})
@@ -195,7 +202,32 @@ func requestSchema(path string) map[string]any {
 	return map[string]any{"type": "object", "properties": props, "required": required, "description": fmt.Sprintf("Request for %s", path)}
 }
 func (a *API) openapi(w http.ResponseWriter, r *http.Request) {
-	respond(w, 200, map[string]any{"openapi": "3.0.3", "info": map[string]string{"title": "Postbox API", "version": "1.0.0", "description": "JSON API with brand-scoped read/write bearer keys and authenticated CSRF-protected user sessions. Keyset list responses are arrays; use the last row id as after. Timestamps are Unix milliseconds. Secrets are returned only when created."}, "paths": a.paths, "components": map[string]any{"securitySchemes": map[string]any{"bearerAuth": map[string]string{"type": "http", "scheme": "bearer"}, "cookieAuth": map[string]string{"type": "apiKey", "in": "cookie", "name": "postbox_session"}}}})
+	respond(w, 200, map[string]any{"openapi": "3.0.3", "info": map[string]string{"title": "Postbox API", "version": "1.0.0", "description": "JSON API with brand-scoped read/write bearer keys and authenticated CSRF-protected user sessions. Scalar uses your signed-in session and adds CSRF tokens to writes. Enter a bearer key to test brand-scoped permissions. User sessions need brand_id for brand-scoped endpoints. Keyset list responses are arrays; use the last row id as after. Timestamps are Unix milliseconds. Secrets are returned only when created. [Read the guides](/docs)."}, "servers": []map[string]string{{"url": "/", "description": "This Postbox instance"}}, "paths": a.paths, "components": map[string]any{"securitySchemes": map[string]any{"bearerAuth": map[string]string{"type": "http", "scheme": "bearer", "description": "Brand-scoped API key"}, "cookieAuth": map[string]string{"type": "apiKey", "in": "cookie", "name": "postbox_session", "description": "Your active Postbox session. The browser sends this HttpOnly cookie automatically."}}}})
+}
+
+func apiTag(path string) string {
+	if !strings.HasPrefix(path, "/api/v1/") {
+		return "Public subscriptions"
+	}
+	resource := strings.Split(strings.TrimPrefix(path, "/api/v1/"), "/")[0]
+	switch resource {
+	case "auth", "users":
+		return "Authentication and users"
+	case "brands", "aws-settings", "subscription-settings", "application-settings":
+		return "Brands and settings"
+	case "campaigns", "email-preview":
+		return "Campaigns"
+	case "subscribers", "lists", "segments", "suppressions":
+		return "Subscribers and audiences"
+	case "templates":
+		return "Templates"
+	case "api-keys", "openapi.json":
+		return "API access"
+	case "webhooks":
+		return "Webhooks"
+	default:
+		return "Operations and reports"
+	}
 }
 
 func overviewResponseSchema() map[string]any {

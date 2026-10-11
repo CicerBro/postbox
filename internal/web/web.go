@@ -17,17 +17,13 @@ func Handler() http.Handler {
 	root, _ := fs.Sub(assets, "dist")
 	files := http.FileServer(http.FS(root))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "same-origin")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src 'self' about:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
-		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		securityHeaders(w)
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		p := r.URL.Path
-		if strings.Contains(p, "\\") || strings.Contains(p, "\x00") || path.Clean(p) != p && p != "/" || (p == "/api" || strings.HasPrefix(p, "/api/")) {
+		if strings.Contains(p, "\\") || strings.Contains(p, "\x00") || path.Clean(p) != p && p != "/" || (p == "/api" || strings.HasPrefix(p, "/api/")) || p == "/docs" || strings.HasPrefix(p, "/docs/") {
 			http.NotFound(w, r)
 			return
 		}
@@ -58,6 +54,14 @@ func Handler() http.Handler {
 			_, _ = w.Write(content)
 		}
 	})
+}
+
+func securityHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "same-origin")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src 'self' about:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+	w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 }
 func spaPath(p string) bool {
 	switch p {

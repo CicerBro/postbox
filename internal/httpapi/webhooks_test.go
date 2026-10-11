@@ -172,7 +172,7 @@ func TestWebhooksCRUDValidationAndAuthorization(t *testing.T) {
 	if w = request(m, "GET", item, "", &c, ""); w.Code != 404 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	w = request(m, "GET", "/api/v1/openapi.json", "", nil, "")
+	w = request(m, "GET", "/api/v1/openapi.json", "", &c, "")
 	if !strings.Contains(w.Body.String(), "rotate_secret") || !strings.Contains(w.Body.String(), "campaign_finished") {
 		t.Fatal(w.Body.String())
 	}

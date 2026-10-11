@@ -31,6 +31,7 @@ import {
   Menu,
   PanelLeft,
   ChevronsUpDown,
+  BookOpen,
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { api, ApiError, setCsrfToken } from "./lib/api";
@@ -253,6 +254,8 @@ export default function App() {
           client.setQueryData(["session"], fresh);
           setExpired(false);
           localStorage.setItem("postbox-auth-change", `login:${crypto.randomUUID()}`);
+          const next = new URLSearchParams(window.location.search).get("next");
+          if (next === "/docs" || next?.startsWith("/docs/")) window.location.assign(next);
         }}
       />
     );

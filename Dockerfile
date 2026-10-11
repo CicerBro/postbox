@@ -8,6 +8,8 @@ WORKDIR /src/web
 COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY web/ ./
+COPY README.md MANUAL.md /src/
+COPY docs/ /src/docs/
 RUN bun run build
 
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS build

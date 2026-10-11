@@ -182,7 +182,7 @@ func TestCampaignAPISendPipeline(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	w = request(m, "GET", "/api/v1/openapi.json", "", nil, "")
+	w = request(m, "GET", "/api/v1/openapi.json", "", &c, "")
 	var spec map[string]any
 	if e = json.NewDecoder(io.NopCloser(w.Body)).Decode(&spec); e != nil {
 		t.Fatal(e)
