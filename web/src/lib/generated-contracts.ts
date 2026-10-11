@@ -32,5 +32,7 @@ export interface Subscriber {
   gdpr_consent_ip?: string;
   created_at: number;
   updated_at: number;
+  last_activity_at?: number;
+  last_activity_kind?: string;
   confirmation_tokens?: Record<string, string>;
 }

@@ -1,0 +1,1 @@
+import{H as e}from"./button-rABuEyAH.js";var t=e(),n=e=>e instanceof Error?e.message:String(e??`Request failed`);function r({error:e,className:r=`text-sm text-destructive`}){if(!e)return null;let i=typeof e==`object`&&`status`in e&&e.status===403;return(0,t.jsxs)(`p`,{role:`alert`,className:r,children:[i?`Access denied (403): `:``,n(e)]})}export{r as t};

@@ -4,9 +4,8 @@ import { Checkbox } from "../components/ui/checkbox";
 import { useEffect, useState } from "react";
 import {
   Plus,
-  Check,
   Search,
-  SlidersHorizontal,
+  UserMinus,
   Users,
   List as ListIcon,
   MoreHorizontal,
@@ -30,8 +29,6 @@ import {
 } from "../components/ui/dialog";
 import {
   allPages,
-  SubscriberStatusBadge,
-  subscriberInitials,
   type SubscriberList,
   type CustomField,
   type Subscriber,
@@ -773,14 +770,17 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
   const [profile, setProfile] = useState<Subscriber | null | undefined>(
     undefined,
   );
-  const [showCreated, setShowCreated] = useState(false);
-  const [showConsent, setShowConsent] = useState(true);
+  const [profileAction, setProfileAction] = useState<"edit" | "delete" | "unsubscribe">("edit");
+  const openProfile = (subscriber: Subscriber | null, action: typeof profileAction = "edit") => {
+    setProfileAction(action);
+    setProfile(subscriber);
+  };
   const [lookup, setLookup] = useState("");
   const [lookupError, setLookupError] = useState<unknown>();
   const [lookupBusy, setLookupBusy] = useState(false);
   useEffect(() => {
     const request = searchParams.get("new");
-    if (request === "subscriber" || request === "contact") setProfile(null);
+    if (request === "subscriber" || request === "contact") openProfile(null);
     if (request === "list") {
       setTab("lists");
       setCreateList(true);
@@ -842,7 +842,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
             Manage subscriber profiles, consent and audience memberships.
           </p>
         </div>
-        <Button onClick={() => setProfile(null)}>
+        <Button onClick={() => openProfile(null)}>
           <Plus size={16} />
           New subscriber
         </Button>
@@ -951,7 +951,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                         `/subscribers/by-email?email=${encodeURIComponent(lookup.trim())}`,
                         { brandId },
                       );
-                      setProfile(v);
+                      openProfile(v);
                     } catch (e) {
                       setLookupError(e);
                     } finally {
@@ -963,59 +963,6 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                   {lookupBusy ? "Searching…" : "Search"}
                 </Button>
               </div>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="subscriber-view-options"
-                  >
-                    <SlidersHorizontal size={15} />
-                    View options
-                  </Button>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Portal>
-                  <DropdownMenu.Content
-                    className="dropdown-content"
-                    align="end"
-                    sideOffset={6}
-                  >
-                    <DropdownMenu.Label className="dropdown-label">
-                      Display columns
-                    </DropdownMenu.Label>
-                    <DropdownMenu.CheckboxItem
-                      checked={showConsent}
-                      onCheckedChange={setShowConsent}
-                      onSelect={(event) => event.preventDefault()}
-                    >
-                      <span
-                        className="flex size-4 items-center justify-center rounded-sm border border-input"
-                        aria-hidden="true"
-                      >
-                        <DropdownMenu.ItemIndicator>
-                          <Check size={12} />
-                        </DropdownMenu.ItemIndicator>
-                      </span>
-                      Consent date
-                    </DropdownMenu.CheckboxItem>
-                    <DropdownMenu.CheckboxItem
-                      checked={showCreated}
-                      onCheckedChange={setShowCreated}
-                      onSelect={(event) => event.preventDefault()}
-                    >
-                      <span
-                        className="flex size-4 items-center justify-center rounded-sm border border-input"
-                        aria-hidden="true"
-                      >
-                        <DropdownMenu.ItemIndicator>
-                          <Check size={12} />
-                        </DropdownMenu.ItemIndicator>
-                      </span>
-                      Created date
-                    </DropdownMenu.CheckboxItem>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Portal>
-              </DropdownMenu.Root>
             </div>
             <ErrorMessage error={lookupError || subscribers.error} />
             {subscribers.isPending ? (
@@ -1033,11 +980,10 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                 <table className={`${tableClass} whitespace-nowrap`}>
                   <thead>
                     <tr>
-                      {sortableHead("Subscriber", "name")}
+                      {sortableHead("Name", "name")}
                       {sortableHead("Email", "email")}
-                      {sortableHead("Subscriber status", "status")}
-                      {showConsent && sortableHead("Consent", "gdpr_consent_at")}
-                      {showCreated && sortableHead("Created", "created_at")}
+                      <th>Last activity</th>
+                      <th className="w-32">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1056,28 +1002,20 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                           )
                             return;
                           if (window.getSelection()?.toString()) return;
-                          setProfile(s);
+                          openProfile(s);
                         }}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            setProfile(s);
+                            openProfile(s);
                           }
                         }}
                       >
                         <td>
-                          <div className="flex items-center gap-3">
-                            <span className="avatar" aria-hidden="true">
-                              {subscriberInitials(s.name, s.email)}
-                            </span>
-                            <span
-                              className="row-title max-w-[20rem] truncate"
-                              title={s.name || "Unnamed subscriber"}
-                            >
-                              {s.name || "Unnamed subscriber"}
-                            </span>
-                          </div>
+                          <span className="row-title block max-w-[20rem] truncate" title={s.name || "Unnamed subscriber"}>
+                            {s.name || "Unnamed subscriber"}
+                          </span>
                         </td>
                         <td
                           className="max-w-[24rem] truncate text-muted-foreground"
@@ -1086,20 +1024,24 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                           {s.email}
                         </td>
                         <td>
-                          <SubscriberStatusBadge status={s.status} />
+                          <p className="text-sm capitalize">{s.last_activity_kind || (s.updated_at > s.created_at ? "Updated" : "Created")}</p>
+                          <time className="text-xs text-muted-foreground" dateTime={new Date(s.last_activity_at || s.updated_at || s.created_at).toISOString()}>
+                            {new Date(s.last_activity_at || s.updated_at || s.created_at).toLocaleString()}
+                          </time>
                         </td>
-                        {showConsent && (
-                          <td className="text-muted-foreground">
-                            {s.gdpr_consent_at
-                              ? new Date(s.gdpr_consent_at).toLocaleDateString()
-                              : "Not recorded"}
-                          </td>
-                        )}
-                        {showCreated && (
-                          <td className="text-muted-foreground">
-                            {new Date(s.created_at).toLocaleDateString()}
-                          </td>
-                        )}
+                        <td>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" aria-label={`Edit ${s.email}`} title="Edit" onClick={() => openProfile(s)}>
+                              <Pencil size={16} aria-hidden="true" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="text-destructive" aria-label={`Delete ${s.email}`} title="Delete" onClick={() => openProfile(s, "delete")}>
+                              <Trash2 size={16} aria-hidden="true" />
+                            </Button>
+                            <Button variant="ghost" size="icon" aria-label={`Unsubscribe ${s.email}`} title="Unsubscribe" onClick={() => openProfile(s, "unsubscribe")}>
+                              <UserMinus size={16} aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1174,7 +1116,8 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
       {tab === "housekeeping" && <Housekeeping brandId={brandId} />}
       {profile !== undefined && (
         <SubscriberProfile
-          key={profile?.id || "new"}
+          key={`${profile?.id || "new"}-${profileAction}`}
+          initialAction={profileAction}
           brandId={brandId}
           subscriber={profile}
           fields={fields.data || []}

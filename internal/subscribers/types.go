@@ -42,6 +42,8 @@ type Subscriber struct {
 	ConsentIP               string           `json:"gdpr_consent_ip,omitempty"`
 	CreatedAt               int64            `json:"created_at"`
 	UpdatedAt               int64            `json:"updated_at"`
+	LastActivityAt          int64            `json:"last_activity_at,omitempty"`
+	LastActivityKind        string           `json:"last_activity_kind,omitempty"`
 	ConfirmationTokens      map[int64]string `json:"confirmation_tokens,omitempty"`
 }
 type UpsertInput struct {

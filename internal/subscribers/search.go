@@ -149,5 +149,62 @@ func (s *Service) SearchFiltered(ctx context.Context, brandID, afterID int64, li
 		}
 		out = append(out, v)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := s.populateLastActivity(ctx, brandID, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Load activity for only the current page, without a request per subscriber.
+func (s *Service) populateLastActivity(ctx context.Context, brandID int64, subscribers []Subscriber) error {
+	if len(subscribers) == 0 {
+		return nil
+	}
+	args := []any{brandID}
+	placeholders := make([]string, len(subscribers))
+	byID := make(map[int64]*Subscriber, len(subscribers))
+	for i := range subscribers {
+		v := &subscribers[i]
+		v.LastActivityAt, v.LastActivityKind = v.CreatedAt, "created"
+		if v.UpdatedAt > v.LastActivityAt {
+			v.LastActivityAt, v.LastActivityKind = v.UpdatedAt, "updated"
+		}
+		if v.MarketingUnsubscribedAt != nil && *v.MarketingUnsubscribedAt >= v.LastActivityAt {
+			v.LastActivityAt, v.LastActivityKind = *v.MarketingUnsubscribedAt, "unsubscribe"
+		}
+		byID[v.ID] = v
+		placeholders[i] = "?"
+		args = append(args, v.ID)
+	}
+	rows, err := s.db.Reader.QueryContext(ctx, `SELECT s.id, a.kind, a.at
+FROM subscribers s JOIN subscriber_activity a ON a.id=(
+ SELECT id FROM subscriber_activity WHERE subscriber_id=s.id AND brand_id=s.brand_id ORDER BY at DESC,id DESC LIMIT 1
+) WHERE s.brand_id=? AND s.id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, at int64
+		var kind string
+		if err := rows.Scan(&id, &kind, &at); err != nil {
+			return err
+		}
+		if v := byID[id]; v != nil && at >= v.LastActivityAt {
+			if kind == "upsert" {
+				kind = "updated"
+				if at == v.CreatedAt {
+					kind = "created"
+				}
+			}
+			v.LastActivityAt, v.LastActivityKind = at, kind
+		}
+	}
+	return rows.Err()
 }

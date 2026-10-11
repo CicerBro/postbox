@@ -43,12 +43,14 @@ export function SubscriberProfile({
   fields,
   lists,
   onClose,
+  initialAction = "edit",
 }: {
   brandId: number;
   subscriber: Subscriber | null;
   fields: CustomField[];
   lists: SubscriberList[];
   onClose: () => void;
+  initialAction?: "edit" | "delete" | "unsubscribe";
 }) {
   const [email, setEmail] = useState(subscriber?.email || "");
   const [name, setName] = useState(subscriber?.name || "");
@@ -62,10 +64,18 @@ export function SubscriberProfile({
   const [error, setError] = useState<unknown>();
   const [selectedList, setSelectedList] = useState("");
   const [membershipConsent, setMembershipConsent] = useState(false);
-  const [erase, setErase] = useState(false);
+  const [erase, setErase] = useState(initialAction === "delete");
   const [eraseEmail, setEraseEmail] = useState("");
-  const [unsubscribeList, setUnsubscribeList] = useState<number | null>(null);
+  const [unsubscribeList, setUnsubscribeList] = useState<number | null>(initialAction === "unsubscribe" ? 0 : null);
   const [activityCursor, setActivityCursor] = useState(0);
+  const closeErase = () => {
+    setErase(false);
+    if (initialAction === "delete") onClose();
+  };
+  const closeUnsubscribe = () => {
+    setUnsubscribeList(null);
+    if (initialAction === "unsubscribe") onClose();
+  };
   const action = useSubscriberAction<Subscriber>(brandId);
   const membershipAction = useSubscriberAction(brandId);
   const memberships = useSubscribersQuery<Membership[]>(
@@ -159,7 +169,7 @@ export function SubscriberProfile({
   };
   return (
     <>
-      <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <Dialog open={initialAction === "edit"} onOpenChange={(open) => !open && onClose()}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -534,7 +544,7 @@ export function SubscriberProfile({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={erase} onOpenChange={setErase}>
+      <Dialog open={erase} onOpenChange={(open) => !open && closeErase()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Permanently erase subscriber?</DialogTitle>
@@ -554,7 +564,7 @@ export function SubscriberProfile({
             <Button
               variant="outline"
               disabled={action.isPending}
-              onClick={() => setErase(false)}
+              onClick={closeErase}
             >
               Cancel
             </Button>
@@ -580,7 +590,7 @@ export function SubscriberProfile({
       </Dialog>
       <Dialog
         open={unsubscribeList !== null}
-        onOpenChange={(open) => !open && setUnsubscribeList(null)}
+        onOpenChange={(open) => !open && closeUnsubscribe()}
       >
         <DialogContent>
           <DialogHeader>
@@ -596,7 +606,7 @@ export function SubscriberProfile({
           </p>
           <ErrorMessage error={membershipAction.error} />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setUnsubscribeList(null)}>
+            <Button variant="outline" onClick={closeUnsubscribe}>
               Cancel
             </Button>
             <Button
@@ -608,7 +618,7 @@ export function SubscriberProfile({
                     path: `/subscribers/${subscriber?.id}/unsubscribe`,
                     body: { list_id: unsubscribeList },
                   });
-                  setUnsubscribeList(null);
+                  closeUnsubscribe();
                 } catch {
                   /* displayed */
                 }
