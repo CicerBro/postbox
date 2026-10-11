@@ -254,6 +254,9 @@ func (r *Runner) execute(parent context.Context, j Job, h Handler) {
 					return e
 				})
 				if err != nil {
+					if ctx.Err() == nil {
+						r.cfg.Logger.ErrorContext(ctx, "renew job lease failed", "job_id", j.ID, "queue", j.Queue, "error", err)
+					}
 					cancel()
 					return
 				}
@@ -280,6 +283,11 @@ func (r *Runner) execute(parent context.Context, j Job, h Handler) {
 			status = "failed"
 		}
 		runAt = time.Now().Add(r.backoff(j.Attempts)).UnixMilli()
+		level := slog.LevelWarn
+		if status == "failed" {
+			level = slog.LevelError
+		}
+		r.cfg.Logger.Log(parent, level, "job handler failed", "job_id", j.ID, "queue", j.Queue, "attempt", j.Attempts, "status", status, "error", last)
 	}
 	finishErr := r.db.Immediate(finishCtx, func(c *sql.Conn) error {
 		res, e := c.ExecContext(finishCtx, "UPDATE jobs SET status=?,run_at=?,locked_until=NULL,last_error=? WHERE id=? AND status='running' AND locked_until=?", status, runAt, last, j.ID, lease.Load())

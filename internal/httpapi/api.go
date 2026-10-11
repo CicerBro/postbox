@@ -20,6 +20,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 
 	"postbox/internal/awsbrand"
+	"postbox/internal/httplog"
 	"postbox/internal/send"
 	"postbox/internal/store"
 )
@@ -93,9 +94,14 @@ func (a *API) Register(m *http.ServeMux) {
 func respond(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		httplog.RecordError(w, err)
+	}
 }
 func fail(w http.ResponseWriter, status int, err error) {
+	if status >= 500 {
+		httplog.RecordError(w, err)
+	}
 	respond(w, status, map[string]any{"error": err.Error()})
 }
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {

@@ -98,6 +98,10 @@ To restore, stop Postbox first, replace the database with the consistent backup 
 
 The service writes structured JSON logs. `/healthz` checks database availability. `/metrics` exposes sending rates, backlog, in-flight requests, latency, errors, writer batches, job outcomes and dropped tracking events.
 
+Logs go to stderr and appear in `docker compose logs -f postbox` or `journalctl -u postbox -f`. HTTP client failures (4xx) use `WARN`; server failures (5xx), response write failures and handler panics use `ERROR`. Request logs include the method, route pattern, response status and elapsed milliseconds. Server errors include the underlying cause when available. Route patterns omit signed path values, and request logs omit query parameters, headers and bodies. Successful requests use `DEBUG` and are hidden at the default log level.
+
+Job handler failures include the job ID, queue, attempt and resulting status: retryable failures use `WARN`, exhausted or unsafe-to-retry failures use `ERROR`. Lease renewal and completion failures also produce error logs. Campaign sending failures include the campaign ID and cause before the engine attempts to pause sending.
+
 Monitor failed jobs and your AWS dead-letter queues as well as HTTP health. Daily jobs create online backups, refresh rollups and purge raw tracking/SES history in bounded batches. Raw history defaults to 90 days; aggregate reports remain. Unconfirmed memberships have a separate 30-day confirmation period.
 
 Recurring schedules survive restarts, prevent overlapping occurrences and skip missed intervals. A failed run does not stop future occurrences. Repair the cause and monitor the next run. Set `POSTBOX_BACKUP_DIR` to the backup directory, or explicitly empty it to disable recurring backups.

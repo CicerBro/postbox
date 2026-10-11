@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"slices"
 	"strings"
@@ -20,6 +21,7 @@ import (
 )
 
 type Config struct {
+	Logger                              *slog.Logger
 	BrandSenderProvider                 BrandSenderProvider
 	EventHook                           func(context.Context, *sql.Conn, int64, string, any) error
 	MaxWorkers, ClaimBatch, ResultBatch int
@@ -78,6 +80,9 @@ type Engine struct {
 }
 
 func New(db *store.DB, sender Sender, cfg Config) *Engine {
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
 	if cfg.MaxWorkers < 1 {
 		cfg.MaxWorkers = 1024
 	}
@@ -250,6 +255,7 @@ func (e *Engine) Start(ctx context.Context) error {
 			err := e.db.Reader.QueryRowContext(ctx, `SELECT id FROM campaigns WHERE status IN ('sending','preparing') OR (status='scheduled' AND scheduled_at<=?) ORDER BY id LIMIT 1`, time.Now().UnixMilli()).Scan(&id)
 			if err == nil {
 				if err = e.RunCampaign(ctx, id); err != nil && ctx.Err() == nil {
+					e.cfg.Logger.ErrorContext(ctx, "campaign sending failed", "campaign_id", id, "error", err)
 					if pErr := e.Pause(context.Background(), id); pErr != nil {
 						return errors.Join(err, pErr)
 					}

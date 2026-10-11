@@ -21,6 +21,7 @@ import (
 	"postbox/internal/config"
 	"postbox/internal/events"
 	"postbox/internal/httpapi"
+	"postbox/internal/httplog"
 	"postbox/internal/jobs"
 	"postbox/internal/send"
 	"postbox/internal/store"
@@ -164,6 +165,7 @@ func serve(db *store.DB, c config.Config) error {
 		defer cancel()
 		w.Header().Set("Content-Type", "application/json")
 		if err := db.Reader.PingContext(check); err != nil {
+			httplog.RecordError(w, err)
 			w.WriteHeader(503)
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "unhealthy"})
 			return
@@ -230,11 +232,7 @@ func serve(db *store.DB, c config.Config) error {
 	}
 }
 func requestLog(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		slog.Debug("http request", "method", r.Method, "path", r.URL.Path, "elapsed_ms", time.Since(start).Milliseconds())
-	})
+	return httplog.Middleware(next, slog.Default())
 }
 func writeMetrics(w http.ResponseWriter, prefix string, v any) {
 	value := reflect.ValueOf(v)
