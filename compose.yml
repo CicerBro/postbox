@@ -4,6 +4,10 @@ services:
       context: .
     image: postbox:local
     restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+      - 9.9.9.9
     env_file:
       - .env
     environment:
