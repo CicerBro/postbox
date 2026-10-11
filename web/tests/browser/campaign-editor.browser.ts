@@ -21,6 +21,9 @@ async function fixture(context: BrowserContext) {
     targetWrites: [] as Target[][],
     checklistReads: 0,
     targetFailure: false,
+    testSendFailure: true,
+    testSends: [] as unknown[],
+    testSendWait: Promise.resolve(),
   };
   await context.route("**/api/v1/**", async (route) => {
     const request = route.request(),
@@ -43,6 +46,14 @@ async function fixture(context: BrowserContext) {
           html: "<p>Welcome from our template</p>",
         },
       ];
+    else if (path === "/campaigns/7/test-send") {
+      state.testSends.push(request.postDataJSON());
+      expect(request.headers()["x-csrf-token"]).toBe("session-token");
+      expect(new URL(request.url()).searchParams.get("brand_id")).toBe("1");
+      await state.testSendWait;
+      status = state.testSendFailure ? 422 : 200;
+      body = state.testSendFailure ? { error: "global sending is disabled" } : {};
+    }
     else if (path === "/campaigns/7/checklist") {
       state.checklistReads++;
       body = {
@@ -89,6 +100,41 @@ async function fixture(context: BrowserContext) {
   });
   return state;
 }
+
+test("test-send feedback stays beside the button and recovers on retry", async ({ page, context }) => {
+  const state = await fixture(context);
+  await page.goto("/campaigns/7");
+  const delivery = page.getByRole("group", { name: "Test email delivery" });
+  await delivery.getByRole("textbox").fill("one@example.org, two@example.org");
+  const button = delivery.getByRole("button", { name: "Send [Test] emails", exact: true });
+  await expect(button).toBeEnabled();
+  let release!: () => void;
+  state.testSendWait = new Promise<void>((resolve) => { release = resolve; });
+  await button.click();
+  await expect(delivery.getByRole("status")).toHaveText("Sending test emails…");
+  await expect(delivery.getByRole("button")).toBeDisabled();
+  release();
+  await expect(delivery.getByRole("alert")).toHaveText("global sending is disabled");
+  await expect(delivery.getByRole("alert")).toHaveAttribute("data-slot", "alert");
+  await expect(delivery.getByRole("alert")).toHaveClass(/bg-red-50/);
+  await expect(delivery.getByRole("alert")).toBeInViewport();
+  await expect(delivery.getByRole("status")).toHaveCount(0);
+  await expect(button).toBeEnabled();
+
+  state.testSendFailure = false;
+  state.testSendWait = new Promise<void>((resolve) => { release = resolve; });
+  await button.click();
+  await expect(delivery.getByRole("alert")).toHaveCount(0);
+  await expect(delivery.getByRole("status")).toHaveText("Sending test emails…");
+  release();
+  await expect(delivery.getByRole("status")).toHaveText("[Test] emails sent.");
+  await expect(delivery.getByRole("status")).toBeInViewport();
+  await expect(button).toBeEnabled();
+  expect(state.testSends).toEqual([
+    { emails: ["one@example.org", "two@example.org"] },
+    { emails: ["one@example.org", "two@example.org"] },
+  ]);
+});
 
 test("preview shows merge-tag errors in the pane and recovers after correction", async ({ page, context }) => {
   const state = await fixture(context);

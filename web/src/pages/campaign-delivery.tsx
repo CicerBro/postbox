@@ -2,6 +2,7 @@ import { Send } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
+import { StatusMessage } from "../components/StatusMessage";
 import {
   Card,
   CardContent,
@@ -33,6 +34,8 @@ type DeliveryProps = {
   status: string;
   schedule: string;
   testEmails: string;
+  testSendError: unknown;
+  testSendStatus: "idle" | "sending" | "sent";
   checklist: Checklist | undefined;
   checklistError: unknown;
   setSchedule: (value: string) => void;
@@ -51,6 +54,8 @@ export function CampaignDelivery({
   status,
   schedule,
   testEmails,
+  testSendError,
+  testSendStatus,
   checklist,
   checklistError,
   setSchedule,
@@ -132,7 +137,11 @@ export function CampaignDelivery({
         )}
         {checklist && <Preflight data={checklist} />}
         <ErrorMessage error={checklistError} />
-        <div className="border-t pt-4">
+        <div
+          className="border-t pt-4"
+          role="group"
+          aria-label="Test email delivery"
+        >
           <label className="block text-sm">
             Send deliberate [Test] emails
             <Textarea
@@ -146,6 +155,18 @@ export function CampaignDelivery({
             Test sends are intentionally repeatable and use the saved campaign
             with a [Test] subject prefix. Each click sends again.
           </p>
+          <div className="mb-2 space-y-2">
+            <ErrorMessage error={testSendError} presentation="alert" />
+            <StatusMessage
+              variant={testSendStatus === "sending" ? "info" : "success"}
+            >
+              {testSendStatus === "sending"
+                ? "Sending test emails…"
+                : testSendStatus === "sent"
+                  ? "[Test] emails sent."
+                  : ""}
+            </StatusMessage>
+          </div>
           <Button
             variant="info"
             disabled={busy || dirty || !canSend || !testEmails.trim()}
@@ -155,7 +176,10 @@ export function CampaignDelivery({
               })
             }
           >
-            <Send size={16} /> Send [Test] emails
+            <Send size={16} />
+            {testSendStatus === "sending"
+              ? "Sending [Test] emails…"
+              : "Send [Test] emails"}
           </Button>
         </div>
         {editable && (

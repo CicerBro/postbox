@@ -59,6 +59,10 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
     [testEmails, setTestEmails] = useState(""),
     [confirm, setConfirm] = useState<CampaignConfirmation>(null),
     [busy, setBusy] = useState(false);
+  const [testSendError, setTestSendError] = useState<unknown>(null);
+  const [testSendStatus, setTestSendStatus] = useState<
+    "idle" | "sending" | "sent"
+  >("idle");
   const checklist = useQuery({
     queryKey: ["campaign-checklist", brandId, draftID],
     queryFn: () =>
@@ -69,6 +73,8 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
   async function action(action: string, body?: unknown) {
     setError(null);
     setNotice("");
+    setTestSendError(null);
+    setTestSendStatus(action === "test-send" ? "sending" : "idle");
     setBusy(true);
     try {
       const result = await api<{ id?: number }>(
@@ -79,18 +85,18 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
         navigate(`/campaigns/${result.id}`);
         return;
       }
-      setNotice(
-        action === "test-send"
-          ? "[Test] emails sent."
-          : "Campaign action completed.",
-      );
+      if (action === "test-send") setTestSendStatus("sent");
+      else setNotice("Campaign action completed.");
       setConfirm(null);
       await client.invalidateQueries({
         queryKey: ["campaign", brandId, routeID],
       });
       client.invalidateQueries({ queryKey: ["campaigns", brandId] });
     } catch (e) {
-      setError(e);
+      if (action === "test-send") {
+        setTestSendError(e);
+        setTestSendStatus("idle");
+      } else setError(e);
     } finally {
       setBusy(false);
     }
@@ -243,6 +249,8 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
             status,
             schedule,
             testEmails,
+            testSendError,
+            testSendStatus,
             setSchedule,
             setTestEmails,
             setConfirm,
