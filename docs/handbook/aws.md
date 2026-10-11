@@ -120,6 +120,6 @@ Partial setup is retained if an AWS call fails. The error names the stage and pe
 
 Postbox returns success to SNS only after processing and committing the event. Processing failures return an error so SNS can retry delivery.
 
-HTTPS SNS ingestion validates signatures, the expected topic and the signing certificate URL and chain before processing an event or confirming a subscription. Keep outbound access to the signing certificates available.
+HTTPS SNS ingestion validates signatures, the expected topic and the signing certificate URL and chain before processing an event or confirming a subscription. Keep outbound HTTPS access to SNS signing certificates and `crt.*.amazontrust.com` issuer certificates available. When SNS provides only its signing certificate, Postbox downloads missing Amazon Trust Services intermediates over HTTPS and verifies the complete chain against the system's trusted roots. Downloaded issuers are never added as trusted roots.
 
 Events must resolve to an originating brand using its configured topic, event tags or an unambiguous stored message ID. Unscoped events are rejected. Hard bounces and complaints affect the originating brand; explicit administrator global suppressions remain global. Suppression sync runs through durable jobs.

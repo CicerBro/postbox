@@ -50,6 +50,18 @@ type Verifier struct {
 
 var snsHost = regexp.MustCompile(`^sns\.[a-z0-9-]+\.amazonaws\.com(?:\.cn)?$`)
 var certPath = regexp.MustCompile(`^/SimpleNotificationService-[A-Za-z0-9_-]+\.pem$`)
+var issuerHost = regexp.MustCompile(`^crt\.[a-z0-9-]+\.amazontrust\.com$`)
+var issuerPath = regexp.MustCompile(`^/[A-Za-z0-9_-]+\.cer$`)
+
+func issuerURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Port() != "" || !issuerHost.MatchString(u.Hostname()) || !issuerPath.MatchString(u.Path) || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("untrusted SNS issuer URL")
+	}
+	// ATS certificates advertise HTTP AIA URLs; retrieve them over authenticated HTTPS.
+	u.Scheme = "https"
+	return u, nil
+}
 
 func trustedURL(raw string, certificate bool) (*url.URL, error) {
 	u, e := url.Parse(raw)
@@ -162,7 +174,7 @@ func (v *Verifier) certificate(ctx context.Context, raw string) (*x509.Certifica
 	}
 	resp, e := v.client().Do(req)
 	if e != nil {
-		return nil, e
+		return nil, fmt.Errorf("SNS signing certificate download failed: %w", e)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -195,8 +207,8 @@ func (v *Verifier) certificate(ctx context.Context, raw string) (*x509.Certifica
 	}
 	// SNS signing certificates are for message signing, not TLS hostname authentication.
 	// The HTTPS transport authenticates the strictly allowlisted download hostname.
-	if _, e = c.Verify(x509.VerifyOptions{Roots: v.Roots, Intermediates: intermediates, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}, CurrentTime: v.now()}); e != nil {
-		return nil, e
+	if e = v.verifyCertificateChain(ctx, c, intermediates); e != nil {
+		return nil, fmt.Errorf("SNS signing certificate chain verification failed: %w", e)
 	}
 	expiry := v.now().Add(time.Hour)
 	if c.NotAfter.Before(expiry) {
@@ -212,6 +224,52 @@ func (v *Verifier) certificate(ctx context.Context, raw string) (*x509.Certifica
 	v.cache[raw] = cachedCertificate{c, expiry}
 	v.mu.Unlock()
 	return c, nil
+}
+
+func (v *Verifier) verifyCertificateChain(ctx context.Context, cert *x509.Certificate, intermediates *x509.CertPool) error {
+	opts := x509.VerifyOptions{Roots: v.Roots, Intermediates: intermediates, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}, CurrentTime: v.now()}
+	_, err := cert.Verify(opts)
+	current := cert
+	visited := map[string]bool{}
+	// Only fill a missing chain, and never promote downloaded issuers to trust roots.
+	for depth := 0; err != nil && depth < 3; depth++ {
+		var unknown x509.UnknownAuthorityError
+		if !errors.As(err, &unknown) || len(current.IssuingCertificateURL) == 0 {
+			return err
+		}
+		u, e := issuerURL(current.IssuingCertificateURL[0])
+		if e != nil {
+			return e
+		}
+		if visited[u.String()] {
+			return errors.New("SNS issuer chain cycle")
+		}
+		visited[u.String()] = true
+		req, e := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+		if e != nil {
+			return e
+		}
+		resp, e := v.client().Do(req)
+		if e != nil {
+			return fmt.Errorf("SNS issuer download failed: %w", e)
+		}
+		body, e := io.ReadAll(io.LimitReader(resp.Body, 65537))
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || e != nil || len(body) > 65536 {
+			return errors.New("invalid SNS issuer response")
+		}
+		issuer, e := x509.ParseCertificate(body)
+		if e != nil {
+			return fmt.Errorf("invalid SNS issuer certificate: %w", e)
+		}
+		if e = current.CheckSignatureFrom(issuer); e != nil {
+			return fmt.Errorf("SNS issuer does not sign certificate: %w", e)
+		}
+		intermediates.AddCert(issuer)
+		current = issuer
+		_, err = cert.Verify(opts)
+	}
+	return err
 }
 func (v *Verifier) Confirm(ctx context.Context, m SNSMessage) error {
 	if m.Type != "SubscriptionConfirmation" {

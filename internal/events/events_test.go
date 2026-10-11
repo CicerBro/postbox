@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"postbox/internal/store"
 	"strings"
@@ -30,6 +31,84 @@ import (
 type transport func(*http.Request) (*http.Response, error)
 
 func (t transport) RoundTrip(r *http.Request) (*http.Response, error) { return t(r) }
+
+func TestSNSRealSigningCertificateChain(t *testing.T) {
+	read := func(name string) []byte {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join("testdata", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	leaf := read("sns-signing.pem")
+	issuer := read("amazon-rsa-2048-m04.der")
+	rootPEM := read("amazon-root-ca-1.pem")
+	rootBlock, _ := pem.Decode(rootPEM)
+	if rootBlock == nil {
+		t.Fatal("invalid root fixture PEM")
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(rootPEM) {
+		t.Fatal("invalid root fixture")
+	}
+	for _, trusted := range []bool{true, false} {
+		t.Run(fmt.Sprintf("trusted-root-%t", trusted), func(t *testing.T) {
+			requests := 0
+			v := &Verifier{Roots: roots, Now: func() time.Time { return time.Date(2026, 10, 11, 16, 30, 0, 0, time.UTC) }}
+			if !trusted {
+				v.Roots = x509.NewCertPool()
+			}
+			v.Client = &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
+				requests++
+				var b []byte
+				switch r.URL.String() {
+				case "https://sns.eu-central-1.amazonaws.com/SimpleNotificationService-1e59c4574facfe41babdb2d652f8ebef.pem":
+					b = leaf
+				case "https://crt.r2m04.amazontrust.com/r2m04.cer":
+					b = issuer
+				case "https://crt.rootca1.amazontrust.com/rootca1.cer":
+					b = rootBlock.Bytes
+				default:
+					t.Fatalf("unexpected certificate request: %s", r.URL)
+				}
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(b))}, nil
+			})}
+			raw := "https://sns.eu-central-1.amazonaws.com/SimpleNotificationService-1e59c4574facfe41babdb2d652f8ebef.pem"
+			_, err := v.certificate(context.Background(), raw)
+			if trusted && err != nil {
+				t.Fatal(err)
+			}
+			if !trusted && err == nil {
+				t.Fatal("downloaded issuer became a trusted root")
+			}
+			if trusted {
+				if _, err := v.certificate(context.Background(), raw); err != nil {
+					t.Fatal(err)
+				}
+				if requests != 2 {
+					t.Fatalf("cache fetched certificates again: %d requests", requests)
+				}
+			}
+		})
+	}
+}
+
+func TestSNSIssuerURLAllowlist(t *testing.T) {
+	for _, raw := range []string{
+		"http://127.0.0.1/issuer.cer", "https://crt.r2m04.amazontrust.com.attacker.test/r2m04.cer",
+		"https://crt.r2m04.amazontrust.com@127.0.0.1/r2m04.cer", "https://crt.r2m04.amazontrust.com:8443/r2m04.cer",
+		"https://crt.r2m04.amazontrust.com/r2m04.cer?token=x", "https://crt.r2m04.amazontrust.com/../r2m04.cer",
+	} {
+		if _, err := issuerURL(raw); err == nil {
+			t.Fatalf("accepted unsafe issuer URL %s", raw)
+		}
+	}
+	u, err := issuerURL("http://crt.r2m04.amazontrust.com/r2m04.cer")
+	if err != nil || u.String() != "https://crt.r2m04.amazontrust.com/r2m04.cer" {
+		t.Fatalf("issuer HTTPS upgrade: %v %v", u, err)
+	}
+}
 
 func TestSNSFailureDiagnostics(t *testing.T) {
 	for _, tc := range []struct {
