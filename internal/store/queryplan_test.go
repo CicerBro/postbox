@@ -210,11 +210,11 @@ func TestProductionHotQueryPlans(t *testing.T) {
 		{"email", "../subscribers/service.go", "GetByEmail", "SELECT ", []any{1, "person41@example.test"}, nil},
 		{"subscribers_page", "../subscribers/service.go", "Search", "SELECT ", []any{1, 40, 100}, nil},
 		{"memberships", "../httpapi/subscribers.go", "subscribers", "SELECT ls.list_id", []any{1, 41}, nil},
-		{"recipient_export", "../httpapi/campaigns.go", "exportRecipients", "SELECT subscriber_id,snapshot_email", []any{1, 40}, nil},
-		{"campaign_stats", "../httpapi/campaigns.go", "report", "SELECT * FROM campaign_stats", []any{1}, nil},
-		{"link_rollups", "../httpapi/campaigns.go", "report", "SELECT l.id,l.url", []any{1}, nil},
-		{"country_rollups", "../httpapi/campaigns.go", "report", "SELECT country,opens", []any{1}, nil},
-		{"hour_rollups", "../httpapi/campaigns.go", "report", "SELECT hour,opens", []any{1}, nil},
+		{"recipient_export", "../httpapi/campaign_reports.go", "exportRecipients", "SELECT subscriber_id,snapshot_email", []any{1, 40}, nil},
+		{"campaign_stats", "../httpapi/campaign_reports.go", "campaignReportData", "SELECT * FROM campaign_stats", []any{1}, nil},
+		{"link_rollups", "../httpapi/campaign_reports.go", "campaignReportData", "SELECT l.id,l.url", []any{1}, nil},
+		{"country_rollups", "../httpapi/campaign_reports.go", "campaignReportData", "SELECT country,opens", []any{1}, nil},
+		{"hour_rollups", "../httpapi/campaign_reports.go", "campaignReportData", "SELECT hour,opens", []any{1}, nil},
 		{"brand_rollups", "../httpapi/brands.go", "overview", "SELECT COALESCE(SUM(s.sent)", []any{1}, nil},
 		{"due_job_claim", "../jobs/runner.go", "claim", "UPDATE jobs", []any{1000, "retention", 500}, nil},
 		{"due_campaign", "../send/engine.go", "Start", "SELECT id FROM campaigns", []any{500}, nil},
@@ -273,13 +273,13 @@ func TestProductionDynamicPagePlans(t *testing.T) {
 	db := representativeDB(t)
 	for _, status := range []string{"", "unknown", "sent"} {
 		t.Run("recipients_"+status, func(t *testing.T) {
-			q := sourceSQL(t, "../httpapi/campaigns.go", "report", "SELECT subscriber_id AS id", nil)
+			q := sourceSQL(t, "../httpapi/campaign_reports.go", "report", "SELECT subscriber_id AS id", nil)
 			args := []any{1, 40}
 			if status != "" {
-				q += sourceSQL(t, "../httpapi/campaigns.go", "report", " AND status=", nil)
+				q += sourceSQL(t, "../httpapi/campaign_reports.go", "report", " AND status=", nil)
 				args = append(args, status)
 			}
-			q += sourceSQL(t, "../httpapi/campaigns.go", "report", " ORDER BY subscriber_id", nil)
+			q += sourceSQL(t, "../httpapi/campaign_reports.go", "report", " ORDER BY subscriber_id", nil)
 			assertProductionPlan(t, db.Reader, q, append(args, 100)...)
 		})
 	}

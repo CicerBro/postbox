@@ -55,7 +55,7 @@ func (a *API) documentRoute(pattern string) {
 	}
 
 	if strings.HasSuffix(path, "/events") {
-		op["responses"].(map[string]any)["200"] = map[string]any{"description": "SSE stream; stats event emitted once per second until disconnect", "content": map[string]any{"text/event-stream": map[string]any{"schema": map[string]any{"type": "string"}}}}
+		op["responses"].(map[string]any)["200"] = map[string]any{"description": "SSE stream; stats event emitted once per second until disconnect, credential expiry or revocation, or loss of brand read permission", "content": map[string]any{"text/event-stream": map[string]any{"schema": map[string]any{"type": "string"}}}}
 	}
 	if strings.HasSuffix(path, "/export") {
 		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Streamed keyset spreadsheet-safe CSV export. Formula prefixes (=, +, -, @ and fullwidth forms) after leading whitespace, controls or Unicode format characters receive an apostrophe. Reimports retain this apostrophe as data; use JSON or database backups for exact machine roundtrips. No raw CSV mode is exposed.", "content": map[string]any{"text/csv": map[string]any{"schema": map[string]any{"type": "string"}}}}

@@ -225,49 +225,18 @@ func requireChanged(res sql.Result, err error) error {
 }
 func (a *API) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var i identity
+		i, status, err := a.requestIdentity(r)
+		if err != nil {
+			fail(w, status, err)
+			return
+		}
 		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-			key := strings.TrimPrefix(h, "Bearer ")
-			prefix, _, ok := strings.Cut(key, ".")
-			var hash []byte
-			var scopes string
-			if !ok || a.db.Reader.QueryRowContext(r.Context(), "SELECT brand_id,secret_hash,scopes FROM api_keys WHERE prefix=? AND revoked_at IS NULL", prefix).Scan(&i.BrandID, &hash, &scopes) != nil || !equal(hash, digest(key)) {
-				fail(w, 401, errors.New("invalid API key"))
-				return
-			}
-			_ = json.Unmarshal([]byte(scopes), &i.Scopes)
-			need := "read"
-			if r.Method != "GET" {
-				need = "write"
-			}
-			allowed := false
-			for _, s := range i.Scopes {
-				if s == need || s == "*" {
-					allowed = true
-				}
-			}
-			if !allowed {
-				fail(w, 403, errors.New("API key scope denied"))
-				return
-			}
+			prefix, _, _ := strings.Cut(strings.TrimPrefix(h, "Bearer "), ".")
 			if !a.allow("api:"+prefix, 600) {
 				fail(w, 429, errors.New("API rate limit exceeded"))
 				return
 			}
-		} else {
-			cookie, err := r.Cookie("postbox_session")
-			var role string
-			if err != nil || a.db.Reader.QueryRowContext(r.Context(), "SELECT s.user_id,u.role,s.csrf_hash FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?", digest(cookie.Value), time.Now().UnixMilli()).Scan(&i.UserID, &role, &i.CSRF) != nil {
-				fail(w, 401, errors.New("login required"))
-				return
-			}
-			i.Admin = role == "admin"
-			if r.Method != "GET" && r.Method != "HEAD" && !equal(i.CSRF, digest(r.Header.Get("X-CSRF-Token"))) {
-				fail(w, 403, errors.New("invalid CSRF token"))
-				return
-			}
 		}
-		r = r.WithContext(context.WithValue(r.Context(), identityKey{}, &i))
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), identityKey{}, i)))
 	})
 }
