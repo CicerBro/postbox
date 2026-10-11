@@ -201,14 +201,14 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                 {visibleTemplates.map((t) => (
                     <tr key={t.id}>
                       <td>
-                        <div className="flex items-center gap-3 font-bold">
+                        <div className="flex items-center gap-3">
                           <span className="avatar">
                             <FileCode2 size={18} />
                           </span>
                           <div>
                             <button
                               type="button"
-                              className="row-title text-left"
+                              className="row-title text-left font-medium"
                               onClick={() => edit(t)}
                             >
                               {t.name}
