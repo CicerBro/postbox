@@ -203,7 +203,48 @@ func requestSchema(path string) map[string]any {
 	return map[string]any{"type": "object", "properties": props, "required": required, "description": fmt.Sprintf("Request for %s", path)}
 }
 func (a *API) openapi(w http.ResponseWriter, r *http.Request) {
-	respond(w, 200, map[string]any{"openapi": "3.0.3", "info": map[string]string{"title": "Postbox API", "version": "1.0.0", "description": "JSON API with brand-scoped read/write bearer keys and authenticated CSRF-protected user sessions. Scalar uses your signed-in session and adds CSRF tokens to writes. Enter a bearer key to test brand-scoped permissions. User sessions need brand_id for brand-scoped endpoints. Keyset list responses are arrays; use the last row id as after. Timestamps are Unix milliseconds. Secrets are returned only when created. [Read the guides](/docs)."}, "servers": []map[string]string{{"url": "/", "description": "This Postbox instance"}}, "paths": a.paths, "components": map[string]any{"securitySchemes": map[string]any{"bearerAuth": map[string]string{"type": "http", "scheme": "bearer", "description": "Brand-scoped API key"}, "cookieAuth": map[string]string{"type": "apiKey", "in": "cookie", "name": "postbox_session", "description": "Your active Postbox session. The browser sends this HttpOnly cookie automatically."}}}})
+	respond(w, 200, map[string]any{"openapi": "3.0.3", "info": map[string]string{"title": "Postbox API", "version": "1.0.0", "description": "JSON API with brand-scoped read/write bearer keys and authenticated CSRF-protected user sessions. Scalar uses your signed-in session and adds CSRF tokens to writes. Enter a bearer key to test brand-scoped permissions. User sessions need brand_id for brand-scoped endpoints. Keyset list responses are arrays; use the last row id as after. Timestamps are Unix milliseconds. Secrets are returned only when created. [Read the guides](/docs)."}, "servers": []map[string]string{{"url": "/", "description": "This Postbox instance"}}, "tags": apiTags(), "paths": a.paths, "components": map[string]any{"securitySchemes": map[string]any{"bearerAuth": map[string]string{"type": "http", "scheme": "bearer", "description": "Brand-scoped API key"}, "cookieAuth": map[string]string{"type": "apiKey", "in": "cookie", "name": "postbox_session", "description": "Your active Postbox session. The browser sends this HttpOnly cookie automatically."}}}})
+}
+
+func apiTags() []map[string]string {
+	return []map[string]string{
+		{
+			"name":        "Authentication and users",
+			"description": "Sign in, manage your session and configure password, TOTP or passkey authentication. Administrators can manage users, brand assignments, permissions and per-user sending limits.",
+		},
+		{
+			"name":        "Brands and settings",
+			"description": "A brand keeps its sender identity, audiences, campaigns, templates and AWS connection together. Use these endpoints to manage brands, configure Amazon SES credentials and domain identities, set up delivery events and control public signup at brand or application level. Brand management and AWS configuration changes require an administrator session; each endpoint documents its access requirements.",
+		},
+		{
+			"name":        "Campaigns",
+			"description": "Create newsletter drafts, select an audience and preview personalised email content before sending. Run pre-send checks, send test messages, start or schedule delivery and follow campaign progress through reports and live event streams.",
+		},
+		{
+			"name":        "Subscribers and audiences",
+			"description": "Manage subscriber profiles, list memberships, targeting segments and delivery suppressions within a brand. Import or export contacts, review subscriber activity and configure list signup forms and opt-in behaviour. Subscription consent and delivery suppression are separate checks that both affect sending eligibility.",
+		},
+		{
+			"name":        "Templates",
+			"description": "Templates are reusable, named HTML emails stored in the selected brand's library. List, create, update or delete them, then use their HTML as the starting point for a campaign. Creating or updating a template requires both name and html; saving a template does not send an email.",
+		},
+		{
+			"name":        "API access",
+			"description": "Create and revoke brand-scoped bearer keys for integrations, with read or write permissions. Copy a key's secret when it is created, as it is not returned again. The OpenAPI download requires a signed-in user session.",
+		},
+		{
+			"name":        "Webhooks",
+			"description": "Configure brand-scoped webhook destinations to notify external services about subscriptions, unsubscribes, bounces, complaints and campaign starts or finishes. Choose the events each destination receives and enable, update or remove it as your integration changes.",
+		},
+		{
+			"name":        "Operations and reports",
+			"description": "Read brand overview metrics, manage custom fields and inspect operational settings. Use maintenance endpoints to clean up old unconfirmed subscriptions, and review failed background jobs when troubleshooting processing or delivery.",
+		},
+		{
+			"name":        "Public subscriptions",
+			"description": "Hosted signup forms and confirmation links let subscribers join a list without a Postbox account. Signup requires both the application and brand public-subscription switches to be enabled; double opt-in memberships require confirmation before they become eligible for marketing.",
+		},
+	}
 }
 
 func apiTag(path string) string {
