@@ -40,6 +40,10 @@ func (a *API) documentRoute(pattern string) {
 	if path == "/api/v1/auth/login" || strings.HasPrefix(path, "/subscribe/") || strings.HasPrefix(path, "/confirm/") {
 		op["security"] = []any{}
 	}
+	if path == "/api/v1/auth/login" {
+		op["description"] = "Verify email and password. When TOTP is enabled and no code is supplied, returns 202 with totp_required=true without creating a session. Resubmit the credentials with the authenticator code to complete sign-in."
+		op["responses"].(map[string]any)["202"] = map[string]any{"description": "Authenticator code required; no session has been created", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"totp_required"}, "properties": map[string]any{"totp_required": map[string]any{"type": "boolean", "enum": []bool{true}}}}}}}
+	}
 	if path == "/api/v1/openapi.json" {
 		op["security"] = []map[string]any{{"cookieAuth": []string{}}}
 		op["description"] = "Download the generated API specification. Requires an active user session; API keys do not grant documentation access."

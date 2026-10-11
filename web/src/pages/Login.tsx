@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Mail, KeyRound, ShieldCheck, ArrowRight } from "lucide-react";
 import { api } from "../lib/api";
+import type { LoginResponse, TOTPChallengeResponse } from "../lib/generated-contracts";
 import { requestOptions, credentialJSON } from "../lib/webauthn";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
@@ -8,13 +9,14 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [totp, setTotp] = useState(false);
+  const [totpRequired, setTotpRequired] = useState(false);
   async function login(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     setBusy(true);
     setError("");
     try {
-      await api("/auth/login", {
+      const response = await api<LoginResponse | TOTPChallengeResponse>("/auth/login", {
         method: "POST",
         body: {
           email: f.get("email"),
@@ -22,10 +24,14 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
           totp: f.get("totp") || "",
         },
       });
+      if ("totp_required" in response && response.totp_required) {
+        setTotp(true);
+        setTotpRequired(true);
+        return;
+      }
       await onLogin();
     } catch (e) {
       setError((e as Error).message);
-      setTotp(true);
     } finally {
       setBusy(false);
     }
@@ -96,7 +102,9 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
                 pattern="[0-9]{6}"
                 maxLength={6}
                 autoComplete="one-time-code"
-                placeholder="Six-digit code, if enabled"
+                placeholder="Six-digit code"
+                required={totpRequired}
+                autoFocus
               />
             </label>
           ) : (
@@ -107,6 +115,11 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
             >
               Use an authenticator code
             </button>
+          )}
+          {totpRequired && (
+            <p role="status" className="muted">
+              Enter the six-digit code from your authenticator app to finish signing in.
+            </p>
           )}
           {error && (
             <p role="alert" className="error">

@@ -111,7 +111,7 @@ func TestUserManagementAuthorizationAndMFA(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if w = request(m, "POST", "/api/v1/auth/login", `{"email":"client@example.org","password":"client-long-password"}`, nil, ""); w.Code != 401 {
+	if w = request(m, "POST", "/api/v1/auth/login", `{"email":"client@example.org","password":"client-long-password"}`, nil, ""); w.Code != http.StatusAccepted || len(w.Result().Cookies()) != 0 || w.Body.String() != "{\"totp_required\":true}\n" {
 		t.Fatal("MFA bypassed", w.Code)
 	}
 	if w = request(m, "DELETE", "/api/v1/auth/totp", `{"password":"client-long-password","code":"bad"}`, &client, session.CSRF); w.Code != 400 {

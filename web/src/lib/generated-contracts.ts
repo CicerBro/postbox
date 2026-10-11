@@ -16,6 +16,10 @@ export interface LoginResponse {
   expires_at: number;
 }
 
+export interface TOTPChallengeResponse {
+  totp_required: boolean;
+}
+
 export interface LogoutResponse {
   logged_out: boolean;
 }

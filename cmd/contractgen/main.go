@@ -23,6 +23,7 @@ type contract struct {
 var contracts = []contract{
 	{"internal/httpapi/auth.go", "SessionResponse"},
 	{"internal/httpapi/auth.go", "LoginResponse"},
+	{"internal/httpapi/auth.go", "TOTPChallengeResponse"},
 	{"internal/httpapi/auth.go", "LogoutResponse"},
 	{"internal/subscribers/types.go", "Subscriber"},
 }

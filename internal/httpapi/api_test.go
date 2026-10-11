@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"github.com/pquerna/otp/totp"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -238,7 +239,39 @@ func TestTOTPRequired(t *testing.T) {
 	m := http.NewServeMux()
 	a.Register(m)
 	w := request(m, "POST", "/api/v1/auth/login", `{"email":"admin@example.org","password":"long-test-password"}`, nil, "")
-	if w.Code != 401 {
-		t.Fatal("TOTP bypass", w.Code)
+	if w.Code != http.StatusAccepted || w.Body.String() != "{\"totp_required\":true}\n" || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("expected TOTP challenge", w.Code, w.Body.String())
+	}
+	if len(w.Result().Cookies()) != 0 {
+		t.Fatal("TOTP challenge set a session cookie")
+	}
+	for _, body := range []string{
+		`{"email":"admin@example.org","password":"wrong-password"}`,
+		`{"email":"missing@example.org","password":"long-test-password"}`,
+		`{"email":"admin@example.org","password":"wrong-password","totp":"123456"}`,
+	} {
+		w = request(m, "POST", "/api/v1/auth/login", body, nil, "")
+		if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "invalid credentials") || len(w.Result().Cookies()) != 0 {
+			t.Fatal("invalid credentials should not receive a TOTP challenge", w.Code, w.Body.String())
+		}
+	}
+	w = request(m, "POST", "/api/v1/auth/login", `{"email":"admin@example.org","password":"long-test-password","totp":"invalid"}`, nil, "")
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "invalid authenticator code") || len(w.Result().Cookies()) != 0 {
+		t.Fatal("invalid TOTP accepted", w.Code, w.Body.String())
+	}
+	var sessions int
+	if err := db.Reader.QueryRow("SELECT count(*) FROM sessions").Scan(&sessions); err != nil || sessions != 0 {
+		t.Fatal("session created before TOTP verification", sessions, err)
+	}
+	code, err := totp.GenerateCode("JBSWY3DPEHPK3PXP", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = request(m, "POST", "/api/v1/auth/login", `{"email":"admin@example.org","password":"long-test-password","totp":"`+code+`"}`, nil, "")
+	if w.Code != http.StatusOK || len(w.Result().Cookies()) != 1 {
+		t.Fatal("valid TOTP rejected", w.Code, w.Body.String())
+	}
+	if err := db.Reader.QueryRow("SELECT count(*) FROM sessions").Scan(&sessions); err != nil || sessions != 1 {
+		t.Fatal("expected one session after TOTP verification", sessions, err)
 	}
 }

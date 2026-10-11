@@ -250,7 +250,7 @@ export default function App() {
           beginSession(fresh.user_id);
           identity.current = fresh.user_id;
           setCsrfToken(fresh.csrf_token);
-          client.clear();
+          client.removeQueries({ predicate: (query) => query.queryKey[0] !== "session" });
           client.setQueryData(["session"], fresh);
           setExpired(false);
           localStorage.setItem("postbox-auth-change", `login:${crypto.randomUUID()}`);

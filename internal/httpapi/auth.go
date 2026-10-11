@@ -34,6 +34,10 @@ type LoginResponse struct {
 	ExpiresAt int64  `json:"expires_at"`
 }
 
+type TOTPChallengeResponse struct {
+	TOTPRequired bool `json:"totp_required"`
+}
+
 type LogoutResponse struct {
 	LoggedOut bool `json:"logged_out"`
 }
@@ -97,9 +101,20 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	var hash string
 	var otp sql.NullString
 	err := a.db.Reader.QueryRowContext(r.Context(), "SELECT id,password_hash,totp_secret FROM users WHERE email=?", strings.ToLower(strings.TrimSpace(in.Email))).Scan(&id, &hash, &otp)
-	if err != nil || !verifyPassword(hash, in.Password) || (otp.Valid && otp.String != "" && !totp.Validate(in.TOTP, otp.String)) {
+	if err != nil || !verifyPassword(hash, in.Password) {
 		fail(w, 401, errors.New("invalid credentials"))
 		return
+	}
+	if otp.Valid && otp.String != "" {
+		if in.TOTP == "" {
+			w.Header().Set("Cache-Control", "no-store")
+			respond(w, http.StatusAccepted, TOTPChallengeResponse{TOTPRequired: true})
+			return
+		}
+		if !totp.Validate(in.TOTP, otp.String) {
+			fail(w, 401, errors.New("invalid authenticator code"))
+			return
+		}
 	}
 	token := secret()
 	csrf := sessionCSRF(token)

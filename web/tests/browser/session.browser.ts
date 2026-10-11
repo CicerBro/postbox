@@ -1,7 +1,7 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 
 async function fixture(context: BrowserContext) {
-  const state = { user: 1, valid: true, failure: 0, loginFailure: false, writes: 0 };
+  const state = { user: 1, valid: true, failure: 0, loginFailure: false, totpRequired: false, writes: 0 };
   await context.route('**/api/v1/**', async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace('/api/v1', '');
@@ -9,6 +9,8 @@ async function fixture(context: BrowserContext) {
     let body: unknown = [];
     if (path === '/auth/login') {
       if (state.loginFailure) { status = 401; body = { error: 'Invalid credentials' }; }
+      else if (state.totpRequired && !request.postDataJSON().totp) { status = 202; body = { totp_required: true }; }
+      else if (state.totpRequired && request.postDataJSON().totp !== '123456') { status = 401; body = { error: 'invalid authenticator code' }; }
       else { state.valid = true; body = {}; }
     } else if (path === '/auth/logout') { state.valid = false; body = {}; }
     else if (!state.valid) { status = 401; body = { error: 'Unauthorized' }; }
@@ -40,6 +42,55 @@ async function requests(page: Page, kind = 'api') {
   }, kind);
 }
 
+test('TOTP challenge prompts without an error or session refresh, then allows retry and sign-in', async ({ page, context }) => {
+  const state = await fixture(context);
+  state.valid = false;
+  state.totpRequired = true;
+  let sessionReads = 0;
+  const attempts: unknown[] = [];
+  context.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/v1/auth/session') sessionReads++;
+    if (path === '/api/v1/auth/login') attempts.push(request.postDataJSON());
+  });
+  await page.goto('/campaigns/new');
+  await expect(page.getByRole('heading', { name: 'Sign in to Postbox' })).toBeVisible();
+  const initialSessionReads = sessionReads;
+  await login(page);
+  const code = page.getByLabel('Authenticator code', { exact: true });
+  await expect(code).toBeVisible();
+  await expect(code).toBeFocused();
+  await expect(code).toHaveAttribute('required', '');
+  await expect(page.getByRole('status')).toHaveText('Enter the six-digit code from your authenticator app to finish signing in.');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(state.valid).toBe(false);
+  expect(sessionReads).toBe(initialSessionReads);
+  await expect(page.getByLabel('Password', { exact: true })).toHaveValue('password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  expect(attempts).toHaveLength(1);
+  await code.fill('654321');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('invalid authenticator code');
+  expect(state.valid).toBe(false);
+  await code.fill('123456');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByLabel('Subject', { exact: true })).toBeVisible();
+  expect(attempts).toEqual([
+    { email: 'a@example.com', password: 'password', totp: '' },
+    { email: 'a@example.com', password: 'password', totp: '654321' },
+    { email: 'a@example.com', password: 'password', totp: '123456' },
+  ]);
+});
+
+test('accounts without TOTP sign in directly', async ({ page, context }) => {
+  const state = await fixture(context);
+  state.valid = false;
+  await page.goto('/campaigns/new');
+  await login(page);
+  await expect(page.getByLabel('Subject', { exact: true })).toBeVisible();
+  expect(state.valid).toBe(true);
+});
+
 test('expiry while editing gives one reauthentication, preserves same account draft and never replays a write', async ({ page, context }) => {
   const state = await fixture(context);
   await edit(page);
@@ -68,6 +119,7 @@ test('403 and validation remain local; bad login does not trigger another expiry
   state.loginFailure = true;
   await login(page);
   await expect(page.getByText('Invalid credentials', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Authenticator code', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Sign in to Postbox' })).toHaveCount(1);
 });
 
