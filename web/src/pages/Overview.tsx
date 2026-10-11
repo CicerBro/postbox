@@ -1,3 +1,4 @@
+import { SESSendingSummary } from "../components/SESSendingSummary";
 import { useState } from "react";
 import {
   Send,
@@ -214,6 +215,7 @@ export function OverviewPage({ brandId }: { brandId: number }) {
     return (
       <>
         {heading}
+      <SESSendingSummary brandId={brandId} />
         <p role="status">Loading overview…</p>
       </>
     );
@@ -221,6 +223,7 @@ export function OverviewPage({ brandId }: { brandId: number }) {
     return (
       <>
         {heading}
+      <SESSendingSummary brandId={brandId} />
         <div role="alert">
           {query.error.message}{" "}
           <Button variant="outline" onClick={() => query.refetch()}>
@@ -249,6 +252,7 @@ export function OverviewPage({ brandId }: { brandId: number }) {
   return (
     <>
       {heading}
+      <SESSendingSummary brandId={brandId} />
       <div className="kpi-strip">
         {kpis.map(([label, key, delta, Icon]) => (
           <div className="kpi" key={key}>

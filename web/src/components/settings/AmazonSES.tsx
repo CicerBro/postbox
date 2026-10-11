@@ -1,3 +1,4 @@
+import { sesRegions, type SESSendingStatus } from "../../lib/aws-ses";
 import { useEffect, useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
@@ -16,20 +17,6 @@ type Settings = {
   sns_topic_arn: string;
   updated_at?: number | string;
 };
-type Status = {
-  custom_endpoint?: boolean;
-  account_id?: string;
-  region: string;
-  sending_enabled: boolean;
-  production_access_enabled: boolean;
-  enforcement_status?: string;
-  checked_at?: number | string;
-  quota: {
-    max_send_rate: number;
-    max_24_hour_send: number;
-    sent_last_24_hours: number;
-  };
-};
 
 type EventStatus = {
   configured: boolean;
@@ -41,38 +28,6 @@ type EventStatus = {
   connection_revision?: number | string;
 };
 
-// Amazon SES API endpoints: https://docs.aws.amazon.com/general/latest/gr/ses.html
-const regions = [
-  ["us-east-1", "US East (N. Virginia)"],
-  ["us-east-2", "US East (Ohio)"],
-  ["us-west-1", "US West (N. California)"],
-  ["us-west-2", "US West (Oregon)"],
-  ["af-south-1", "Africa (Cape Town)"],
-  ["ap-south-2", "Asia Pacific (Hyderabad)"],
-  ["ap-southeast-3", "Asia Pacific (Jakarta)"],
-  ["ap-southeast-5", "Asia Pacific (Malaysia)"],
-  ["ap-south-1", "Asia Pacific (Mumbai)"],
-  ["ap-northeast-3", "Asia Pacific (Osaka)"],
-  ["ap-northeast-2", "Asia Pacific (Seoul)"],
-  ["ap-southeast-1", "Asia Pacific (Singapore)"],
-  ["ap-southeast-2", "Asia Pacific (Sydney)"],
-  ["ap-northeast-1", "Asia Pacific (Tokyo)"],
-  ["ca-central-1", "Canada (Central)"],
-  ["ca-west-1", "Canada West (Calgary)"],
-  ["eu-central-1", "Europe (Frankfurt)"],
-  ["eu-west-1", "Europe (Ireland)"],
-  ["eu-west-2", "Europe (London)"],
-  ["eu-south-1", "Europe (Milan)"],
-  ["eu-west-3", "Europe (Paris)"],
-  ["eu-north-1", "Europe (Stockholm)"],
-  ["eu-central-2", "Europe (Zurich)"],
-  ["il-central-1", "Israel (Tel Aviv)"],
-  ["me-south-1", "Middle East (Bahrain)"],
-  ["me-central-1", "Middle East (UAE)"],
-  ["sa-east-1", "South America (São Paulo)"],
-  ["us-gov-east-1", "AWS GovCloud (US-East)"],
-  ["us-gov-west-1", "AWS GovCloud (US-West)"],
-].map(([value, name]) => ({ value, label: `${name} (${value})` }));
 
 function timestamp(value?: number | string) {
   if (!value) return "Not checked yet";
@@ -91,7 +46,7 @@ export function AmazonSES({ brandId }: { brandId: number }) {
   const [secretKey, setSecretKey] = useState("");
   const [token, setToken] = useState("");
   const [clearToken, setClearToken] = useState(false);
-  const [status, setStatus] = useState<Status>();
+  const [status, setStatus] = useState<SESSendingStatus>();
   const q = useQuery({
     queryKey: ["aws-settings", brandId],
     queryFn: () => api<Settings>("/aws-settings", { brandId }),
@@ -141,8 +96,8 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                   <label htmlFor={`${id}-region`} className="text-sm font-medium">AWS region</label>
                   <SelectField id={`${id}-region`} value={region} required disabled={action.busy}
                     onValueChange={(value) => { if (value) setRegion(value); }} placeholder="Select an AWS region"
-                    options={region && !regions.some((option) => option.value === region)
-                      ? [...regions, { value: region, label: region }] : regions} />
+                    options={region && !sesRegions.some((option) => option.value === region)
+                      ? [...sesRegions, { value: region, label: region }] : sesRegions} />
                   <p className="text-sm text-muted-foreground">SES quotas and verified identities belong to a region.</p>
                 </div>
                 <div className="space-y-4">
@@ -223,7 +178,7 @@ export function AmazonSES({ brandId }: { brandId: number }) {
           <Section title="Sending status" description="Live account statistics reported by AWS for the saved connection. Quotas are shared by all senders in this AWS account and region.">
             <Button variant="outline" disabled={action.busy || !q.data.has_credentials || (session.admin && dirty)} onClick={() => {
               void action.run(async () => {
-                const result = await api<Status>("/aws-settings/check", { method: "POST", brandId });
+                const result = await api<SESSendingStatus>("/aws-settings/check", { method: "POST", brandId });
                 setStatus(result);
               }, "Connection checked. Sending quota refreshed.");
             }}>{action.busy ? "Working…" : status ? "Refresh quota" : "Test connection"}</Button>
