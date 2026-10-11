@@ -1,8 +1,60 @@
 # SES & SNS Setup
 
-Apply permissions to each brand's saved IAM keys, scoped to its AWS account, region and resources. Replace `REGION`, `ACCOUNT`, `example.com` and `https://mail.example.com/events/sns` in the checked-in policies. Use both policies while setting up a brand. For GovCloud, replace the ARN partition `aws` with `aws-us-gov`.
+Postbox uses AWS IAM API credentials to send through SES and configure SNS delivery events. Each brand needs a saved **Access key ID** and **Secret access key**. The same credentials cover both services; you do not create a separate SNS API key. SES SMTP credentials cannot be used here. Server environment credentials, AWS profiles and instance roles do not supply the brand's keys.
+
+## Prepare your AWS account and region
+
+Sign in to AWS with an administrator who can manage IAM users and policies. Choose the account and SES region you will use for the brand, and note the 12-digit account ID from the account menu at the top right of the console.
+
+Open the [Amazon SES console](https://console.aws.amazon.com/ses/) and select that region in the console's region selector. Under **Configuration > Identities**, check your sender domain, or create it later through Postbox's **Domains** page. Publish the verification records at your DNS provider. Under **Account dashboard**, check whether SES is in the sandbox. Select **Request production access** before sending to an ordinary audience; see AWS's [production access instructions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html). Verification, sandbox status and quotas are specific to the region.
+
+## Create the API keys in IAM
+
+Use a dedicated IAM user for the brand's Postbox connection, such as `postbox-example`. Create the keys in IAM, rather than SES's **SMTP settings**. The IAM user needs API access only and does not need a console password. Do not use root account access keys.
+
+1. Open [IAM > Policies](https://console.aws.amazon.com/iam/home#/policies) and select **Create policy > JSON**. Paste the [runtime policy](../../deploy/iam-runtime.json). Replace `REGION` with the SES region code (for example, `eu-west-1`), `ACCOUNT` with your 12-digit account ID, and `example.com` with your sender domain. Review and create the policy with a name such as `PostboxRuntime`.
+2. Create a second policy from the [setup policy](../../deploy/iam-setup.json), named for example `PostboxSetup`. Replace the same placeholders and set `https://mail.example.com/events/sns` to your actual public `POSTBOX_BASE_URL` followed by `/events/sns`. Add every sender domain and any existing resource names as described in [IAM permissions](#iam-permissions).
+3. Open [IAM > Users](https://console.aws.amazon.com/iam/home#/users), select **Create user**, and enter the dedicated user name. Leave console access disabled. Choose **Attach policies directly**, select your runtime and setup policies, and finish creating the user. For an existing user, open its **Permissions > Add permissions > Attach policies directly** and attach both policies.
+4. Open that user's **Security credentials** tab. Under **Access keys**, select **Create access key**. Choose the use case that matches your installation, such as **Application running outside AWS** for a self-hosted server, review the guidance, and complete **Create access key**.
+5. Copy the **Access key ID** and **Secret access key** from the retrieval screen into a secure location. AWS only reveals the secret when the key is created. If it is lost, create a replacement key.
+
+The administrator creating the user, policies and keys needs IAM management permissions. Those permissions do not belong in the app's runtime or setup policies. See AWS's [IAM user guide](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_users_create.html), [JSON policy instructions](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_create-console.html) and [access key instructions](https://docs.aws.amazon.com/IAM/latest/UserGuide/access-key-self-managed.html).
+
+## Save the keys in Postbox
+
+Sign in to Postbox as an administrator, select the brand, and open **Settings > Amazon SES**.
+
+| Postbox field | Value to enter |
+| --- | --- |
+| AWS region | The region selected in the SES console |
+| Access key ID | The IAM access key ID from the retrieval screen |
+| Secret access key | The matching IAM secret access key |
+| Session token (optional) | Leave blank for IAM user keys; supply the matching token only for temporary AWS credentials |
+| SNS topic ARN | Leave blank for automatic setup, or copy an existing Standard topic ARN from the same account and region |
+
+Select **Save Amazon SES settings**, then **Test connection** to check the account and quota. Saved credentials are encrypted in SQLite and are never returned by the API; empty key fields after saving are expected. Continue with [automatic SES and SNS setup](#automatic-ses-and-sns-setup) to connect delivery events.
+
+Temporary credentials expire and must be replaced in Postbox before expiry; the app does not refresh them automatically. To rotate IAM user keys, create a new pair in the same user's **Security credentials** tab, enter both replacement values in Postbox, save and test the connection, then deactivate and delete the old key in IAM. If switching from temporary credentials to IAM user keys, select **Remove saved session token** as well. Leaving secret fields blank preserves their saved values.
+
+## Find SES and SNS resources in the AWS Console
+
+These links open the standard AWS console. Check the account and select the brand's region after opening SES or SNS; IAM is global. For GovCloud, use the corresponding console for that partition.
+
+| What you need | Console location | What to check or copy |
+| --- | --- | --- |
+| API keys | [IAM > Users](https://console.aws.amazon.com/iam/home#/users) > your user > Security credentials > Access keys | Create or rotate the access key pair |
+| App permissions | [IAM > Policies](https://console.aws.amazon.com/iam/home#/policies), then your user's Permissions tab | Runtime and setup policies are attached |
+| SES production access and limits | [SES](https://console.aws.amazon.com/ses/) > Account dashboard | Sandbox status, sending quota and production access request |
+| Sender verification | [SES](https://console.aws.amazon.com/ses/) > Configuration > Identities > your domain | Verification status and DNS records |
+| SES event destination | [SES](https://console.aws.amazon.com/ses/) > Configuration > Configuration sets > saved configuration set > Event destinations | Enabled `postbox` destination and its SNS topic |
+| SNS topic ARN and policy | [SNS > Topics](https://console.aws.amazon.com/sns/v3/home#/topics) > saved topic | Copy the topic ARN; inspect Access policy for the SES publish permission |
+| HTTPS callback confirmation | [SNS > Subscriptions](https://console.aws.amazon.com/sns/v3/home#/subscriptions) | Match the topic and `/events/sns` endpoint; check confirmation status |
+
+Automatic setup creates the event resources for you. Use these pages to inspect them or locate an existing topic to reuse.
 
 ## IAM permissions
+
+Apply permissions to each brand's saved IAM keys, scoped to its AWS account, region and resources. Replace `REGION`, `ACCOUNT`, `example.com` and `https://mail.example.com/events/sns` in the checked-in policies. Use both policies while setting up a brand. For GovCloud, replace the ARN partition `aws` with `aws-us-gov`.
 
 The [runtime policy](../../deploy/iam-runtime.json) covers sending, connection checks, domain verification status, event status and account suppression import. The [setup policy](../../deploy/iam-setup.json) adds the permissions needed to create SES identities and event resources from the app.
 
@@ -25,7 +77,7 @@ The [runtime policy](../../deploy/iam-runtime.json) covers sending, connection c
 
 Add an identity ARN for every domain you intend to create or change. Domain and MAIL FROM setup do not create DNS records at your DNS provider. They return the records AWS requires. BYODKIM and DEED parent configuration remain in AWS.
 
-Generated configuration sets use `postbox-<deployment hash>-brand-<brand ID>` and topics use that name followed by `-events`. The examples allow the `postbox-*` prefix, plus the manually named `postbox` configuration set and `postbox-events` topic. Replace those prefix patterns with exact ARNs after provisioning if desired. For existing resources with other names, add their exact ARNs to both policies. Identity ARNs use `arn:aws:ses:REGION:ACCOUNT:identity/example.com`; configuration sets use `configuration-set/NAME`; SNS topics use `arn:aws:sns:REGION:ACCOUNT:NAME`.
+Generated configuration sets use `postbox-<deployment hash>-brand-<brand ID>` and topics use that name followed by `-events`. The examples allow the `postbox-*` prefix, which includes the manually named `postbox-events` topic, plus the manually named `postbox` configuration set. The exact `postbox` configuration set ARN is needed because `postbox-*` does not match `postbox`. Replace those prefix patterns with exact ARNs after provisioning if desired. For existing resources with other names, add their exact ARNs to both policies. Identity ARNs use `arn:aws:ses:REGION:ACCOUNT:identity/example.com`; configuration sets use `configuration-set/NAME`; SNS topics use `arn:aws:sns:REGION:ACCOUNT:NAME`.
 
 Existing keys need the setup grants before the buttons can work. You may remove creation and policy-management grants after setup; keep the runtime event-read permissions for **Refresh event status**. Restore the setup grants before rerunning setup or changing MAIL FROM. Do not grant `sns:*` or `ses:*` for this workflow.
 

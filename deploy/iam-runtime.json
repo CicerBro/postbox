@@ -57,10 +57,7 @@
       "Action": [
         "sns:ListSubscriptionsByTopic"
       ],
-      "Resource": [
-        "arn:aws:sns:REGION:ACCOUNT:postbox-events",
-        "arn:aws:sns:REGION:ACCOUNT:postbox-*"
-      ]
+      "Resource": "arn:aws:sns:REGION:ACCOUNT:postbox-*"
     }
   ]
 }

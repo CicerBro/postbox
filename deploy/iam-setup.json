@@ -31,10 +31,7 @@
         "sns:SetTopicAttributes",
         "sns:SetSubscriptionAttributes"
       ],
-      "Resource": [
-        "arn:aws:sns:REGION:ACCOUNT:postbox-events",
-        "arn:aws:sns:REGION:ACCOUNT:postbox-*"
-      ]
+      "Resource": "arn:aws:sns:REGION:ACCOUNT:postbox-*"
     },
     {
       "Sid": "SubscribePostboxHTTPS",
@@ -42,10 +39,7 @@
       "Action": [
         "sns:Subscribe"
       ],
-      "Resource": [
-        "arn:aws:sns:REGION:ACCOUNT:postbox-events",
-        "arn:aws:sns:REGION:ACCOUNT:postbox-*"
-      ],
+      "Resource": "arn:aws:sns:REGION:ACCOUNT:postbox-*",
       "Condition": {
         "StringEquals": {
           "sns:Protocol": "https",

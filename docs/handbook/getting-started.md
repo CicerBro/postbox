@@ -37,7 +37,7 @@ Open <http://localhost:8080> and sign in with your password and authenticator co
 
 A brand holds its sender identity, audience and AWS connection. Select or create the brand you will send from, then open **Settings > Amazon SES** as an administrator.
 
-1. Enter the brand's AWS access key, secret key, optional session token and SES region.
+1. Follow [Create the API keys in IAM](aws.md#create-the-api-keys-in-iam) to create a dedicated user, attach the Postbox policies and retrieve the keys in the AWS Console. Enter the brand's AWS access key, secret key, optional session token and SES region, then select **Save Amazon SES settings**.
 2. Check the connection and review its account status and sending quota.
 3. Set the sender name, sender email and reply-to address in **Brand identity**.
 
