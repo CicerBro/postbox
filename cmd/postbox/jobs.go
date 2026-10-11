@@ -218,7 +218,7 @@ func registerBrandSuppressionSync(ctx context.Context, db *store.DB, r *jobs.Run
 }
 
 func registerBrandSuppressionSyncChecked(ctx context.Context, db *store.DB, r *jobs.Runner, resolve func(context.Context, int64) (events.SESAdmin, func(*sql.Conn) error, error)) error {
-	return registerSuppressionJob(ctx, db, r, func(ctx context.Context) error {
+	return registerSuppressionJob(ctx, r, func(ctx context.Context) error {
 		rows, err := db.Reader.QueryContext(ctx, "SELECT id FROM brands ORDER BY id")
 		if err != nil {
 			return err
@@ -251,19 +251,13 @@ func registerBrandSuppressionSyncChecked(ctx context.Context, db *store.DB, r *j
 	})
 }
 
-func registerSuppressionJob(ctx context.Context, db *store.DB, r *jobs.Runner, sync func(context.Context) error) error {
-	schedule := func(ctx context.Context, at time.Time) error {
-		_, err := db.Writer.ExecContext(ctx, `INSERT INTO jobs(queue,payload,status,run_at,created_at) SELECT 'ses_suppressions','{}','pending',?,? WHERE NOT EXISTS(SELECT 1 FROM jobs WHERE queue='ses_suppressions' AND status='pending')`, at.UnixMilli(), time.Now().UnixMilli())
-		return err
-	}
-	if err := r.Register("ses_suppressions", func(ctx context.Context, j jobs.Job) error {
-		// Keep the daily job alive even if one account is unavailable.
-		err := sync(ctx)
-		return errors.Join(err, schedule(ctx, time.Now().Add(24*time.Hour)))
+func registerSuppressionJob(ctx context.Context, r *jobs.Runner, sync func(context.Context) error) error {
+	if err := r.RegisterRecurring("ses_suppressions", 24*time.Hour, func(ctx context.Context, j jobs.Job) error {
+		return sync(ctx)
 	}); err != nil {
 		return err
 	}
-	return schedule(ctx, time.Now())
+	return r.ScheduleRecurring(ctx)
 }
 
 func validateTransactional(ctx context.Context, db *store.DB, p transactionalEmail) error {

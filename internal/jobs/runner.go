@@ -53,6 +53,7 @@ type Runner struct {
 	cfg                                                      Config
 	mu                                                       sync.RWMutex
 	handlers                                                 map[string]Handler
+	recurrences                                              map[string]time.Duration
 	running                                                  atomic.Bool
 	claimed, completed, retried, failed, recovered, inflight atomic.Int64
 }
@@ -79,7 +80,7 @@ func New(db *store.DB, cfg Config) *Runner {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	r := &Runner{db: db, cfg: cfg, handlers: map[string]Handler{}}
+	r := &Runner{db: db, cfg: cfg, handlers: map[string]Handler{}, recurrences: map[string]time.Duration{}}
 	_ = r.Register("outbound_webhook", r.deliverWebhook)
 	return r
 }
@@ -150,9 +151,17 @@ func (r *Runner) claim(ctx context.Context) (Job, Handler, error) {
 	for _, q := range qs {
 		var j Job
 		var payload string
-		// The FULL WAL commit must finish before returning a handler that can
-		// contact an external mail service. Recovery holds interrupted mail jobs.
+		// Commit the claim before contacting an external mail service. WAL uses
+		// NORMAL synchronization; recovery holds interrupted mail jobs.
 		err := r.db.Immediate(ctx, func(c *sql.Conn) error {
+			r.mu.RLock()
+			_, recurring := r.recurrences[q]
+			r.mu.RUnlock()
+			if recurring {
+				if err := materializeRecurring(ctx, c, q, time.Now().UnixMilli()); err != nil {
+					return err
+				}
+			}
 			return c.QueryRowContext(ctx, `UPDATE jobs SET status='running',attempts=attempts+1,locked_until=? WHERE id=(SELECT id FROM jobs WHERE queue=? AND status='pending' AND run_at<=? ORDER BY run_at,id LIMIT 1) AND status='pending' RETURNING id,queue,payload,attempts,locked_until`, time.Now().Add(r.cfg.Lease).UnixMilli(), q, time.Now().UnixMilli()).Scan(&j.ID, &j.Queue, &payload, &j.Attempts, &j.LockedUntil)
 		})
 		if errors.Is(err, sql.ErrNoRows) {

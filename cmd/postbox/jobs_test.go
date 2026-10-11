@@ -136,8 +136,8 @@ func TestBrandSuppressionJobContinuesAfterAccountFailure(t *testing.T) {
 			time.Sleep(time.Millisecond)
 			continue
 		}
-		if err := db.Reader.QueryRow(`SELECT count(*) FROM jobs WHERE queue='ses_suppressions' AND status='pending' AND run_at>?`, time.Now().Add(23*time.Hour).UnixMilli()).Scan(&next); err != nil || next != 1 {
-			t.Fatalf("next jobs %d: %v", next, err)
+		if err := db.Reader.QueryRow(`SELECT count(*) FROM recurring_jobs WHERE queue='ses_suppressions' AND next_run_at>?`, time.Now().Add(23*time.Hour).UnixMilli()).Scan(&next); err != nil || next != 1 {
+			t.Fatalf("next schedules %d: %v", next, err)
 		}
 		var id int64
 		if err := db.Reader.QueryRow(`SELECT brand_id FROM suppressions WHERE value='reader@example.org'`).Scan(&id); err != nil || id != 2 {

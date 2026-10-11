@@ -40,7 +40,7 @@ func (r *Runner) RegisterMaintenance(cfg MaintenanceConfig) error {
 	if cfg.BackupTimeout > time.Minute {
 		return errors.New("backup timeout must not exceed one minute")
 	}
-	if err := r.Register("housekeeping", func(ctx context.Context, j Job) error {
+	if err := r.RegisterRecurring("housekeeping", cfg.Interval, func(ctx context.Context, j Job) error {
 		if cfg.RawRetention > 0 {
 			if err := r.PurgeRaw(ctx, time.Now().Add(-cfg.RawRetention), cfg.BatchSize); err != nil {
 				return err
@@ -57,12 +57,12 @@ func (r *Runner) RegisterMaintenance(cfg MaintenanceConfig) error {
 		if _, err := r.db.Writer.ExecContext(ctx, "PRAGMA optimize"); err != nil {
 			return err
 		}
-		return r.schedule(ctx, "housekeeping", time.Now().Add(cfg.Interval))
+		return nil
 	}); err != nil {
 		return err
 	}
 	if cfg.BackupDirectory != "" {
-		if err := r.Register("backup", func(ctx context.Context, j Job) error {
+		if err := r.RegisterRecurring("backup", cfg.BackupInterval, func(ctx context.Context, j Job) error {
 			ctx, cancel := context.WithTimeout(ctx, cfg.BackupTimeout)
 			defer cancel()
 			if err := os.MkdirAll(cfg.BackupDirectory, 0700); err != nil {
@@ -72,7 +72,7 @@ func (r *Runner) RegisterMaintenance(cfg MaintenanceConfig) error {
 			if err := r.Backup(ctx, path); err != nil {
 				return err
 			}
-			return r.schedule(ctx, "backup", time.Now().Add(cfg.BackupInterval))
+			return nil
 		}); err != nil {
 			return err
 		}
@@ -80,25 +80,9 @@ func (r *Runner) RegisterMaintenance(cfg MaintenanceConfig) error {
 	return nil
 }
 
-// ScheduleMaintenance ensures at most one pending periodic task per queue.
+// ScheduleMaintenance persists registered maintenance schedules without moving due times.
 func (r *Runner) ScheduleMaintenance(ctx context.Context) error {
-	for _, q := range []string{"housekeeping", "backup"} {
-		r.mu.RLock()
-		_, exists := r.handlers[q]
-		r.mu.RUnlock()
-		if exists {
-			if err := r.schedule(ctx, q, time.Now()); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-func (r *Runner) schedule(ctx context.Context, queue string, at time.Time) error {
-	return r.db.Immediate(ctx, func(c *sql.Conn) error {
-		_, err := c.ExecContext(ctx, `INSERT INTO jobs(queue,payload,status,run_at,created_at) SELECT ?,'{}','pending',?,? WHERE NOT EXISTS(SELECT 1 FROM jobs WHERE queue=? AND status='pending')`, queue, at.UnixMilli(), time.Now().UnixMilli(), queue)
-		return err
-	})
+	return r.ScheduleRecurring(ctx)
 }
 
 // PurgeRaw commits each small batch independently and never modifies aggregate counters.
@@ -139,7 +123,11 @@ func (r *Runner) PurgeUnconfirmed(ctx context.Context, before time.Time, batch i
 	for {
 		var n int64
 		err := r.db.Immediate(ctx, func(c *sql.Conn) error {
-			res, err := c.ExecContext(ctx, `DELETE FROM list_subscribers WHERE (list_id,subscriber_id) IN (SELECT list_id,subscriber_id FROM list_subscribers WHERE status='unconfirmed' AND created_at<? ORDER BY list_id,created_at LIMIT ?)`, before.UnixMilli(), batch)
+			const expired = `SELECT list_id,subscriber_id FROM list_subscribers WHERE status='unconfirmed' AND COALESCE(confirmation_started_at,updated_at)<? ORDER BY COALESCE(confirmation_started_at,updated_at),list_id,subscriber_id LIMIT ?`
+			if _, err := c.ExecContext(ctx, `DELETE FROM subscription_confirmations WHERE (list_id,subscriber_id) IN (`+expired+`)`, before.UnixMilli(), batch); err != nil {
+				return err
+			}
+			res, err := c.ExecContext(ctx, `DELETE FROM list_subscribers WHERE (list_id,subscriber_id) IN (`+expired+`)`, before.UnixMilli(), batch)
 			if err != nil {
 				return err
 			}

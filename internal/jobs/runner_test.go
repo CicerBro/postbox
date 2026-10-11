@@ -217,7 +217,7 @@ func TestEmitAndDailyRollup(t *testing.T) {
 func TestDueAndRetentionIndexes(t *testing.T) {
 	r := testRunner(t)
 	ctx := context.Background()
-	queries := []string{"SELECT id FROM jobs WHERE queue='test' AND status='pending' AND run_at<=1 ORDER BY run_at,id LIMIT 1", "SELECT id FROM opens WHERE at<1 ORDER BY at,id LIMIT 1000", "SELECT id FROM clicks WHERE at<1 ORDER BY at,id LIMIT 1000", "SELECT id FROM ses_events WHERE at<1 ORDER BY at,id LIMIT 1000"}
+	queries := []string{"SELECT id FROM jobs WHERE queue='test' AND status='pending' AND run_at<=1 ORDER BY run_at,id LIMIT 1", "SELECT id FROM opens WHERE at<1 ORDER BY at,id LIMIT 1000", "SELECT id FROM clicks WHERE at<1 ORDER BY at,id LIMIT 1000", "SELECT id FROM ses_events WHERE at<1 ORDER BY at,id LIMIT 1000", "SELECT list_id,subscriber_id FROM list_subscribers WHERE status='unconfirmed' AND COALESCE(confirmation_started_at,updated_at)<1 ORDER BY COALESCE(confirmation_started_at,updated_at),list_id,subscriber_id LIMIT 1000"}
 	for _, q := range queries {
 		rows, err := r.db.Reader.QueryContext(ctx, "EXPLAIN QUERY PLAN "+q)
 		if err != nil {
