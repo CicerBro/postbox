@@ -251,10 +251,6 @@ func registerBrandSuppressionSyncChecked(ctx context.Context, db *store.DB, r *j
 	})
 }
 
-func registerSuppressionSync(ctx context.Context, db *store.DB, r *jobs.Runner, client events.SESAdmin) error {
-	return registerSuppressionJob(ctx, db, r, func(ctx context.Context) error { return events.SyncSuppressions(ctx, db, client) })
-}
-
 func registerSuppressionJob(ctx context.Context, db *store.DB, r *jobs.Runner, sync func(context.Context) error) error {
 	schedule := func(ctx context.Context, at time.Time) error {
 		_, err := db.Writer.ExecContext(ctx, `INSERT INTO jobs(queue,payload,status,run_at,created_at) SELECT 'ses_suppressions','{}','pending',?,? WHERE NOT EXISTS(SELECT 1 FROM jobs WHERE queue='ses_suppressions' AND status='pending')`, at.UnixMilli(), time.Now().UnixMilli())

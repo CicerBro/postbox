@@ -121,7 +121,7 @@ func eventDB(t *testing.T) *store.DB {
 	}
 	return db
 }
-func TestComplaintDedupGlobalSuppression(t *testing.T) {
+func TestComplaintDedupInferredBrandSuppression(t *testing.T) {
 	db := eventDB(t)
 	s := New(db, &Config{})
 	payload := []byte(`{"eventType":"Complaint","mail":{"messageId":"ses-id"},"complaint":{"complainedRecipients":[{"emailAddress":"user@example.com"}]}}`)
@@ -131,15 +131,15 @@ func TestComplaintDedupGlobalSuppression(t *testing.T) {
 		}
 	}
 	var n int
-	if e := db.Reader.QueryRow(`SELECT count(*) FROM suppressions WHERE brand_id IS NULL AND reason='complaint'`).Scan(&n); e != nil || n != 1 {
+	if e := db.Reader.QueryRow(`SELECT count(*) FROM suppressions WHERE brand_id=1 AND reason='complaint'`).Scan(&n); e != nil || n != 1 {
 		t.Fatalf("suppression %d %v", n, e)
 	}
 	db.Reader.QueryRow(`SELECT count(*) FROM subscribers WHERE status='complained'`).Scan(&n)
-	if n != 2 {
-		t.Fatalf("global status %d", n)
+	if n != 1 {
+		t.Fatalf("brand status %d", n)
 	}
 	db.Reader.QueryRow(`SELECT count(*) FROM list_subscribers WHERE status='unsubscribed'`).Scan(&n)
-	if n != 2 {
+	if n != 1 {
 		t.Fatalf("memberships %d", n)
 	}
 	db.Reader.QueryRow(`SELECT complaints FROM campaign_stats WHERE campaign_id=1`).Scan(&n)
@@ -148,8 +148,8 @@ func TestComplaintDedupGlobalSuppression(t *testing.T) {
 	}
 	var status string
 	db.Reader.QueryRow(`SELECT status FROM campaign_recipients WHERE campaign_id=2`).Scan(&status)
-	if status != "skipped" {
-		t.Fatalf("pending status %s", status)
+	if status != "pending" {
+		t.Fatalf("other brand pending status %s", status)
 	}
 }
 

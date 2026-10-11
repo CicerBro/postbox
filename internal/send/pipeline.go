@@ -90,7 +90,8 @@ func (e *Engine) claim(ctx context.Context, id, last int64) ([]recipient, error)
 }
 
 // beginAttempt atomically checks current consent and records the uncertainty boundary.
-// Immediate returns only after the FULL WAL commit, before any external dispatch.
+// Immediate commits the reservation before any external dispatch. WAL NORMAL
+// protects against process crashes; host crash durability is described by store.Open.
 func (e *Engine) beginAttempt(ctx context.Context, c campaign, r recipient, attempt int) (bool, error) {
 	started := false
 	err := e.db.Immediate(ctx, func(conn *sql.Conn) error {
