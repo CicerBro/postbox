@@ -405,8 +405,17 @@
     font-size: 11px;
     background: var(--surface);
   }
-  tbody tr:hover {
-    background: color-mix(in srgb, var(--soft) 50%, transparent);
+  tbody > tr,
+  .striped-list > li {
+    background: var(--surface);
+  }
+  tbody > tr:nth-child(even),
+  .striped-list > li:nth-child(even) {
+    background: color-mix(in srgb, var(--soft) 50%, var(--surface));
+  }
+  tbody > tr:hover,
+  .striped-list > li:hover {
+    background: var(--soft);
   }
   tbody tr:last-child td {
     border-bottom: 0;

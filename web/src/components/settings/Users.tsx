@@ -55,7 +55,7 @@ export function Users() {
           Retry
         </Button>
       ) : (
-        <ul className="space-y-3">
+        <ul className="striped-list space-y-3">
           {q.data?.pages.flat().map((u) => (
             <li
               key={u.id}

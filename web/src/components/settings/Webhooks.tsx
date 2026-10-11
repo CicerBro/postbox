@@ -124,7 +124,7 @@ export function Webhooks({ brandId }: { brandId: number }) {
           </p>
         </div>
       ) : (
-        <ul className="space-y-3">
+        <ul className="striped-list space-y-3">
           {q.data.pages.flat().map((h) => (
             <li key={h.id} className="rounded-xl border p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
