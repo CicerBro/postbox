@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"net/url"
+	"postbox/internal/htmlpolicy"
 	"postbox/internal/subscribers"
 	"regexp"
 	"strings"
@@ -63,13 +64,15 @@ func TestSavedCampaignAndUnsubscribePreview(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "Latest saved Selected selected@example.org") {
 		t.Fatal(w.Code, w.Body)
 	}
-	if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("Referrer-Policy") != "no-referrer" {
-		t.Fatal("missing privacy headers")
+	assertHTMLPolicy(t, w.Header(), htmlpolicy.Email)
+	if w.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatal("missing preview privacy header")
 	}
 	w = request(mux, "GET", unsubscribe, "", nil, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "selected@example.org") || !strings.Contains(w.Body.String(), "Readers") {
 		t.Fatal(w.Code, w.Body)
 	}
+	assertHTMLPolicy(t, w.Header(), htmlpolicy.UnsubscribePreview)
 	selections := regexp.MustCompile(`name="selection" value="([^"]+)"`).FindAllStringSubmatch(w.Body.String(), -1)
 	if len(selections) != 2 {
 		t.Fatal(w.Body)
@@ -82,6 +85,7 @@ func TestSavedCampaignAndUnsubscribePreview(t *testing.T) {
 		if w.Code != 200 || !strings.Contains(w.Body.String(), "No subscription was changed") {
 			t.Fatal(w.Code, w.Body)
 		}
+		assertHTMLPolicy(t, w.Header(), htmlpolicy.UnsubscribePreview)
 	}
 	var status string
 	if err = db.Reader.QueryRow(`SELECT status FROM list_subscribers WHERE subscriber_id=? AND list_id=?`, sub.ID, list.ID).Scan(&status); err != nil || status != "subscribed" {

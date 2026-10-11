@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"postbox/internal/htmlpolicy"
 	"postbox/internal/tracking/token"
 	"strings"
 	"testing"
@@ -23,6 +24,12 @@ func TestListGoodbyeOverridesAndAllListsDefault(t *testing.T) {
 			s := New(db, &Config{TokenSecret: secret, BaseURL: "https://postbox.example.com"})
 			mux := http.NewServeMux()
 			s.Register(mux)
+			preferences := httptest.NewRecorder()
+			mux.ServeHTTP(preferences, httptest.NewRequest("GET", "https://track.example.com/u/"+token.Encode(secret, 1, 1), nil))
+			if preferences.Code != 200 || !strings.Contains(preferences.Body.String(), `<form method="post">`) {
+				t.Fatal("unsubscribe preferences changed", preferences.Code, preferences.Body)
+			}
+			assertTrackingHTMLPolicy(t, preferences.Header(), htmlpolicy.Preferences)
 			r := httptest.NewRequest("POST", "https://track.example.com/u/"+token.Encode(secret, 1, 1), strings.NewReader("list="+list))
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -34,6 +41,7 @@ func TestListGoodbyeOverridesAndAllListsDefault(t *testing.T) {
 			if w.Code != 200 || w.Body.String() != expected || !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox") {
 				t.Fatalf("goodbye page: %d %s", w.Code, w.Body)
 			}
+			assertTrackingHTMLPolicy(t, w.Header(), htmlpolicy.Custom)
 			var payload string
 			if e := db.Reader.QueryRow("SELECT payload FROM jobs WHERE queue='transactional_email'").Scan(&payload); e != nil || !strings.Contains(payload, expected) {
 				t.Fatalf("goodbye email: %v %s", e, payload)

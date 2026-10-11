@@ -6,22 +6,20 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"postbox/internal/htmlpolicy"
 	"postbox/internal/previewtoken"
 	"postbox/internal/subscribers"
 	"strings"
 )
 
 func previewHeaders(w http.ResponseWriter, forms bool) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
+	policy := htmlpolicy.Email
+	if forms {
+		policy = htmlpolicy.UnsubscribePreview
+	}
+	htmlpolicy.Set(w, policy, "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
-	sandbox, form := "sandbox", "'none'"
-	if forms {
-		sandbox += " allow-forms"
-		form = "'self'"
-	}
-	w.Header().Set("Content-Security-Policy", sandbox+"; default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline' https: http:; base-uri 'none'; form-action "+form)
 }
 
 func (a *API) previewIdentity(w http.ResponseWriter, r *http.Request) (previewtoken.Claims, bool) {

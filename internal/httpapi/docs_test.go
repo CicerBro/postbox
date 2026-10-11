@@ -51,7 +51,11 @@ func TestDocumentationRequiresLogin(t *testing.T) {
 				if loggedIn.Code != 200 {
 					t.Fatal(method, loggedIn.Code, loggedIn.Body.String())
 				}
-				if loggedIn.Header().Get("Cache-Control") != "private, no-store" || !strings.Contains(loggedIn.Header().Get("Vary"), "Cookie") {
+				cache := "private, no-store"
+				if strings.HasPrefix(loggedIn.Header().Get("Content-Type"), "text/html") {
+					cache += ", no-transform"
+				}
+				if loggedIn.Header().Get("Cache-Control") != cache || !strings.Contains(loggedIn.Header().Get("Vary"), "Cookie") {
 					t.Fatal("documentation may be cached outside the session")
 				}
 			}

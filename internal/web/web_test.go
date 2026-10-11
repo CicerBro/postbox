@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
+	"postbox/internal/htmlpolicy"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,34 @@ func TestStaticCaching(t *testing.T) {
 		}
 		if strings.HasSuffix(entry.Name(), ".js") && !strings.Contains(w.Header().Get("Content-Type"), "javascript") {
 			t.Fatal("wrong JavaScript MIME")
+		}
+	}
+}
+
+func TestHTMLProxyProtectionAndBeaconPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		handler http.Handler
+		path    string
+		cache   string
+		code    int
+	}{
+		{Handler(), "/", "no-cache, no-transform", 200},
+		{Handler(), "/index.html", "no-cache, no-transform", 301},
+		{Handler(), "/campaigns/42", "no-cache, no-transform", 200},
+		{DocsHandler(), "/docs/", "private, no-store, no-transform", 200},
+		{DocsHandler(), "/docs/api", "private, no-store, no-transform", 200},
+	} {
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			t.Run(method+tc.path, func(t *testing.T) {
+				w := httptest.NewRecorder()
+				tc.handler.ServeHTTP(w, httptest.NewRequest(method, tc.path, nil))
+				if w.Code != tc.code || w.Header().Get("Cache-Control") != tc.cache {
+					t.Fatal("HTML proxy protection or caching changed", w.Code, w.Header())
+				}
+				if w.Header().Get("Content-Security-Policy") != string(htmlpolicy.App) {
+					t.Fatal("incorrect app HTML policy", w.Header())
+				}
+			})
 		}
 	}
 }

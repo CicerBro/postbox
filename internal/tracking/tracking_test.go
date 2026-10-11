@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"postbox/internal/htmlpolicy"
 	"postbox/internal/render"
 	"postbox/internal/store"
 	"postbox/internal/tracking/token"
@@ -61,7 +62,7 @@ func TestWebIdenticalToSentSnapshot(t *testing.T) {
 	db := trackDB(t)
 	secret := []byte(strings.Repeat("x", 32))
 	base := "https://track.example.com"
-	p, e := render.Prepare(render.Options{CampaignID: 1, Subject: "Hello [Name]", HTML: `<html><body>Dear [Name], [Email] <a href="[unsubscribe]">Leave</a><a href="https://example.com">link</a></body></html>`, TrackingURL: base, Now: time.Now()})
+	p, e := render.Prepare(render.Options{CampaignID: 1, Subject: "Hello [Name]", HTML: `<html><body>Dear [Name], [Email] <a href="[unsubscribe]">Leave</a><a href="https://example.com" target="_blank">link</a></body></html>`, TrackingURL: base, Now: time.Now()})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -81,6 +82,22 @@ func TestWebIdenticalToSentSnapshot(t *testing.T) {
 	mux.ServeHTTP(w, httptest.NewRequest("GET", base+"/w/1/"+tok, nil))
 	if w.Code != 200 || w.Body.String() != expected {
 		t.Fatalf("web does not match sent: status=%d\n%s\n%s", w.Code, w.Body.String(), expected)
+	}
+	assertTrackingHTMLPolicy(t, w.Header(), htmlpolicy.Email)
+	for _, path := range []string{"/w/1/" + tok, "/w/1"} {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest("GET", base+path, nil))
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `target="_blank"`) {
+			t.Fatal("browser-version link changed", w.Code, w.Body)
+		}
+		assertTrackingHTMLPolicy(t, w.Header(), htmlpolicy.Email)
+	}
+}
+
+func assertTrackingHTMLPolicy(t *testing.T, h http.Header, policy htmlpolicy.Policy) {
+	t.Helper()
+	if h.Get("Cache-Control") != "no-store, no-transform" || h.Get("Content-Security-Policy") != string(policy) {
+		t.Fatal("incorrect tracking HTML policy or proxy protection", h)
 	}
 }
 func TestTrackingCountersSurviveRawDrop(t *testing.T) {

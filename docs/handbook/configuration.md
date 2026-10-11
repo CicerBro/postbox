@@ -105,6 +105,14 @@ Factor operations use the acting account ID. Public operations use a canonical c
 
 Only a trusted direct socket peer can supply `X-Forwarded-For`. Entries must be bare IPv4 or IPv6, without ports or zones. An invalid inspected suffix, more than 32 hops or more than 4096 bytes falls back to the direct peer. An invalid direct peer uses a shared `unknown` bucket. Earlier client-supplied entries cannot override the nearest untrusted hop.
 
+## Cloudflare and HTML responses
+
+HTML responses send `Cache-Control: no-transform` alongside their existing caching policy and an empty `Speculation-Rules` header. These prevent proxy changes to HTML and opt out of automatic speculative navigation. Keep Origin Cache Control enabled so Cloudflare respects the response directives.
+
+The app, documentation and signup policies permit Cloudflare Web Analytics only from `https://static.cloudflareinsights.com`, with reporting to `https://cloudflareinsights.com`. Signup also permits Turnstile. Because `no-transform` stops automatic beacon injection, analytics requires an explicitly installed beacon snippet if wanted; allowing its origins does not enable analytics by itself.
+
+Email previews and live browser-version emails stay script-free. Their links can open normal new tabs. Custom thank-you and goodbye HTML also keeps scripts disabled.
+
 ## Upgrade notes
 
 Postbox has not been deployed to production. The development migration history has been consolidated into `001_initial.sql`, which creates the complete current schema for a fresh installation. Historical session resets, consent backfills and AWS credential conversions are no longer upgrade steps.

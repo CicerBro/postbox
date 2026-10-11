@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"postbox/internal/htmlpolicy"
 	"strings"
 
 	"postbox/internal/web"
@@ -29,6 +30,7 @@ func (a *API) docsSession(next http.Handler, redirect bool) http.Handler {
 		}
 		if err != nil {
 			if redirect && (r.Method == http.MethodGet || r.Method == http.MethodHead) && !strings.Contains(r.URL.Path, "/assets/") {
+				htmlpolicy.Protect(w, "private, no-store")
 				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
 			} else {
 				fail(w, status, err)

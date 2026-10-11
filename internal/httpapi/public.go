@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"postbox/internal/htmlpolicy"
 	"postbox/internal/subscribers"
 	"strings"
 	"time"
@@ -58,8 +59,7 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "GET" {
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src https://challenges.cloudflare.com; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'")
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		htmlpolicy.Set(w, htmlpolicy.Signup, "no-store")
 		_ = subscriptionForm.Execute(w, map[string]string{"Name": list.Name, "SiteKey": a.cfg.TurnstileSiteKey})
 		return
 	}
@@ -170,7 +170,6 @@ func (a *API) thankyou(w http.ResponseWriter, r *http.Request, brand, listID int
 		}
 		body = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Thank you</title></head><body><p>" + message + "</p></body></html>"
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; base-uri 'none'; form-action 'none'")
+	htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
 	_, _ = io.WriteString(w, body)
 }

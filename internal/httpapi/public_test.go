@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"postbox/internal/htmlpolicy"
 	"postbox/internal/subscribers"
 	"strings"
 	"testing"
 )
 
 func TestHostedThankyouAndJSONNegotiation(t *testing.T) {
-	_, m, db, cookie, csrf := setup(t)
+	a, m, db, cookie, csrf := setup(t)
 	ctx := context.Background()
 	service := subscribers.New(db)
 	brand, e := service.CreateBrand(ctx, subscribers.Brand{Name: "Hosted", FromEmail: "sender@example.org"})
@@ -23,6 +24,12 @@ func TestHostedThankyouAndJSONNegotiation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	a.cfg.TurnstileSiteKey = "test-site-key"
+	signup := request(m, "GET", "/subscribe/"+list.UUID, "", nil, "")
+	if signup.Code != 200 || !strings.Contains(signup.Body.String(), "turnstile/v0/api.js") {
+		t.Fatal("hosted signup or Turnstile changed", signup.Code, signup.Body)
+	}
+	assertHTMLPolicy(t, signup.Header(), htmlpolicy.Signup)
 	if e = db.SetSetting(ctx, fmt.Sprintf("brand.%d.thankyou_html", brand.ID), "<h1>Custom thanks</h1><script>alert(1)</script>"); e != nil {
 		t.Fatal(e)
 	}
@@ -47,6 +54,7 @@ func TestHostedThankyouAndJSONNegotiation(t *testing.T) {
 			t.Fatalf("subscribe %s: %d %s", accept, w.Code, w.Body.String())
 		}
 		if accept == "text/html" {
+			assertHTMLPolicy(t, w.Header(), htmlpolicy.Custom)
 			if !strings.Contains(w.Body.String(), "Custom thanks") || !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox") {
 				t.Fatal("hosted thankyou not sandboxed")
 			}
@@ -65,4 +73,5 @@ func TestHostedThankyouAndJSONNegotiation(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "Custom thanks") {
 		t.Fatalf("confirm: %d %s", w.Code, w.Body.String())
 	}
+	assertHTMLPolicy(t, w.Header(), htmlpolicy.Custom)
 }

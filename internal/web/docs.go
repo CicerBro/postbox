@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"postbox/internal/htmlpolicy"
 	"strings"
 )
 
@@ -41,7 +42,7 @@ func DocsHandler() http.Handler {
 			http.Error(w, "Documentation unavailable; build the frontend", http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		htmlpolicy.Set(w, htmlpolicy.App, "private, no-store")
 		if r.Method != http.MethodHead {
 			_, _ = w.Write(content)
 		}

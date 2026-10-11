@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"postbox/internal/consent"
+	"postbox/internal/htmlpolicy"
 	"postbox/internal/jobs"
 	"postbox/internal/render"
 	"postbox/internal/store"
@@ -254,7 +255,7 @@ func (s *Service) Click(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	w.Header().Set("Cache-Control", "no-store")
+	htmlpolicy.Protect(w, "no-store")
 	http.Redirect(w, r, dest, http.StatusFound)
 }
 func (s *Service) Web(w http.ResponseWriter, r *http.Request) {
@@ -333,9 +334,7 @@ func (s *Service) Web(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline' https: http:")
-	w.Header().Set("Cache-Control", "no-store")
+	htmlpolicy.Set(w, htmlpolicy.Email, "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Write([]byte(body))
 }
@@ -351,9 +350,7 @@ func (s *Service) Goodbye(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; form-action 'self'; base-uri 'none'")
-	w.Header().Set("Cache-Control", "no-store")
+	htmlpolicy.Set(w, htmlpolicy.Preferences, "no-store")
 	var goodbye string
 	_ = s.db.Reader.QueryRowContext(r.Context(), `SELECT value FROM settings WHERE key='brand.'||(SELECT brand_id FROM subscribers WHERE id=?)||'.goodbye_html'`, u).Scan(&goodbye)
 	if goodbye == "" {
@@ -440,8 +437,7 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	if body == "" {
 		body = "You have been unsubscribed."
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; base-uri 'none'; form-action 'none'")
+	htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
 	fmt.Fprint(w, body)
 }
 func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {

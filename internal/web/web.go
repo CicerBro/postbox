@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"postbox/internal/htmlpolicy"
 	"strings"
 )
 
@@ -35,6 +36,9 @@ func Handler() http.Handler {
 				} else {
 					w.Header().Set("Cache-Control", "no-cache")
 				}
+				if strings.EqualFold(path.Ext(name), ".html") {
+					htmlpolicy.Set(w, htmlpolicy.App, w.Header().Get("Cache-Control"))
+				}
 				files.ServeHTTP(w, r)
 				return
 			}
@@ -48,8 +52,7 @@ func Handler() http.Handler {
 			http.Error(w, "Frontend unavailable", 500)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
+		htmlpolicy.Set(w, htmlpolicy.App, "no-cache")
 		if r.Method != http.MethodHead {
 			_, _ = w.Write(content)
 		}
@@ -60,7 +63,7 @@ func securityHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("X-Frame-Options", "DENY")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src 'self' about:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+	w.Header().Set("Content-Security-Policy", string(htmlpolicy.App))
 	w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 }
 func spaPath(p string) bool {
