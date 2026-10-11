@@ -344,38 +344,19 @@ func (s *Service) Goodbye(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	rows, e := s.db.Reader.QueryContext(r.Context(), `SELECT l.id,l.name FROM lists l JOIN list_subscribers ls ON ls.list_id=l.id WHERE ls.subscriber_id=?`, u)
-	if e != nil {
+	var brandName string
+	if e = s.db.Reader.QueryRowContext(r.Context(), `SELECT b.name FROM brands b JOIN subscribers s ON s.brand_id=b.id WHERE s.id=?`, u).Scan(&brandName); e != nil {
 		http.Error(w, "unavailable", 503)
 		return
 	}
-	defer rows.Close()
 	htmlpolicy.Set(w, htmlpolicy.Preferences, "no-store")
 	var goodbye string
 	_ = s.db.Reader.QueryRowContext(r.Context(), `SELECT value FROM settings WHERE key='brand.'||(SELECT brand_id FROM subscribers WHERE id=?)||'.goodbye_html'`, u).Scan(&goodbye)
 	if goodbye == "" {
-		goodbye = `<h1>Email preferences</h1><p class="muted">Choose which emails you would like to stop receiving.</p>`
+		goodbye = `<h1>Unsubscribe</h1><p class="muted">Stop receiving emails from this sender.</p>`
 	}
-	var actions, options strings.Builder
-	for rows.Next() {
-		var id int64
-		var name string
-		if e = rows.Scan(&id, &name); e != nil {
-			http.Error(w, "unavailable", 503)
-			return
-		}
-		fmt.Fprintf(&actions, `<button name="list" value="%d">Unsubscribe from %s</button>`, id, html.EscapeString(name))
-		fmt.Fprintf(&options, `<option value="%d">%s</option>`, id, html.EscapeString(name))
-	}
-	if e = rows.Err(); e != nil {
-		http.Error(w, "unavailable", 503)
-		return
-	}
-	preferencePageStart(w, "Email preferences")
-	fmt.Fprint(w, goodbye+`<form method="post"><div class="actions"><button class="primary" name="list" value="all">Unsubscribe from all lists</button>`+actions.String()+`</div></form>`)
-	if options.Len() > 0 {
-		fmt.Fprint(w, `<details><summary>Want to subscribe again?</summary><form method="post" action="`+html.EscapeString(r.URL.Path)+`/resubscribe"><label>Mailing list<select name="list" required>`+options.String()+`</select></label><button>Re-subscribe</button></form></details>`)
-	}
+	preferencePageStart(w, "Unsubscribe", brandName)
+	fmt.Fprint(w, goodbye+`<form method="post"><div class="actions"><button class="primary" name="list" value="all">Unsubscribe</button></div></form>`)
 	preferencePageEnd(w)
 }
 func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
@@ -445,11 +426,15 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var brand int64
-	_ = s.db.Reader.QueryRowContext(r.Context(), "SELECT brand_id FROM subscribers WHERE id=?", u).Scan(&brand)
+	var brandName string
+	if e = s.db.Reader.QueryRowContext(r.Context(), `SELECT b.id,b.name FROM brands b JOIN subscribers s ON s.brand_id=b.id WHERE s.id=?`, u).Scan(&brand, &brandName); e != nil {
+		http.Error(w, "unavailable", 503)
+		return
+	}
 	body, _ := subscribers.NotificationSetting(r.Context(), s.db.Reader, brand, id, "goodbye_html")
 	htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
 	if body == "" {
-		preferenceConfirmation(w, "You're unsubscribed", "You have been unsubscribed. You can close this page.")
+		preferenceConfirmation(w, "You're unsubscribed", "You have been unsubscribed. You can close this page.", brandName)
 		return
 	}
 	fmt.Fprint(w, body)
@@ -471,8 +456,8 @@ func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var brand int64
-	var email string
-	e = s.db.Reader.QueryRowContext(r.Context(), `SELECT s.brand_id,s.email FROM subscribers s JOIN list_subscribers ls ON ls.subscriber_id=s.id JOIN lists l ON l.id=ls.list_id AND l.brand_id=s.brand_id WHERE s.id=? AND l.id=? AND s.status='active' AND NOT EXISTS(SELECT 1 FROM suppressions p WHERE (p.brand_id IS NULL OR p.brand_id=s.brand_id) AND ((p.kind='email' AND p.value=s.email) OR (p.kind='domain' AND p.value=s.domain)))`, u, id).Scan(&brand, &email)
+	var email, brandName string
+	e = s.db.Reader.QueryRowContext(r.Context(), `SELECT s.brand_id,s.email,b.name FROM subscribers s JOIN brands b ON b.id=s.brand_id JOIN list_subscribers ls ON ls.subscriber_id=s.id JOIN lists l ON l.id=ls.list_id AND l.brand_id=s.brand_id WHERE s.id=? AND l.id=? AND s.status='active' AND NOT EXISTS(SELECT 1 FROM suppressions p WHERE (p.brand_id IS NULL OR p.brand_id=s.brand_id) AND ((p.kind='email' AND p.value=s.email) OR (p.kind='domain' AND p.value=s.domain)))`, u, id).Scan(&brand, &email, &brandName)
 	if e == nil {
 		service := subscribers.New(s.db)
 		service.SetBaseURL(s.cfg.BaseURL)
@@ -483,7 +468,7 @@ func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
-	preferenceConfirmation(w, "Preference saved", "Your subscription preference has been saved. If confirmation is needed, check your inbox to finish subscribing.")
+	preferenceConfirmation(w, "Preference saved", "Your subscription preference has been saved. If confirmation is needed, check your inbox to finish subscribing.", brandName)
 }
 
 func stringFields(raw string) (map[string]string, error) {
