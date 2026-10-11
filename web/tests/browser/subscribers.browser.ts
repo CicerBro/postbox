@@ -54,3 +54,19 @@ test("subscriber columns and row actions", async ({ page, context }) => {
   await expect(page.getByText("No subscribers match these filters.")).toBeVisible();
   expect(writes).toEqual(["unsubscribe", "delete"]);
 });
+
+test("lists display the numeric ID used by the API", async ({ page, context }) => {
+  await context.route("**/api/v1/**", async route => {
+    const path = new URL(route.request().url()).pathname.replace("/api/v1", "");
+    let body: unknown = [];
+    if (path === "/auth/session") body = { user_id: 1, admin: true, csrf_token: "token" };
+    else if (path === "/brands") body = [{ id: 1, name: "Acme", from_email: "sender@example.org" }];
+    else if (path === "/sending") body = { enabled: false };
+    else if (path === "/lists") body = [{ id: 42, name: "Weekly news", opt_in: "single", active: 0 }];
+    await route.fulfill({ json: body });
+  });
+  await page.goto("/subscribers");
+  await page.getByRole("tab", { name: "Lists", exact: true }).click();
+  const row = page.getByRole("row").filter({ hasText: "Weekly news" });
+  await expect(row).toContainText("API ID: 42");
+});

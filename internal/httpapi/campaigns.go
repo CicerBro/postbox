@@ -71,8 +71,34 @@ func (a *API) campaigns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "DELETE" {
-		res, e := a.db.Writer.ExecContext(r.Context(), "DELETE FROM campaigns WHERE brand_id=? AND id=? AND status='draft'", brand, id)
-		result(w, map[string]bool{"deleted": true}, requireChanged(res, e))
+		admin := r.Context().Value(identityKey{}).(*identity).Admin
+		var status string
+		err := a.db.Reader.QueryRowContext(r.Context(), "SELECT status FROM campaigns WHERE brand_id=? AND id=?", brand, id).Scan(&status)
+		if err != nil {
+			result(w, nil, err)
+			return
+		}
+		if status != "draft" && !admin {
+			fail(w, http.StatusForbidden, errors.New("admin required to delete sent or cancelled campaigns"))
+			return
+		}
+		if status != "draft" && status != "sent" && status != "cancelled" {
+			fail(w, http.StatusConflict, errors.New("cancel this campaign before deleting it"))
+			return
+		}
+		err = a.db.Immediate(r.Context(), func(c *sql.Conn) error {
+			res, e := c.ExecContext(r.Context(), "DELETE FROM campaigns WHERE brand_id=? AND id=? AND status=?", brand, id, status)
+			if e = requireChanged(res, e); e != nil {
+				return e
+			}
+			for _, table := range []string{"opens", "clicks"} {
+				if _, e = c.ExecContext(r.Context(), "DELETE FROM "+table+" WHERE campaign_id=?", id); e != nil {
+					return e
+				}
+			}
+			return nil
+		})
+		result(w, map[string]bool{"deleted": true}, err)
 		return
 	}
 	var in campaignInput

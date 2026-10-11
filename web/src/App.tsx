@@ -191,8 +191,11 @@ export default function App() {
     if (brandId) {
       setSelected(brandId);
       localStorage.setItem("postbox-brand", String(brandId));
+    } else if (brands.isSuccess) {
+      setSelected(0);
+      localStorage.removeItem("postbox-brand");
     }
-  }, [brandId]);
+  }, [brandId, brands.isSuccess]);
   async function logout() {
     try {
       await api("/auth/logout", { method: "POST" });

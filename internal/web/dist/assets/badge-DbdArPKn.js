@@ -1,0 +1,1 @@
+import{Y as e,n as t}from"./button-Bp0BdcZA.js";var n=e();function r({className:e,variant:r,...i}){return(0,n.jsx)(`span`,{className:t(`badge`,r&&{success:`status-success`,warning:`status-warning`,destructive:`status-danger`,secondary:`status-neutral`,info:`status-info`}[r],e),...i})}export{r as t};

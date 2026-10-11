@@ -37,6 +37,10 @@ func (a *API) documentRoute(pattern string) {
 	documentSubscriberRead(method, path, op)
 	documentCampaignReport(method, path, op)
 	documentCampaignReads(method, path, op)
+	if method == "DELETE" && path == "/api/v1/campaigns/{id}" {
+		op["description"] = "Permanently delete a draft campaign with brand write permission. An administrator session can also delete sent or cancelled campaigns. Scheduled, preparing, sending and paused campaigns must be cancelled first. Deletes campaign delivery history and reports while retaining subscribers and lists."
+		op["responses"].(map[string]any)["409"] = map[string]any{"description": "Cancel this campaign before deleting it"}
+	}
 	if path == "/api/v1/auth/login" || strings.HasPrefix(path, "/subscribe/") || strings.HasPrefix(path, "/confirm/") {
 		op["security"] = []any{}
 	}

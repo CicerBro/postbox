@@ -1,30 +1,54 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useApp } from "../lib/app-context";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { SelectField } from "../components/ui/select";
-import { Plus, Search, ArrowUpRight, Mail, Users, Send } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { Plus, Search, ArrowUpRight, Mail, Trash2 } from "lucide-react";
 import { SortableTableHead } from "../components/SortableTableHead";
 import {
   StatusBadge,
-  bytes,
   Campaign,
   ErrorMessage,
-  number,
   tableClass,
 } from "./campaign-shared";
 
-type CampaignSummary = Pick<Campaign, "id" | "subject" | "status" | "created_at" | "scheduled_at"> & { excerpt: string };
+type CampaignSummary = Pick<
+  Campaign,
+  "id" | "subject" | "status" | "created_at" | "scheduled_at"
+> & { excerpt: string };
 
 export function CampaignsPage({ brandId }: { brandId: number }) {
+  const { session } = useApp();
+  const client = useQueryClient();
+  const [deleting, setDeleting] = useState<CampaignSummary | null>(null);
+  const [notice, setNotice] = useState("");
+  const deletion = useMutation({
+    mutationFn: (campaign: CampaignSummary) =>
+      api(`/campaigns/${campaign.id}`, { method: "DELETE", brandId }),
+    onSuccess: async () => {
+      setDeleting(null);
+      setNotice("Campaign deleted.");
+      setOffset(0);
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["campaigns", brandId] }),
+        client.invalidateQueries({ queryKey: ["overview", brandId] }),
+        client.invalidateQueries({ queryKey: ["campaign-choices", brandId] }),
+        client.invalidateQueries({
+          queryKey: ["subscribers", brandId, "segment-campaigns"],
+        }),
+      ]);
+    },
+  });
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all");
@@ -41,7 +65,13 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
     queryKey: ["campaigns", brandId, offset, sort, direction, filter, search],
     queryFn: () => {
       const params = new URLSearchParams({
-        offset: String(offset), limit: "50", sort, direction, status: filter, search, summary: "true",
+        offset: String(offset),
+        limit: "50",
+        sort,
+        direction,
+        status: filter,
+        search,
+        summary: "true",
       });
       return api<CampaignSummary[]>(`/campaigns?${params}`, { brandId });
     },
@@ -96,6 +126,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
         ))}
       </div>
       <ErrorMessage error={query.error} />
+      {notice && <p role="status">{notice}</p>}
       {query.isPending ? (
         <p role="status">Loading campaigns…</p>
       ) : (
@@ -129,39 +160,57 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                   {sortHeader("Created", "created_at")}
                   {sortHeader("Scheduled", "scheduled_at")}
                   <th>
-                    <span className="sr-only">Report</span>
+                    <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {query.data?.map((c) => (
-                    <tr key={c.id}>
-                      <td>
-                        <Link className="row-title font-medium hover:underline" to={`/campaigns/${c.id}${c.status === "sent" ? "/report" : ""}`}>
-                          {c.subject}
+                  <tr key={c.id}>
+                    <td>
+                      <Link
+                        className="row-title font-medium hover:underline"
+                        to={`/campaigns/${c.id}${c.status === "sent" ? "/report" : ""}`}
+                      >
+                        {c.subject}
+                      </Link>
+                      <p className="row-subtitle max-w-sm truncate">
+                        {c.excerpt || `Campaign #${c.id}`}
+                      </p>
+                    </td>
+                    <td>
+                      <StatusBadge status={c.status} />
+                    </td>
+                    <td>{new Date(c.created_at).toLocaleString()}</td>
+                    <td>
+                      {c.scheduled_at
+                        ? new Date(c.scheduled_at).toLocaleString()
+                        : "Unscheduled"}
+                    </td>
+                    <td>
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link to={`/campaigns/${c.id}/report`}>
+                          Report <ArrowUpRight size={14} />
                         </Link>
-                        <p className="row-subtitle max-w-sm truncate">
-                          {c.excerpt || `Campaign #${c.id}`}
-                        </p>
-                      </td>
-                      <td>
-                        <StatusBadge status={c.status} />
-                      </td>
-                      <td>{new Date(c.created_at).toLocaleString()}</td>
-                      <td>
-                        {c.scheduled_at
-                          ? new Date(c.scheduled_at).toLocaleString()
-                          : "Unscheduled"}
-                      </td>
-                      <td>
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link to={`/campaigns/${c.id}/report`}>
-                            Report <ArrowUpRight size={14} />
-                          </Link>
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                      </Button>
+                      {session.admin &&
+                        ["draft", "sent", "cancelled"].includes(c.status) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Delete campaign ${c.subject}`}
+                            onClick={() => {
+                              deletion.reset();
+                              setNotice("");
+                              setDeleting(c);
+                            }}
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </Button>
+                        )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
             {!query.data?.length && (
@@ -199,6 +248,42 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
           Next
         </Button>
       </div>
+      <Dialog
+        open={!!deleting}
+        onOpenChange={(open) => {
+          if (!open && !deletion.isPending) setDeleting(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete campaign?</DialogTitle>
+            <DialogDescription>
+              Permanently delete “{deleting?.subject}” and its delivery history
+              and reports. This cannot be undone. Subscribers and lists will
+              remain.
+            </DialogDescription>
+          </DialogHeader>
+          <ErrorMessage error={deletion.error} />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={deletion.isPending}
+              onClick={() => setDeleting(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deletion.isPending || !deleting}
+              onClick={() => {
+                if (deleting) deletion.mutate(deleting);
+              }}
+            >
+              {deletion.isPending ? "Deleting…" : "Delete campaign"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

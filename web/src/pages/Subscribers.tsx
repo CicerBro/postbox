@@ -555,7 +555,10 @@ function Lists({
                       <span className="avatar">
                         <ListIcon size={17} />
                       </span>
-                      <span className="row-title font-medium">{l.name}</span>
+                      <div>
+                        <span className="row-title font-medium">{l.name}</span>
+                        <p className="row-subtitle">API ID: <code>{l.id}</code></p>
+                      </div>
                     </div>
                   </td>
                   <td>
