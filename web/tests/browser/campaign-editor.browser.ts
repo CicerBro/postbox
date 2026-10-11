@@ -22,6 +22,7 @@ async function fixture(context: BrowserContext) {
     checklistReads: 0,
     targetFailure: false,
     testSendFailure: true,
+    testSendError: "global sending is disabled",
     testSends: [] as unknown[],
     testSendWait: Promise.resolve(),
   };
@@ -52,7 +53,7 @@ async function fixture(context: BrowserContext) {
       expect(new URL(request.url()).searchParams.get("brand_id")).toBe("1");
       await state.testSendWait;
       status = state.testSendFailure ? 422 : 200;
-      body = state.testSendFailure ? { error: "global sending is disabled" } : {};
+      body = state.testSendFailure ? { error: state.testSendError } : {};
     }
     else if (path === "/campaigns/7/checklist") {
       state.checklistReads++;
@@ -134,6 +135,27 @@ test("test-send feedback stays beside the button and recovers on retry", async (
     { emails: ["one@example.org", "two@example.org"] },
     { emails: ["one@example.org", "two@example.org"] },
   ]);
+});
+
+test("SES access errors appear in a red alert beside test send on mobile", async ({ page, context }, testInfo) => {
+  const state = await fixture(context);
+  state.testSendError = "operation error SESv2: SendEmail, https response error StatusCode: 403, RequestID: 00000000-0000-4000-8000-000000000000, api error AccessDeniedException: User 'arn:aws:iam::123456789012:user/postbox' is not authorized to perform 'ses:SendRawEmail' on resource 'arn:aws:ses:eu-central-1:123456789012:identity/noreply@example.org'";
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/campaigns/7");
+  const delivery = page.getByRole("group", { name: "Test email delivery" });
+  await delivery.getByRole("textbox").fill("one@example.org");
+  const button = delivery.getByRole("button", { name: "Send [Test] emails", exact: true });
+  await button.click();
+  const alert = delivery.getByRole("alert");
+  await expect(alert).toHaveText(state.testSendError);
+  await expect(alert).toHaveClass(/bg-red-50/);
+  await expect(page.getByRole("alert")).toHaveCount(1);
+  await expect(button).toHaveAccessibleDescription(state.testSendError);
+  await delivery.scrollIntoViewIfNeeded();
+  await expect(alert).toBeInViewport();
+  await expect(button).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await delivery.screenshot({ path: testInfo.outputPath("ses-test-send-error-mobile.png") });
 });
 
 test("preview shows merge-tag errors in the pane and recovers after correction", async ({ page, context }) => {

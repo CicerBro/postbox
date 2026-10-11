@@ -156,7 +156,7 @@ export function CampaignDelivery({
             Test sends are intentionally repeatable and use the saved campaign
             with a [Test] subject prefix. Each click sends again.
           </p>
-          <div className="mb-2 space-y-2">
+          <div id="campaign-test-send-feedback" className="mb-2 space-y-2">
             <ErrorMessage error={testSendError} presentation="alert" />
             <StatusMessage
               variant={testSendStatus === "sending" ? "info" : "success"}
@@ -170,6 +170,7 @@ export function CampaignDelivery({
           </div>
           <Button
             variant="info"
+            aria-describedby={testSendError ? "campaign-test-send-feedback" : undefined}
             disabled={busy || dirty || !canSend || !testEmails.trim()}
             onClick={() =>
               action("test-send", {

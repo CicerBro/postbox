@@ -58,6 +58,8 @@ Apply permissions to each brand's saved IAM keys, scoped to its AWS account, reg
 
 The [runtime policy](../../deploy/iam-runtime.json) covers sending, connection checks, domain verification status, event status and account suppression import. The [setup policy](../../deploy/iam-setup.json) adds the permissions needed to create SES identities and event resources from the app.
 
+The sending grant covers both `identity/example.com` and `identity/*@example.com`. SES can authorize a send against an email address identity, so allowing only the domain ARN can produce `AccessDeniedException` for an address such as `noreply@example.com`. Keep both entries when replacing the sender domain; for a single permitted sender, replace `*@example.com` with its exact email address. Apply this change to existing IAM policies in AWS too. Successful domain or event setup does not check email-sending permissions.
+
 | App action | IAM actions | Resource scope |
 | --- | --- | --- |
 | Send email | `ses:SendEmail`, `ses:SendRawEmail` | Verified identity and selected configuration set |
@@ -83,7 +85,7 @@ Existing keys need the setup grants before the buttons can work. You may remove 
 
 STS `GetCallerIdentity` determines the saved connection's account without an additional allow statement. Setup creates untagged Standard topics and plain HTTPS subscriptions, so it needs no `sns:TagResource`, `iam:PassRole`, SNS platform, SMS or SQS permissions. Postbox confirms subscriptions using the token-bearing URL from a verified SNS message, so the saved IAM keys need no `sns:ConfirmSubscription` grant. SES publishes under its service principal through the topic policy; Postbox's keys need no `sns:Publish` grant.
 
-The sender uses SES v2 `SendEmail` with raw MIME, explicit destinations, configuration set and brand/campaign tags. It does not use SMTP or SES templates. The policy includes `ses:SendRawEmail` for compatibility.
+The sender uses SES v2 `SendEmail` with raw MIME, explicit destinations, configuration set and brand/campaign tags. It does not use SMTP or SES templates. Raw MIME sends require `ses:SendRawEmail`, even when the API operation in the error is `SESv2: SendEmail`.
 
 Only administrator sessions can create resources or change AWS settings. Brand readers can view verification and event status. Changing the connection clears only SES-imported suppressions and schedules a refresh; manual suppressions and subscriber bounce/complaint states remain.
 
