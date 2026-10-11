@@ -5,7 +5,7 @@ import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { SelectField } from "../ui/select";
-import { Field, Section, useAction } from "./Common";
+import { Field, Message, Section, useAction } from "./Common";
 
 type Settings = {
   mode: "static";
@@ -109,12 +109,7 @@ export function AmazonSES({ brandId }: { brandId: number }) {
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p role="alert" className="rounded-lg border p-3 text-sm">
-          {error instanceof Error ? error.message : String(error)}
-        </p>
-      ) : null}
-      {action.message && <p role="status" className="text-sm">{action.message}</p>}
+      <Message error={error} message={action.message} />
       {q.isPending ? <p role="status">Loading Amazon SES settings…</p> :
         q.isError ? <Button variant="outline" onClick={() => q.refetch()}>Retry</Button> :
         q.data ? <>

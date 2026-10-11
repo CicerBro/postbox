@@ -3,6 +3,7 @@ import { CheckCircle2, CircleAlert, Copy, KeyRound } from "lucide-react";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
+import { Alert, AlertDescription } from "../ui/alert";
 export function Section({
   title,
   description,
@@ -43,21 +44,20 @@ export function Message({
   message?: string;
 }) {
   return error ? (
-    <p
-      role="alert"
-      className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+    <Alert
+      className="border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
     >
       <CircleAlert size={16} className="mt-1 shrink-0" aria-hidden="true" />
-      {error instanceof Error ? error.message : String(error)}
-    </p>
+      <AlertDescription>{error instanceof Error ? error.message : String(error)}</AlertDescription>
+    </Alert>
   ) : message ? (
-    <p
+    <Alert
       role="status"
-      className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+      className="border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
     >
       <CheckCircle2 size={16} className="mt-1 shrink-0" aria-hidden="true" />
-      {message}
-    </p>
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
   ) : null;
 }
 export function useAction() {
