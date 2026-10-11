@@ -18,6 +18,9 @@ type campaignInput struct {
 }
 
 func (a *API) registerCampaigns(m *http.ServeMux) {
+	m.HandleFunc("GET /preview/campaign/{token}", a.savedCampaignPreview)
+	m.HandleFunc("GET /preview/unsubscribe/{token}", a.unsubscribePreview)
+	m.HandleFunc("POST /preview/unsubscribe/{token}", a.unsubscribePreview)
 	a.route(m, "POST /api/v1/email-preview", a.editorPreview)
 	a.route(m, "GET /api/v1/campaigns/options", a.campaignOptions)
 	a.route(m, "POST /api/v1/email-preview/recipients", a.editorRecipients)

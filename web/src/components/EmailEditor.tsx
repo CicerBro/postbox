@@ -433,9 +433,9 @@ export function EmailEditor({
                 ? "Rendering preview…"
                 : samplePreview.isError
                   ? "Preview could not be rendered. Check the error above."
-                  : recipient && campaignId > 0
-                    ? "Preview with subscriber data. Browser links open the saved campaign."
-                    : `${recipient ? "Preview with subscriber data" : "Preview with sample data"}. Unsubscribe and browser links are sample URLs.`}
+                  : campaignId > 0
+                    ? `${recipient ? "Preview with subscriber data" : "Preview with sample data"}. Browser links open your saved edits. Unsubscribe links simulate the live flow without changes.`
+                    : `${recipient ? "Preview with subscriber data" : "Preview with sample data"}. Save the campaign to enable browser and unsubscribe previews.`}
           </p>
           <div className="grid gap-4 xl:grid-cols-2">
             <div
@@ -446,9 +446,9 @@ export function EmailEditor({
             <div className="min-w-0 overflow-hidden rounded-md border">
               <iframe
                 title="Email preview"
-                sandbox=""
+                sandbox="allow-popups allow-popups-to-escape-sandbox"
                 referrerPolicy="no-referrer"
-                srcDoc={(recipientReady && previewSource === value ? samplePreview.data?.html : undefined) ?? ""}
+                srcDoc={previewLinkTargets((recipientReady && previewSource === value ? samplePreview.data?.html : undefined) ?? "")}
                 className="mx-auto block h-[480px] border-0 bg-white"
                 style={{ width: mobile ? "var(--newsletter-mobile-width)" : "100%", maxWidth: "100%" }}
               />
@@ -528,4 +528,22 @@ export function EmailEditor({
       </Dialog>
     </div>
   );
+}
+
+// Open action previews outside the sandboxed email frame.
+function previewLinkTargets(source: string): string {
+  if (!source) return source;
+  const doc = new DOMParser().parseFromString(source, "text/html");
+  doc.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((link) => {
+    try {
+      const url = new URL(link.getAttribute("href") ?? "");
+      if (/^\/preview\/(campaign|unsubscribe)\//.test(url.pathname)) {
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+      }
+    } catch {
+      // Relative and non-URL links keep their existing behavior.
+    }
+  });
+  return "<!doctype html>" + doc.documentElement.outerHTML;
 }

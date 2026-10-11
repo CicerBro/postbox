@@ -96,7 +96,7 @@ func (a *API) documentRoute(pattern string) {
 	}
 	documentListSettings(method, path, op)
 	if path == "/api/v1/email-preview" {
-		op["description"] = "Render current, unsaved email HTML, subject and text using the sending renderer. subscriber_id selects a real subscriber within the scoped brand; omit it or use zero for sample data. Empty custom fields use their fallback or an empty value. A scoped campaign_id with a real subscriber produces recipient-specific action URLs; browser links open the saved campaign. Otherwise action URLs use invalid sample tokens. Does not create campaigns, tracking links, or send messages."
+		op["description"] = "Render current, unsaved email HTML, subject and text using the sending renderer. subscriber_id selects a real subscriber within the scoped brand; omit it or use zero for sample data. Empty custom fields use their fallback or an empty value. A scoped campaign_id produces encrypted, one-hour preview links using the selected subscriber or sample data. Browser links render the latest saved campaign edits; unsubscribe links simulate preferences without mutations. Unsaved campaigns use sample URLs. Does not create campaigns, tracking links, or send messages."
 		op["responses"].(map[string]any)["200"] = map[string]any{
 			"description": "Rendered sample HTML",
 			"content": map[string]any{

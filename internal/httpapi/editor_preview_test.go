@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"postbox/internal/subscribers"
-	"postbox/internal/tracking/token"
 	"strings"
 	"testing"
 	"time"
@@ -174,8 +173,7 @@ func TestEditorPreviewSubscriberValuesAndFallback(t *testing.T) {
 		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
 			t.Fatalf("action URLs: %d %s", w.Code, w.Body)
 		}
-		tok := token.Encode([]byte("long-testing-token-secret-value"), campaignID, first.ID)
-		for _, want := range []string{"https://example.org/u/" + tok, fmt.Sprintf("https://example.org/w/%d/%s", campaignID, tok)} {
+		for _, want := range []string{"https://example.org/preview/unsubscribe/", "https://example.org/preview/campaign/"} {
 			if !strings.Contains(out.HTML, want) {
 				t.Fatalf("missing recipient URL %q: %s", want, out.HTML)
 			}

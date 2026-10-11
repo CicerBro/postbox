@@ -230,3 +230,31 @@ test("polling preserves unsaved edits and preflight becomes available only after
   ).toBeVisible();
   expect(state.checklistReads).toBe(1);
 });
+
+test("campaign action previews open safely with the selected subscriber", async ({ page, context }) => {
+  const state = await fixture(context);
+  state.targets = [{ target_type: "list", target_id: 11, mode: "include" }];
+  const requests: Record<string, unknown>[] = [];
+  await context.route("**/api/v1/email-preview/recipients*", (route) => route.fulfill({ json: [{ id: 42, name: "Selected", email: "selected@example.org" }] }));
+  await context.route("**/api/v1/email-preview?*", (route) => {
+    requests.push(route.request().postDataJSON());
+    return route.fulfill({ json: { subject: "Saved subject", text: "", html: `<p>Selected</p><a href="http://127.0.0.1:5174/preview/campaign/opaque">View in browser</a><a href="http://127.0.0.1:5174/preview/unsubscribe/opaque">Unsubscribe</a>` } });
+  });
+  await context.route("**/preview/campaign/opaque", (route) => route.fulfill({ contentType: "text/html", body: "<p>Saved campaign preview for Selected</p>" }));
+  await context.route("**/preview/unsubscribe/opaque", (route) => route.fulfill({ contentType: "text/html", body: "<p>Unsubscribe preview only</p>" }));
+  await page.goto("/campaigns/7");
+  const frame = page.frameLocator('iframe[title="Email preview"]');
+  await expect(frame.getByText("Selected", { exact: true })).toBeVisible();
+  expect(requests.some((r) => r.subscriber_id === 42 && r.campaign_id === 7)).toBe(true);
+  for (const label of ["View in browser", "Unsubscribe"]) {
+    const link = frame.getByRole("link", { name: label });
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    const popup = context.waitForEvent("page");
+    await link.click();
+    const opened = await popup;
+    await expect(opened.locator("p")).toBeVisible();
+    expect(new URL(opened.url()).pathname).toMatch(/^\/preview\/(campaign|unsubscribe)\/opaque$/);
+    await opened.close();
+  }
+});
