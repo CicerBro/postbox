@@ -65,7 +65,7 @@ Delivery events let Postbox reconcile accepted sends and process bounces and com
 
 As an administrator, open **Settings > Amazon SES**:
 
-1. Save the brand's region and AWS keys with the runtime and setup permissions from the reference below. Leave **SNS topic ARN** blank to create a topic, or save an existing Standard topic ARN from the same account and region.
+1. Save the brand's region and AWS keys with the runtime and setup permissions from the [SES & SNS Setup](aws.md). Leave **SNS topic ARN** blank to create a topic, or save an existing Standard topic ARN from the same account and region.
 2. Select **Set up SES and SNS**. Postbox creates or reuses the topic, adds its SES publish policy, creates or reuses the configuration set, configures its event destination and subscribes this deployment's HTTPS endpoint.
 3. Review the returned configuration set, topic and endpoint. Select **Refresh event status** until the SNS subscription is confirmed and event delivery is ready.
 
@@ -78,5 +78,3 @@ Set `POSTBOX_BASE_URL` to the deployment's public HTTPS origin before setup. SNS
 Build a small audience with documented consent, create a campaign, and send a test to yourself. Review the sender domain, audience, content, unsubscribe links and SES quota in the campaign checklist. Follow [Sending newsletters](sending-newsletters.md) for the complete workflow.
 
 When those checks are complete, enable sending in **Settings**. The switch is stored in the database and survives restarts. It also controls test and transactional email jobs, including confirmation emails. Missing credentials produce errors; the service never silently substitutes a test sender.
-
-<!-- reference:aws -->

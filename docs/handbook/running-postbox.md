@@ -69,7 +69,7 @@ User sessions carry CSRF protection. A token remains stable across tabs, reloads
 
 The handbook, Scalar reference, assets and OpenAPI downloads require an active user session. Brand API keys do not grant access to `/docs`. Inside Scalar you can try requests with your session or enter a brand API key to check its permissions.
 
-Public authentication and signup operations have per-process rate limits. Account factor operations use the acting user ID; public operations use the canonical client IP. Details are in the configuration reference below.
+Public authentication and signup operations have per-process rate limits. Account factor operations use the acting user ID; public operations use the canonical client IP. Details are in the [configuration reference](configuration.md).
 
 ## Back up and restore
 
@@ -116,5 +116,3 @@ On SIGTERM, Postbox stops claiming recipients, drains in-flight sends and tracki
 | Passkey login fails | Browser origin exactly matches `POSTBOX_BASE_URL`; HTTPS or local `localhost` |
 | All clients share a rate limit | Actual proxy peer matches the trusted list and ingress supplies a valid `X-Forwarded-For` chain |
 | Campaign has unknown recipients | Wait for trusted SES events; do not reset the ledger or force a retry |
-
-<!-- reference:configuration -->

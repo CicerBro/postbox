@@ -48,7 +48,7 @@ WAL `synchronous=NORMAL` preserves committed reservations across a process crash
 
 ## Edit the handbook
 
-The six chapters in `docs/handbook/` are the canonical prose for `/docs`. Their order is declared in [the guide builder](../../web/docs/content.ts). The builder renders Markdown, resolves local chapter links and includes the configuration, AWS, importer and performance references inside expandable sections. README and MANUAL link to the handbook and are no longer split into pages.
+The eight chapters in `docs/handbook/` are the canonical prose for `/docs`. Their order is declared in [the guide builder](../../web/docs/content.ts). The builder renders Markdown, resolves local chapter links and lists SES & SNS Setup and Configuration reference as standalone pages in the sidebar. Sendy adapter details live in Moving from Sendy. The README links to these chapters.
 
 Edit the relevant chapter, run the docs tests and rebuild with `make build`. The compiled HTML, search text, Scalar code, styles and image are embedded through `internal/web/dist`. Serving docs requires a user session.
 
@@ -67,6 +67,4 @@ go run ./cmd/loadtest --recipients 350000 --rate 1000 \
 
 These runs use an explicit fake HTTP SES fixture with real SDK serialisation. For local application QA, start `cmd/fakeses`, set `AWS_ENDPOINT_URL`, and save fake credentials and a region for the test brand. The emulator must also support STS `GetCallerIdentity`. Do not point real brand keys at a test endpoint.
 
-A short smoke test does not establish sustained throughput. Compare complete-campaign rate, request latency, writer latency and peak resources, and account for fixture overhead and host contention. Recorded measurements and their durability limits remain in the expandable evidence below.
-
-<!-- reference:performance -->
+A short smoke test does not establish sustained throughput. Compare complete-campaign rate, request latency, writer latency and peak resources, and account for fixture overhead and host contention. Record the results for your deployment alongside its configuration and workload.

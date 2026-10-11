@@ -18,10 +18,12 @@ Campaign overview using synthetic test campaign data, with sending paused.
 | You want to… | Start here |
 | --- | --- |
 | Set up an instance and connect Amazon SES | [Getting started](getting-started.md) |
+| Check AWS permissions and event resources | [SES & SNS Setup](aws.md) |
 | Build an audience and send a campaign | [Sending newsletters](sending-newsletters.md) |
 | Deploy, secure or back up an instance | [Running Postbox](running-postbox.md) |
+| Look up commands, flags and environment variables | [Configuration reference](configuration.md) |
 | Bring your existing Sendy data across | [Moving from Sendy](moving-from-sendy.md) |
 | Work on the code or measure performance | [Development](development.md) |
 | Integrate another application | [API reference](/docs/api) |
 
-Read the handbook in order for a first installation, or use search to jump to a task. Each chapter keeps the everyday workflow first and the detailed references further down.
+Read the handbook in order for a first installation, or use search to jump to a task. SES/SNS setup and server configuration have dedicated reference pages.

@@ -22,7 +22,7 @@ Ordinary profile edits, CSV imports and list additions cannot undo a brand marke
 
 Open **Settings > Public subscriptions** to control hosted and embedded signup forms. Both the application switch and the selected brand switch must be on. An administrator controls the application switch; brand writers control their brand's switch. Changes take effect immediately.
 
-Disabling signup returns HTTP 403 for the hosted form and submissions and prevents new embed forms from being generated. Existing confirmation and unsubscribe links continue to work. For bot protection, configure both Turnstile keys in the [server configuration](running-postbox.md#configuration-reference).
+Disabling signup returns HTTP 403 for the hosted form and submissions and prevents new embed forms from being generated. Existing confirmation and unsubscribe links continue to work. For bot protection, configure both Turnstile keys in the [server configuration](configuration.md).
 
 Anonymous signup does not overwrite an existing subscriber's name, custom fields or delivery state. Use the authenticated subscriber editor for profile changes. Fresh resubscription starts a new confirmation period; unconfirmed memberships expire after 30 days.
 
