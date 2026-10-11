@@ -153,7 +153,7 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr>
-                  <SortableTableHead label="Name / prefix" {...sorting.header("name")} />
+                  <SortableTableHead label="Name" {...sorting.header("name")} />
                   <th>Prefix</th>
                   <SortableTableHead label="Scopes" {...sorting.header("scopes")} />
                   <SortableTableHead label="Last used" {...sorting.header("used")} />
