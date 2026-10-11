@@ -173,6 +173,9 @@ export function EmailEditor({
     enabled: brandId > 0 && mode === "raw" && recipientReady && !!text.trim(),
     retry: false, gcTime: 0,
   });
+  const previewError = (hasAudience ? recipients.error : null) ?? samplePreview.error;
+  const previewPending = (!recipientReady && !recipients.isError) || previewSource !== value ||
+    (recipientReady && (samplePreview.isPending || samplePreview.isFetching));
   useEffect(() => {
     if (!rawHost.current || mode !== "raw") return;
     const editor = new EditorView({
@@ -364,7 +367,7 @@ export function EmailEditor({
           {mobile ? "Desktop preview" : "Mobile preview"}
         </Button>
       </div>
-      <ErrorMessage error={error ?? fields.error ?? (hasAudience ? recipients.error : null) ?? samplePreview.error ?? textPreview.error} />
+      <ErrorMessage error={error ?? fields.error ?? textPreview.error} />
       {mode === "raw" ? (
         <>
           <div className="flex flex-wrap items-end gap-2">
@@ -429,10 +432,10 @@ export function EmailEditor({
             )}
           </div>
           <p className="mb-2 text-sm text-muted-foreground" role="status">
-            {!recipientReady || previewSource !== value || samplePreview.isPending || samplePreview.isFetching
+            {previewPending
                 ? "Rendering preview…"
-                : samplePreview.isError
-                  ? "Preview could not be rendered. Check the error above."
+                : previewError
+                  ? "Preview could not be rendered. Correct the error to restore it."
                   : campaignId > 0
                     ? `${recipient ? "Preview with subscriber data" : "Preview with sample data"}. Browser links open your saved edits. Unsubscribe links simulate the live flow without changes.`
                     : `${recipient ? "Preview with subscriber data" : "Preview with sample data"}. Save the campaign to enable browser and unsubscribe previews.`}
@@ -443,15 +446,27 @@ export function EmailEditor({
               className="min-w-0 overflow-hidden rounded-md border"
               aria-label="Full HTML source"
             />
-            <div className="min-w-0 overflow-hidden rounded-md border">
-              <iframe
-                title="Email preview"
-                sandbox="allow-popups allow-popups-to-escape-sandbox"
-                referrerPolicy="no-referrer"
-                srcDoc={previewLinkTargets((recipientReady && previewSource === value ? samplePreview.data?.html : undefined) ?? "")}
-                className="mx-auto block h-[480px] border-0 bg-white"
-                style={{ width: mobile ? "var(--newsletter-mobile-width)" : "100%", maxWidth: "100%" }}
-              />
+            <div className="min-w-0 overflow-hidden rounded-md border" role="region" aria-label="Email preview pane" aria-busy={previewPending}>
+              {previewPending ? (
+                <div className="flex h-[480px] items-center justify-center p-6 text-sm text-muted-foreground">
+                  Rendering preview…
+                </div>
+              ) : previewError ? (
+                <div className="flex h-[480px] flex-col items-center justify-center gap-3 p-6 text-center">
+                  <p className="font-medium">Preview could not be rendered</p>
+                  <ErrorMessage error={previewError} />
+                  <p className="text-sm text-muted-foreground">Correct the error in your source or subject. The preview updates automatically.</p>
+                </div>
+              ) : (
+                <iframe
+                  title="Email preview"
+                  sandbox="allow-popups allow-popups-to-escape-sandbox"
+                  referrerPolicy="no-referrer"
+                  srcDoc={previewLinkTargets(samplePreview.data?.html ?? "")}
+                  className="mx-auto block h-[480px] border-0 bg-white"
+                  style={{ width: mobile ? "var(--newsletter-mobile-width)" : "100%", maxWidth: "100%" }}
+                />
+              )}
             </div>
           </div>
           {recipientReady && samplePreview.data && (

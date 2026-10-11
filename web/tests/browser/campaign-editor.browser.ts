@@ -90,6 +90,54 @@ async function fixture(context: BrowserContext) {
   return state;
 }
 
+test("preview shows merge-tag errors in the pane and recovers after correction", async ({ page, context }) => {
+  const state = await fixture(context);
+  const valid = '<p>Hi {{ name | "Subscriber" }}</p>';
+  state.campaign.html = valid;
+  let releasePreview: (() => void) | undefined;
+  await context.route("**/api/v1/email-preview?*", async (route) => {
+    const input = route.request().postDataJSON();
+    const source = `${input.html} ${input.subject}`;
+    if (source.includes("n1ame")) {
+      await new Promise<void>((resolve) => { releasePreview = resolve; });
+      await route.fulfill({ status: 400, json: { error: 'unknown merge field "n1ame"' } });
+    } else if (input.html.endsWith("{{ name")) {
+      await route.fulfill({ status: 400, json: { error: "unterminated merge tag" } });
+    } else {
+      await route.fulfill({ json: { subject: input.subject, html: "<p>Hi Subscriber</p>", text: "Hi Subscriber" } });
+    }
+  });
+  await page.goto("/campaigns/7");
+  const pane = page.getByRole("region", { name: "Email preview pane", exact: true });
+  const raw = page.locator('.cm-content[aria-label="Full HTML source"]');
+  const rendered = () => page.frameLocator('iframe[title="Email preview"]').getByText("Hi Subscriber", { exact: true });
+  await expect(rendered()).toBeVisible();
+
+  for (const field of ["html", "subject"]) {
+    releasePreview = undefined;
+    const editor = field === "html" ? raw : page.getByLabel("Subject", { exact: true });
+    await editor.fill(valid.replace("name", "n1ame"));
+    await expect(pane).toHaveAttribute("aria-busy", "true");
+    await expect(pane.getByText("Rendering preview…", { exact: true })).toBeVisible();
+    await expect(pane.locator("iframe")).toHaveCount(0);
+    await expect.poll(() => !!releasePreview).toBe(true);
+    releasePreview!();
+    await expect(pane.getByRole("alert")).toHaveText('unknown merge field "n1ame"');
+    await expect(pane).toHaveAttribute("aria-busy", "false");
+    await expect(pane.locator("iframe")).toHaveCount(0);
+    await expect(raw).toContainText(field === "html" ? "n1ame" : "name");
+    await editor.fill(field === "html" ? valid : "Saved subject");
+    await expect(rendered()).toBeVisible();
+    await expect(pane.getByRole("alert")).toHaveCount(0);
+  }
+
+  await raw.fill("<p>Hi {{ name");
+  await expect(pane.getByRole("alert")).toHaveText("unterminated merge tag");
+  await raw.fill(valid);
+  await expect(rendered()).toBeVisible();
+  expect(state.campaignWrites).toEqual([]);
+});
+
 test("visual editor frames stay sandboxed and HTML changes require review", async ({ page, context }) => {
   const state = await fixture(context);
   const source = '<!doctype html><html><head><meta name="upgrade-test" content="preserved"><!--[if mso]><style>p { color: red; }</style><![endif]--></head><body><p>Saved HTML</p></body></html>';

@@ -53,11 +53,19 @@ func TestEditorPreviewRendersUnsavedMergeTags(t *testing.T) {
 			t.Fatalf("preview wrote %s: %d, %v", table, count, err)
 		}
 	}
-	for _, source := range []string{`<p>{{ nonexistent }}</p>`, `<p>{{ city | invalid }}</p>`, `<p>{{ name`} {
-		body, _ := json.Marshal(map[string]any{"html": source})
-		w := request(mux, "POST", path, string(body), &cookie, csrf)
-		if w.Code != 400 {
-			t.Fatalf("invalid tags accepted: %d %s", w.Code, w.Body)
+	for _, tc := range []struct{ source, error string }{
+		{`<p>{{ nonexistent }}</p>`, `unknown merge field "nonexistent"`},
+		{`Hi {{ n1ame | "Subscriber" }}`, `unknown merge field "n1ame"`},
+		{`<p>{{ city | invalid }}</p>`, `invalid fallback in {{ city | invalid }}`},
+		{`<p>{{ name`, "unterminated merge tag"},
+	} {
+		for _, inline := range []bool{false, true} {
+			body, _ := json.Marshal(map[string]any{"html": tc.source, "inline_css": inline})
+			w := request(mux, "POST", path, string(body), &cookie, csrf)
+			var out struct{ Error string }
+			if w.Code != 400 || json.Unmarshal(w.Body.Bytes(), &out) != nil || out.Error != tc.error {
+				t.Fatalf("invalid tags: %d %s", w.Code, w.Body)
+			}
 		}
 	}
 	w := request(mux, "POST", path, `{"html":"hello"}`, nil, "")
