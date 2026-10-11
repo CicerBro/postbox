@@ -16,8 +16,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "../components/ui/dialog";
-import { bytes, ErrorMessage, number, tableClass } from "./campaign-shared";
+import { ErrorMessage, number } from "./campaign-shared";
 import type { Checklist } from "./campaign-checklist";
+import { Preflight } from "./campaign-preflight";
 
 export type CampaignConfirmation =
   | "start"
@@ -271,98 +272,5 @@ export function CampaignConfirmationDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function Preflight({ data }: { data: Checklist }) {
-  const c = data.checks;
-  return (
-    <div className="space-y-4 rounded-md border p-4">
-      <h3 className="font-medium">
-        {c.ready ? "Ready to send" : "Preflight needs attention"}
-      </h3>
-      <p className="text-sm text-muted-foreground">
-        This read-only estimate uses sample merge values. Audience and available
-        quota can change before sending.
-      </p>
-      <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-        {[
-          ["Recipients", number(data.recipients)],
-          ["Message size", bytes(data.message_bytes)],
-          ["Upload", bytes(data.upload_bytes)],
-          ["Duration", `${Math.ceil(data.duration_seconds / 60)} minutes`],
-          ["Suppressed", number(c.suppressed)],
-          ["Inactive", number(c.inactive)],
-          ["Skipped", number(c.skipped)],
-          ["Daily quota remaining", number(c.remaining_daily_quota)],
-          ...(c.user_remaining_daily_quota !== undefined
-            ? [["Your daily budget", number(c.user_remaining_daily_quota)]]
-            : []),
-        ].map(([label, value]) => (
-          <div key={label}>
-            <dt className="text-muted-foreground">{label}</dt>
-            <dd className="mt-1 font-medium">{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <p className="text-sm">
-        HTML: {bytes(c.html_bytes)}.{" "}
-        {c.html_clipping
-          ? "Above Gmail’s 102 KB clipping threshold."
-          : "Below Gmail’s clipping threshold."}{" "}
-        Daily quota: {data.fits_daily_quota ? "fits" : "does not fit"}.
-      </p>
-      {c.errors?.length > 0 && (
-        <ul className="list-disc pl-5 text-sm text-destructive">
-          {c.errors.map((i, n) => (
-            <li key={n}>
-              {i.message}
-              {i.tag ? ` (${i.tag})` : ""}
-            </li>
-          ))}
-        </ul>
-      )}
-      {c.warnings?.length > 0 && (
-        <ul className="list-disc pl-5 text-sm">
-          {c.warnings.map((i, n) => (
-            <li key={n}>
-              Warning: {i.message}
-              {i.tag ? ` (${i.tag})` : ""}
-            </li>
-          ))}
-        </ul>
-      )}
-      <details>
-        <summary className="cursor-pointer text-sm">
-          Link checks ({c.links?.length ?? 0})
-        </summary>
-        <div className="overflow-auto">
-          <table className={tableClass}>
-            <thead>
-              <tr>
-                <th>URL</th>
-                <th>Status</th>
-                <th>Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              {c.links?.map((l, i) => (
-                <tr key={i}>
-                  <td className="break-all">{l.url}</td>
-                  <td>
-                    {l.status}
-                    {l.http_status ? ` (${l.http_status})` : ""}
-                  </td>
-                  <td>
-                    {l.message}
-                    {l.personalized ? " Personalized URL" : ""}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
-    </div>
   );
 }
