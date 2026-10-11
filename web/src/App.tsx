@@ -485,7 +485,7 @@ export default function App() {
           </DialogContent>
         </Dialog>
         <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-          <DialogContent>
+          <DialogContent className="page-search-dialog">
             <DialogHeader>
               <DialogTitle>Find a page</DialogTitle>
               <DialogDescription>

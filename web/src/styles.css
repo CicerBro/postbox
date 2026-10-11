@@ -1546,6 +1546,25 @@
   .page-search-result {
     justify-content: flex-start;
   }
+  .dialog-content.page-search-dialog {
+    display: block;
+  }
+  .page-search-dialog .dialog-header {
+    margin-bottom: 24px;
+  }
+  .page-search-dialog .dialog-close {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .page-search-dialog .button.page-search-result {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  .page-search-dialog .button.page-search-result:hover {
+    background: var(--soft);
+  }
   .mobile-menu {
     display: none;
   }
