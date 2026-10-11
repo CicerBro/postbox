@@ -202,9 +202,9 @@ func (s *Service) Unsubscribe(ctx context.Context, brandID, id, listID int64) er
 	return s.db.Immediate(ctx, func(c *sql.Conn) error { return unsubscribe(ctx, c, brandID, id, listID) })
 }
 func unsubscribe(ctx context.Context, c *sql.Conn, brandID, id, listID int64) error {
-	return unsubscribeMemberships(ctx, c, brandID, id, listID, true)
+	return unsubscribeMemberships(ctx, c, brandID, id, listID, true, true)
 }
-func unsubscribeMemberships(ctx context.Context, c *sql.Conn, brandID, id, listID int64, recordOptOut bool) error {
+func unsubscribeMemberships(ctx context.Context, c *sql.Conn, brandID, id, listID int64, recordOptOut, emitEvents bool) error {
 	var found int
 	if e := c.QueryRowContext(ctx, `SELECT 1 FROM subscribers WHERE id=? AND brand_id=?`, id, brandID).Scan(&found); e != nil {
 		return e
@@ -222,9 +222,11 @@ func unsubscribeMemberships(ctx context.Context, c *sql.Conn, brandID, id, listI
 	if len(ids) == 0 && listID > 0 {
 		return nil
 	}
-	for _, list := range ids {
-		if e = jobs.EmitTx(ctx, c, brandID, "unsubscribe", map[string]any{"subscriber_id": id, "list_id": list}); e != nil {
-			return e
+	if emitEvents {
+		for _, list := range ids {
+			if e = jobs.EmitTx(ctx, c, brandID, "unsubscribe", map[string]any{"subscriber_id": id, "list_id": list}); e != nil {
+				return e
+			}
 		}
 	}
 	if e = SkipAfterUnsubscribeTx(ctx, c, id, listID); e != nil {

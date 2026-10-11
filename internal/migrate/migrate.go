@@ -158,7 +158,7 @@ func Import(ctx context.Context, db *store.DB, source Source, opt Options) (repo
 		}
 		warn("sending is disabled; review the import and enable sending explicitly afterwards")
 	}
-	order := []string{"apps", "lists", "custom_fields", "customfields", "suppressions", "suppression_list", "suppression_lists", "subscribers", "templates", "campaigns"}
+	order := []string{"apps", "lists", "custom_fields", "customfields", "suppressions", "suppression_list", "suppression_lists", "blocked_domains", "subscribers", "templates", "campaigns"}
 	for table := range paths {
 		found := false
 		for _, t := range order {
@@ -386,9 +386,21 @@ func (i *importer) row(r Row) error {
 		if e = i.query("SELECT id FROM custom_fields WHERE brand_id=? AND key=?", brand, key).Scan(&target); e != nil {
 			return e
 		}
-	case "suppressions", "suppression_list", "suppression_lists":
+	case "suppressions", "suppression_list", "suppression_lists", "blocked_domains":
 		value := r.get("value", "email", "domain")
 		kind := r.get("kind")
+		var suppressionBrand *int64
+		if r.Table == "blocked_domains" {
+			kind = "domain"
+			value = strings.TrimSpace(r.get("domain"))
+			if app := r.get("app"); app != "" && app != "0" {
+				brand, err := i.mapping("apps", app)
+				if err != nil {
+					return fmt.Errorf("blocked domain brand: %w", err)
+				}
+				suppressionBrand = &brand
+			}
+		}
 		if kind == "" {
 			kind = "email"
 			if r.get("domain") != "" {
@@ -417,13 +429,13 @@ func (i *importer) row(r Row) error {
 		} else {
 			return fmt.Errorf("unsupported suppression kind %q", kind)
 		}
-		if e = i.exec("INSERT INTO suppressions(brand_id,kind,value,reason,created_at) VALUES(NULL,?,?,?,?) ON CONFLICT DO NOTHING", kind, value, reason, i.now); e != nil {
+		if e = i.exec("INSERT INTO suppressions(brand_id,kind,value,reason,created_at) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING", suppressionBrand, kind, value, reason, i.now); e != nil {
 			return e
 		}
-		if e = i.query("SELECT id FROM suppressions WHERE brand_id IS NULL AND kind=? AND value=?", kind, value).Scan(&target); e != nil {
+		if e = i.query("SELECT id FROM suppressions WHERE brand_id IS ? AND kind=? AND value=?", suppressionBrand, kind, value).Scan(&target); e != nil {
 			return e
 		}
-		if e = i.skipSuppressed(kind, value); e != nil {
+		if e = i.skipBrandSuppressed(kind, value, suppressionBrand); e != nil {
 			return e
 		}
 		i.report.Suppressed++
@@ -472,13 +484,16 @@ func (i *importer) row(r Row) error {
 	return nil
 }
 func (i *importer) skipSuppressed(kind, value string) error {
+	return i.skipBrandSuppressed(kind, value, nil)
+}
+func (i *importer) skipBrandSuppressed(kind, value string, brand *int64) error {
 	if kind == "domain" {
-		return i.exec("UPDATE campaign_recipients SET status='skipped',error='Sendy migration suppression' WHERE status='pending' AND subscriber_id IN (SELECT id FROM subscribers WHERE domain=?)", value)
+		return i.exec("UPDATE campaign_recipients SET status='skipped',error='Sendy migration suppression' WHERE status='pending' AND subscriber_id IN (SELECT id FROM subscribers WHERE domain=? AND (? IS NULL OR brand_id=?))", value, brand, brand)
 	}
-	return i.exec("UPDATE campaign_recipients SET status='skipped',error='Sendy migration suppression' WHERE status='pending' AND subscriber_id IN (SELECT id FROM subscribers WHERE email=?)", value)
+	return i.exec("UPDATE campaign_recipients SET status='skipped',error='Sendy migration suppression' WHERE status='pending' AND subscriber_id IN (SELECT id FROM subscribers WHERE email=? AND (? IS NULL OR brand_id=?))", value, brand, brand)
 }
 func isSuppressionTable(s string) bool {
-	return strings.Contains(s, "suppress") || strings.Contains(s, "blacklist") || strings.Contains(s, "blocklist")
+	return strings.Contains(s, "suppress") || strings.Contains(s, "blacklist") || strings.Contains(s, "blocklist") || strings.Contains(s, "blocked")
 }
 func flag(s string) bool {
 	s = strings.ToLower(strings.TrimSpace(s))
@@ -813,6 +828,7 @@ WHERE s.email=? AND ls.status!='unsubscribed'`, email)
 var knownColumns = func() map[string]map[string]bool {
 	m := map[string]map[string]bool{}
 	for table, cols := range map[string]string{
+		"blocked_domains":   "id app domain timestamp block_attempts",
 		"suppressions":      "id email domain kind value reason app brand_id timestamp created_at",
 		"suppression_list":  "id email domain kind value reason app brand_id timestamp created_at",
 		"suppression_lists": "id email domain kind value reason app brand_id timestamp created_at",

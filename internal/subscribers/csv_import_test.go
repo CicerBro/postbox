@@ -21,6 +21,55 @@ func csvImportData(t *testing.T, records ...[]string) string {
 	return buf.String()
 }
 
+func TestImportCSVDoesNotQueueEmailsOrWebhooks(t *testing.T) {
+	for _, optIn := range []string{"single", "double"} {
+		t.Run(optIn, func(t *testing.T) {
+			ctx := context.Background()
+			s, brand, list := fixture(t)
+			s.SetBaseURL("https://mail.example.org")
+			list.OptIn = optIn
+			if err := s.UpdateList(ctx, list); err != nil {
+				t.Fatal(err)
+			}
+			other, err := s.CreateList(ctx, List{BrandID: brand.ID, Name: "Other", OptIn: "single"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, email := range []string{"unsubscribe@example.org", "bounce@example.org"} {
+				if _, err := s.Upsert(ctx, UpsertInput{BrandID: brand.ID, Email: email, ListIDs: []int64{list.ID, other.ID}, SubscriptionStatus: "subscribed", SuppressNotifications: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := s.db.Writer.Exec(`INSERT INTO webhooks(brand_id,url,events,secret) VALUES(?,'https://example.org/webhook','["subscribe","unsubscribe"]','secret')`, brand.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.db.SetSetting(ctx, fmt.Sprintf("brand.%d.thankyou_email", brand.ID), `{"subject":"Welcome","html":"<p>Hello</p>"}`); err != nil {
+				t.Fatal(err)
+			}
+			input := "email,status\nnew@example.org,active\nunsubscribe@example.org,unsubscribed\nbounce@example.org,bounced\n"
+			result, err := s.ImportCSV(ctx, strings.NewReader(input), ImportOptions{BrandID: brand.ID, ListIDs: []int64{list.ID}, BatchSize: 1})
+			if err != nil || result.Imported != 3 {
+				t.Fatalf("import: %+v, %v", result, err)
+			}
+			var jobs int
+			if err := s.db.Reader.QueryRow("SELECT count(*) FROM jobs").Scan(&jobs); err != nil || jobs != 0 {
+				t.Fatalf("import queued %d outbound jobs: %v", jobs, err)
+			}
+			var status string
+			want := "subscribed"
+			if optIn == "double" {
+				want = "unconfirmed"
+			}
+			if err := s.db.Reader.QueryRow(`SELECT ls.status FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE s.email='new@example.org' AND ls.list_id=?`, list.ID).Scan(&status); err != nil || status != want {
+				t.Fatalf("new membership: %q, want %q: %v", status, want, err)
+			}
+			if err := s.db.Reader.QueryRow(`SELECT ls.status FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE s.email='bounce@example.org' AND ls.list_id=?`, other.ID).Scan(&status); err != nil || status != "unsubscribed" {
+				t.Fatalf("bounce failed to suppress other membership: %q: %v", status, err)
+			}
+		})
+	}
+}
+
 func TestImportCSVFieldsObjectsAndPrecedence(t *testing.T) {
 	ctx := context.Background()
 	for _, reverse := range []bool{false, true} {

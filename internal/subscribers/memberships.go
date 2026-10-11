@@ -194,7 +194,7 @@ func (s *Service) applyMemberships(ctx context.Context, c *sql.Conn, in UpsertIn
 			if next == "subscribed" {
 				event = "subscribe"
 			}
-			if next == "subscribed" || (previous != "" && next == "unsubscribed") || previous == "subscribed" {
+			if !in.SuppressNotifications && (next == "subscribed" || (previous != "" && next == "unsubscribed") || previous == "subscribed") {
 				if e = jobs.EmitTx(ctx, c, in.BrandID, event, map[string]any{"subscriber_id": v.ID, "list_id": id}); e != nil {
 					return v, e
 				}
@@ -230,7 +230,7 @@ func (s *Service) applyMemberships(ctx context.Context, c *sql.Conn, in UpsertIn
 		}
 	}
 	if v.Status != "active" {
-		if e = unsubscribeMemberships(ctx, c, in.BrandID, v.ID, 0, false); e != nil {
+		if e = unsubscribeMemberships(ctx, c, in.BrandID, v.ID, 0, false, !in.SuppressNotifications); e != nil {
 			return v, e
 		}
 	}

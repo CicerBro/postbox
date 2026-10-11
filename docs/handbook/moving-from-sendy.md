@@ -73,6 +73,8 @@ POSTBOX_SENDY_DRY_RUN=false \
 
 For a live MySQL source, set `POSTBOX_SENDY_DSN` instead of `POSTBOX_SENDY_DUMP`. Exactly one must be nonempty. Budget temporary disk for decoded source data and the preview database.
 
+The SQL dump import reads local files and writes the Postbox database. It does not call external APIs, send confirmation or welcome emails, or enqueue outbound webhooks. A live MySQL source connects only to the configured source database. Keep the Postbox service stopped during cutover; the migration command does not run background workers.
+
 ## Review what arrived
 
 | Source data | Result in Postbox |
@@ -80,7 +82,8 @@ For a live MySQL source, set `POSTBOX_SENDY_DSN` instead of `POSTBOX_SENDY_DUMP`
 | Brands, lists and templates | Imported with stable source identities |
 | Duplicate addresses | Merged within a brand; conflicts are reported |
 | Unsubscribed or unconfirmed memberships | Kept in their non-sendable membership states |
-| Bounced, complained or blocklisted addresses | Kept suppressed; importer suppressions are global |
+| Bounced, complained or blocklisted addresses | Kept suppressed globally |
+| `blocked_domains` | Imported as domain suppressions within the referenced brand; NULL or zero `app` means global |
 | Sent campaigns | Historical campaigns with supported aggregate counters |
 | Drafts and scheduled campaigns | Cancelled historical records with a warning; no send jobs created |
 | Unknown fields or report tables | Archived with warnings, subject to the adapter's safety checks |
@@ -131,6 +134,7 @@ Table names are unprefixed. The current adapter expects `apps`, `lists`, and `su
 | `templates` | `templates` | `id`, brand reference, `name`/`title`, `html`/`html_text` |
 | `campaigns` | archived `campaigns` and stats | `id`, brand reference, `subject`/`title`, `html_text`/`html`, `plain_text`/`text`, `sent`/`status`, numeric report counters |
 | `suppressions`, `suppression_list`, `suppression_lists` | global suppressions | `id`, `email`/`domain`/`value`, optional `kind`, `reason` |
+| `blocked_domains` | domain suppressions | `id`, `domain`, optional `app` for brand scope; `timestamp` and `block_attempts` retained in the source archive |
 
 The source adapter is deliberately explicit because Sendy versions and installations vary. Validate the layout with your version's schema before production use. All complete source rows, including NULLs and unknown columns/tables, are stored in `migration_records`. Unknown columns and tables emit named warnings. Unknown-table rows without an `id` are archived by table-relative row ordinal with a warning; their original source offers no stable identity, so row assignments can change on a later source scan. An unknown table whose name indicates suppressions/blocklists is rejected, rather than allowing its addresses to become sendable. Missing references, invalid email addresses, invalid UTF-8, malformed custom fields, and unsupported INSERT expressions fail with actionable errors. Already committed batches remain; rerun with the same SourceID after fixing the issue.
 
@@ -141,6 +145,8 @@ Timestamps accept Unix seconds, Unix milliseconds, RFC3339, and UTC `YYYY-MM-DD 
 ### Consent and suppression
 
 Emails are trimmed, lowercased, and their domains punycoded through the same normalizer used by sending. Deduplication is per brand. Original source subscriber IDs all map to the merged subscriber in `migration_identities`, keyed by SourceID/entity/source ID. Generated list/campaign UUIDs are deterministic for that source.
+
+Blocked domains are normalized and imported before subscribers. A nonzero `blocked_domains.app` must reference an imported brand. A NULL or zero app creates a global domain suppression. Matching addresses are excluded from sending, and existing pending recipients in the applicable scope are skipped. Repeat imports retain existing restrictions and apply newly observed blocks without creating duplicate suppressions.
 
 List status precedence is unsubscribed, then unconfirmed, then subscribed. Unsubscribed/unconfirmed memberships remain membership states and do not create global suppression. A subscriber who remains subscribed in a different list may still receive that list's campaigns, as in Sendy's list-scoped unsubscribe setting. Rows with no confirmed or status column remain unconfirmed with a warning. Bounced, complained, blocklisted, and explicitly suppressed addresses create global suppressions, even if another brand/list has an active record. Nonzero bounce/complaint flags are interpreted conservatively. Unknown non-active status values remain blocklisted with a warning. Sending filters inactive subscribers and global email/domain suppressions. [Sendy's discussion of status scope](https://sendy.co/forum/discussion/1567/are-bounces-complaints-and-unsubscribes-global) explains its brand/list behavior; this importer keeps bounce/complaint suppression global for send safety.
 

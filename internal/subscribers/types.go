@@ -47,7 +47,8 @@ type Subscriber struct {
 	ConfirmationTokens      map[int64]string `json:"confirmation_tokens,omitempty"`
 }
 type UpsertInput struct {
-	SubscriptionStatus    string         `json:"subscription_status,omitempty"`
+	SubscriptionStatus string `json:"subscription_status,omitempty"`
+	// Imports suppress both email notifications and outbound webhooks.
 	SuppressNotifications bool           `json:"-"`
 	BrandID               int64          `json:"brand_id"`
 	Email                 string         `json:"email"`

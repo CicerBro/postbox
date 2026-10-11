@@ -6,6 +6,8 @@ A campaign combines a brand, an eligible audience and a finished email. Work thr
 
 Use lists to organise subscriptions and segments to select contacts by criteria. Custom fields hold the information you need for targeting and personalisation. Import contacts through the subscriber workflow, then review the job result and membership states before sending.
 
+CSV imports do not send confirmation or welcome emails, call external APIs, or enqueue outbound webhooks. Imported members of double opt-in lists remain unconfirmed until confirmation; importing them does not email a confirmation request. Existing campaigns and background jobs continue independently if the service is running.
+
 Subscription and delivery eligibility are separate:
 
 | State | What it means for sending |
