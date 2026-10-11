@@ -154,6 +154,7 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
               <thead>
                 <tr>
                   <SortableTableHead label="Name / prefix" {...sorting.header("name")} />
+                  <th>Prefix</th>
                   <SortableTableHead label="Scopes" {...sorting.header("scopes")} />
                   <SortableTableHead label="Last used" {...sorting.header("used")} />
                   <SortableTableHead label="Status" {...sorting.header("status")} />
@@ -165,25 +166,23 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
               <tbody>
                 {keys.map((k) => (
                   <tr className="border-t" key={k.id}>
+                    <td className="p-3"><span className="row-title">{k.name}</span></td>
+                    <td className="p-3"><code className="row-subtitle">{k.prefix}</code></td>
                     <td className="p-3">
-                      <span className="row-title">{k.name}</span>
-                      <code className="row-subtitle">{k.prefix}</code>
-                    </td>
-                    <td>
                       <div className="flex flex-wrap gap-1">
                         {strings(k.scopes).map((scope) => (
                           <Badge key={scope}>{scope}</Badge>
                         ))}
                       </div>
                     </td>
-                    <td>{date(k.last_used_at)}</td>
-                    <td>
+                    <td className="p-3">{date(k.last_used_at)}</td>
+                    <td className="p-3">
                       <Badge variant={k.revoked_at ? "secondary" : "success"}>
                         <span className="status-dot" />
                         {k.revoked_at ? "Revoked" : "Active"}
                       </Badge>
                     </td>
-                    <td>
+                    <td className="p-3">
                       {!k.revoked_at && (
                         <Button
                           variant="destructive"
