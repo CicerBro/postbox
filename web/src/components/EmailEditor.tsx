@@ -7,7 +7,8 @@ import { MergeView } from "@codemirror/merge";
 import type { Editor } from "grapesjs";
 import "grapesjs/dist/css/grapes.min.css";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Code2, Columns2, Copy, Eye, Monitor, Pencil, Smartphone } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   buildVisualCandidate,
   sanitizeVisualDocument,
@@ -15,8 +16,6 @@ import {
 } from "./email-source";
 import { api } from "../lib/api";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { SelectField } from "./ui/select";
 import {
   Dialog,
   DialogContent,
@@ -109,11 +108,11 @@ export function EmailEditor({
     change = useRef(onChange);
   change.current = onChange;
   const [mode, setMode] = useState<"raw" | "visual">("raw"),
+    [panes, setPanes] = useState<"html" | "preview" | "both">("both"),
     [mobile, setMobile] = useState(false),
     [candidate, setCandidate] = useState<string | null>(null),
     [original, setOriginal] = useState("");
-  const [tag, setTag] = useState("name"),
-    [fallback, setFallback] = useState(""),
+  const [copyStatus, setCopyStatus] = useState(""),
     [error, setError] = useState<unknown>(null),
     [loading, setLoading] = useState(false);
   // Canonical identity resets paging immediately when unsaved audience changes.
@@ -196,7 +195,7 @@ export function EmailEditor({
             if (u.docChanged) change.current(u.state.doc.toString());
           }),
           EditorView.theme({
-            "&": { height: "480px" },
+            "&": { height: "960px" },
             ".cm-scroller": { overflow: "auto" },
           }),
         ],
@@ -208,6 +207,9 @@ export function EmailEditor({
       cm.current = null;
     };
   }, [mode, readOnly]);
+  useEffect(() => {
+    cm.current?.requestMeasure();
+  }, [panes]);
   useEffect(() => {
     const editor = cm.current;
     if (editor && editor.state.doc.toString() !== value)
@@ -313,16 +315,13 @@ export function EmailEditor({
       container.remove();
     };
   }, [mode, original]);
-  function insertTag() {
-    const text = `{{ ${tag}${fallback ? ` | ${JSON.stringify(fallback)}` : ""} }}`;
-    const view = cm.current;
-    if (view) {
-      const s = view.state.selection.main;
-      view.dispatch({
-        changes: { from: s.from, to: s.to, insert: text },
-        selection: { anchor: s.from + text.length },
-      });
-      view.focus();
+  async function copyTag(tag: string) {
+    const text = `{{ ${tag} }}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus(`Copied ${text}`);
+    } catch {
+      setCopyStatus("Could not copy the merge tag. Try again.");
     }
   }
   function propose() {
@@ -336,50 +335,61 @@ export function EmailEditor({
     );
   }
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant={mode === "raw" ? "default" : "info"}
-          onClick={() => setMode("raw")}
-        >
-          HTML source
-        </Button>
-        {!readOnly && (
-          <Button
-            type="button"
-            variant="info"
-            onClick={() => {
-              setOriginal(value);
-              setMode("visual");
-              setError(null);
-            }}
-            disabled={mode === "visual"}
-          >
-            Visual editor
-          </Button>
-        )}
-        <Button
-          type="button"
-          variant="info"
-          onClick={() => setMobile(!mobile)}
-        >
-          {mobile ? "Desktop preview" : "Mobile preview"}
-        </Button>
-      </div>
-      <ErrorMessage error={error ?? fields.error ?? textPreview.error} />
-      {mode === "raw" ? (
-        <>
-          <div className="flex flex-wrap items-end gap-2">
+    <div className="email-editor space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <div className="email-editor-button-group" role="group" aria-label="Editor mode">
+            <Button
+              type="button"
+              variant="outline"
+              aria-pressed={mode === "raw"}
+              onClick={() => setMode("raw")}
+            >
+              <Code2 size={16} aria-hidden="true" />
+              HTML source
+            </Button>
             {!readOnly && (
-              <>
-                <label htmlFor="editor-merge-tag" className="block space-y-2 text-sm">
-                  Merge tag
-                  <SelectField
-                    id="editor-merge-tag"
-                    value={tag}
-                    onValueChange={setTag}
-                    options={[
+              <Button
+                type="button"
+                variant="outline"
+                aria-pressed={mode === "visual"}
+                onClick={() => {
+                  setOriginal(value);
+                  setMode("visual");
+                  setError(null);
+                }}
+                disabled={mode === "visual"}
+              >
+                <Pencil size={16} aria-hidden="true" />
+                Visual editor
+              </Button>
+            )}
+          </div>
+          {mode === "raw" && (
+            <>
+              <div className="email-editor-button-group" role="group" aria-label="Visible panes">
+                {([
+                  ["html", "HTML", Code2],
+                  ["preview", "Preview", Eye],
+                  ["both", "Both", Columns2],
+                ] as const).map(([value, label, Icon]) => (
+                  <Button key={value} type="button" variant="outline"
+                    aria-label={value === "both" ? "Show both side by side" : `Show ${label}`}
+                    aria-pressed={panes === value} onClick={() => setPanes(value)}>
+                    <Icon size={16} aria-hidden="true" />{label}
+                  </Button>
+                ))}
+              </div>
+              <DropdownMenu.Root onOpenChange={(open) => { if (open) setCopyStatus(""); }}>
+                <DropdownMenu.Trigger asChild>
+                  <Button type="button" variant="outline" className="email-editor-tool">
+                    <Copy size={16} aria-hidden="true" /> Merge tags <ChevronDown size={14} aria-hidden="true" />
+                  </Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content className="dropdown-content email-editor-tags" align="start" sideOffset={6}>
+                    <DropdownMenu.Label className="dropdown-label">Click a variable to copy</DropdownMenu.Label>
+                    {[
                       ...[
                         "name",
                         "email",
@@ -393,35 +403,37 @@ export function EmailEditor({
                         value: f.key,
                         label: `${f.label} (${f.key})`,
                       })) ?? []),
-                    ]}
-                  />
-                </label>
-                <label className="block space-y-2 text-sm">
-                  Fallback
-                  <Input
-                    value={fallback}
-                    onChange={(e) => setFallback(e.target.value)}
-                    placeholder="Optional"
-                  />
-                </label>
-                <Button type="button" variant="info" onClick={insertTag}>
-                  Insert tag
-                </Button>
-              </>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
+                    ].map(({ value, label }) => (
+                      <DropdownMenu.Item key={value} textValue={label} onSelect={() => { void copyTag(value); }}>
+                        <span>{label}</span><code>{`{{ ${value} }}`}</code>
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            </>
+          )}
+        </div>
+        {mode === "raw" && (
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2" role="group" aria-label="Preview controls">
+            <Button type="button" variant="outline" className="email-editor-tool"
+              aria-label={mobile ? "Switch to desktop preview" : "Switch to mobile preview"}
+              title={mobile ? "Switch to desktop preview" : "Switch to mobile preview"}
+              aria-pressed={mobile} onClick={() => setMobile(!mobile)}>
+              {mobile ? <Smartphone size={16} aria-hidden="true" /> : <Monitor size={16} aria-hidden="true" />}
+              Preview
+            </Button>
             {hasAudience && (
-              <div className="flex min-w-0 items-center rounded-md border">
-                <Button type="button" variant="info" size="icon" aria-label="Previous subscriber"
+              <div className="email-editor-recipients flex min-w-0 items-center rounded-md border">
+                <Button type="button" variant="outline" size="icon" aria-label="Previous subscriber"
                   disabled={cursors.length <= 1 || recipients.isFetching}
                   onClick={() => setNavigation({ brandId, audienceKey, cursors: cursors.slice(0, -1) })}>
                   <ChevronLeft size={16} />
                 </Button>
-                <span className="max-w-[240px] truncate px-2 text-sm" title={recipient?.email} aria-live="polite">
+                <span className="min-w-0 max-w-[240px] truncate px-2 text-sm" title={recipient?.email} aria-live="polite">
                   {recipients.isPending ? "Loading subscribers…" : recipient?.email ?? "No active subscribers"}
                 </span>
-                <Button type="button" variant="info" size="icon" aria-label="Next subscriber"
+                <Button type="button" variant="outline" size="icon" aria-label="Next subscriber"
                   disabled={!recipient || (recipients.data?.length ?? 0) < 2 || recipients.isFetching}
                   onClick={() => {
                     if (recipient) setNavigation({ brandId, audienceKey, cursors: [...cursors, recipient.id] });
@@ -431,6 +443,12 @@ export function EmailEditor({
               </div>
             )}
           </div>
+        )}
+      </div>
+      <p className={copyStatus ? "text-sm text-muted-foreground" : "sr-only"} role="status">{copyStatus}</p>
+      <ErrorMessage error={error ?? fields.error ?? textPreview.error} />
+      {mode === "raw" ? (
+        <>
           <p className="mb-2 text-sm text-muted-foreground" role="status">
             {previewPending
                 ? "Rendering preview…"
@@ -440,19 +458,20 @@ export function EmailEditor({
                     ? `${recipient ? "Preview with subscriber data" : "Preview with sample data"}. Browser links open your saved edits. Unsubscribe links simulate the live flow without changes.`
                     : `${recipient ? "Preview with subscriber data" : "Preview with sample data"}. Save the campaign to enable browser and unsubscribe previews.`}
           </p>
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className={`grid gap-4 ${panes === "both" ? "xl:grid-cols-2" : "grid-cols-1"}`}>
             <div
               ref={rawHost}
+              hidden={panes === "preview"}
               className="min-w-0 overflow-hidden rounded-md border"
               aria-label="Full HTML source"
             />
-            <div className="min-w-0 overflow-hidden rounded-md border" role="region" aria-label="Email preview pane" aria-busy={previewPending}>
+            <div hidden={panes === "html"} className="min-w-0 overflow-hidden rounded-md border" role="region" aria-label="Email preview pane" aria-busy={previewPending}>
               {previewPending ? (
-                <div className="flex h-[480px] items-center justify-center p-6 text-sm text-muted-foreground">
+                <div className="flex h-[960px] items-center justify-center p-6 text-sm text-muted-foreground">
                   Rendering preview…
                 </div>
               ) : previewError ? (
-                <div className="flex h-[480px] flex-col items-center justify-center gap-3 p-6 text-center">
+                <div className="flex h-[960px] flex-col items-center justify-center gap-3 p-6 text-center">
                   <p className="font-medium">Preview could not be rendered</p>
                   <ErrorMessage error={previewError} />
                   <p className="text-sm text-muted-foreground">Correct the error in your source or subject. The preview updates automatically.</p>
@@ -463,7 +482,7 @@ export function EmailEditor({
                   sandbox="allow-popups allow-popups-to-escape-sandbox"
                   referrerPolicy="no-referrer"
                   srcDoc={previewLinkTargets(samplePreview.data?.html ?? "")}
-                  className="mx-auto block h-[480px] border-0 bg-white"
+                  className="mx-auto block h-[960px] border-0 bg-white"
                   style={{ width: mobile ? "var(--newsletter-mobile-width)" : "100%", maxWidth: "100%" }}
                 />
               )}

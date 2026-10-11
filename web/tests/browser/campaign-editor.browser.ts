@@ -325,3 +325,105 @@ test("campaign action previews open safely with the selected subscriber", async 
     await opened.close();
   }
 });
+
+test("editor view switches preserve unsaved HTML and undo while merge tags copy without inserting", async ({ page, context }) => {
+  const state = await fixture(context);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await context.route("**/api/v1/custom-fields*", (route) => route.fulfill({ json: [{ id: 1, key: "company", label: "Company" }] }));
+  await context.route("**/api/v1/email-preview?*", (route) => route.fulfill({ json: { subject: "Saved subject", html: "<p>Rendered HTML</p>", text: "Rendered HTML" } }));
+  await page.setViewportSize({ width: 1800, height: 1200 });
+  await page.goto("/campaigns/7");
+  const raw = page.locator('.cm-content[aria-label="Full HTML source"]');
+  const pane = page.getByRole("region", { name: "Email preview pane", exact: true });
+  const frame = page.locator('iframe[title="Email preview"]');
+  await expect(raw).toHaveText("<p>Saved HTML</p>");
+  await expect(frame).toBeVisible();
+  expect((await page.locator(".email-editor .cm-editor").boundingBox())?.height).toBe(960);
+  expect((await frame.boundingBox())?.height).toBe(960);
+  const sourceBox = (await raw.boundingBox())!;
+  expect((await pane.boundingBox())!.x).toBeGreaterThan(sourceBox.x + sourceBox.width);
+
+  await raw.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.insertText(" unsaved");
+  await page.getByRole("button", { name: "Show Preview", exact: true }).click();
+  await expect(raw).toBeHidden();
+  await expect(frame).toBeVisible();
+  await page.getByRole("button", { name: "Show HTML", exact: true }).click();
+  await expect(raw).toContainText("unsaved");
+  await expect(pane).toBeHidden();
+  await raw.click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(raw).toHaveText("<p>Saved HTML</p>");
+  await page.getByRole("button", { name: "Show both side by side", exact: true }).click();
+  await expect(raw).toBeVisible();
+  await expect(frame).toBeVisible();
+
+  for (const [label, key] of [["name", "name"], ["Company (company)", "company"]]) {
+    await page.getByRole("button", { name: "Merge tags", exact: true }).click();
+    await page.getByRole("menuitem").filter({ hasText: label }).first().click();
+    await expect(page.getByRole("status").filter({ hasText: `Copied {{ ${key} }}` })).toHaveText(`Copied {{ ${key} }}`);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`{{ ${key} }}`);
+    await expect(raw).toHaveText("<p>Saved HTML</p>");
+  }
+  expect(state.campaignWrites).toEqual([]);
+});
+
+test("preview toolbar stays above the pane and fits desktop and mobile screens", async ({ page, context }) => {
+  const state = await fixture(context);
+  state.targets = [{ target_type: "list", target_id: 11, mode: "include" }];
+  await context.route("**/api/v1/email-preview/recipients*", (route) => {
+    const after = route.request().postDataJSON().after;
+    return route.fulfill({ json: after ? [{ id: 43, name: "Next", email: "next@example.org" }] : [
+      { id: 42, name: "Selected", email: "a-very-long-subscriber-email-address@example.org" },
+      { id: 43, name: "Next", email: "next@example.org" },
+    ] });
+  });
+  await context.route("**/api/v1/email-preview?*", (route) => route.fulfill({ json: { subject: "Saved subject", html: "<p>Rendered HTML</p>", text: "Rendered HTML" } }));
+  await page.setViewportSize({ width: 1800, height: 1200 });
+  await page.goto("/campaigns/7");
+  const frame = page.locator('iframe[title="Email preview"]');
+  const controls = page.getByRole("group", { name: "Preview controls", exact: true });
+  await expect(frame).toBeVisible();
+  const pane = page.getByRole("region", { name: "Email preview pane", exact: true });
+  const controlsBox = (await controls.boundingBox())!;
+  const paneBox = (await pane.boundingBox())!;
+  expect(controlsBox.y + controlsBox.height).toBeLessThan(paneBox.y);
+  expect(controlsBox.x + controlsBox.width).toBeCloseTo(paneBox.x + paneBox.width, 0);
+  const toggle = page.getByRole("button", { name: "Switch to mobile preview", exact: true });
+  expect((await toggle.boundingBox())!.x).toBeLessThan((await page.getByRole("button", { name: "Previous subscriber" }).boundingBox())!.x);
+  await toggle.click();
+  await expect(page.getByRole("button", { name: "Switch to desktop preview" })).toHaveAttribute("aria-pressed", "true");
+  expect((await frame.boundingBox())?.width).toBe(402);
+  await page.getByRole("button", { name: "Next subscriber" }).click();
+  await expect(controls.getByText("next@example.org", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Previous subscriber" }).click();
+  await expect(controls.getByText("a-very-long-subscriber-email-address@example.org", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Switch to desktop preview" }).click();
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  await page.locator(".email-editor").screenshot({ path: "test-results/editor-desktop.png" });
+
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(controls).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const editorBox = (await page.locator(".email-editor").boundingBox())!;
+    for (const button of await page.locator(".email-editor-button-group button").all()) {
+      const buttonBox = (await button.boundingBox())!;
+      expect(buttonBox.x).toBeGreaterThanOrEqual(editorBox.x);
+      expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(editorBox.x + editorBox.width);
+    }
+    await page.getByRole("button", { name: "Show Preview", exact: true }).click();
+    await expect(frame).toBeVisible();
+    await expect(page.locator('.cm-content[aria-label="Full HTML source"]')).toBeHidden();
+    expect((await frame.boundingBox())!.width).toBeLessThanOrEqual(width);
+    await page.getByRole("button", { name: "Merge tags", exact: true }).click();
+    const menu = page.getByRole("menu");
+    await expect(menu.getByRole("menuitem")).toHaveCount(7);
+    const menuBox = (await menu.boundingBox())!;
+    expect(menuBox.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width);
+    await page.keyboard.press("Escape");
+  }
+  await page.locator(".email-editor").screenshot({ path: "test-results/editor-mobile.png" });
+});

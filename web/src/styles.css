@@ -1078,6 +1078,79 @@
     height: 36px;
     padding: 8px;
   }
+  .email-editor-button-group {
+    display: inline-flex;
+    max-width: 100%;
+  }
+  .email-editor-button-group > .button {
+    position: relative;
+    border-radius: 0;
+  }
+  .email-editor-button-group > .button:first-child {
+    border-radius: 6px 0 0 6px;
+  }
+  .email-editor-button-group > .button:last-child {
+    border-radius: 0 6px 6px 0;
+  }
+  .email-editor-button-group > .button:only-child {
+    border-radius: 6px;
+  }
+  .email-editor-button-group > .button + .button {
+    margin-left: -1px;
+  }
+  :root .email-editor .button.button-outline {
+    background: transparent;
+    box-shadow: none;
+  }
+  :root .email-editor .button.button-outline:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+  }
+  .email-editor-button-group > .button[aria-pressed="true"],
+  .email-editor .email-editor-tool[aria-pressed="true"] {
+    border-color: var(--primary);
+    z-index: 1;
+    opacity: 1;
+  }
+  .email-editor-button-group > .button:focus-visible {
+    z-index: 2;
+  }
+  .email-editor-recipients {
+    max-width: 100%;
+  }
+  .email-editor-recipients > .button {
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 0;
+  }
+  .email-editor-recipients > .button:first-child {
+    border-radius: 5px 0 0 5px;
+    border-right: 1px solid var(--border);
+  }
+  .email-editor-recipients > .button:last-child {
+    border-radius: 0 5px 5px 0;
+    border-left: 1px solid var(--border);
+  }
+  .email-editor-tags {
+    width: min(400px, calc(100vw - 32px));
+    max-height: var(--radix-dropdown-menu-content-available-height);
+    overflow-y: auto;
+  }
+  .email-editor-tags [role="menuitem"] {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .email-editor-tags code {
+    font-size: 12px;
+    color: var(--muted-foreground);
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 640px) {
+    .email-editor-button-group > .button {
+      gap: 6px;
+      padding-inline: 8px;
+      font-size: 12px;
+    }
+  }
   .campaign-actions-cell {
     width: 1%;
     white-space: nowrap;
