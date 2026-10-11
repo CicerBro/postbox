@@ -986,7 +986,8 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                     <tr>
                       {sortableHead("Name", "name")}
                       {sortableHead("Email", "email")}
-                      <th>Last activity</th>
+                      {sortableHead("Last activity", "last_activity")}
+                      {sortableHead("Created at", "created_at")}
                       <th className="w-32">Action</th>
                     </tr>
                   </thead>
@@ -1031,6 +1032,11 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                           <p className="text-sm capitalize">{s.last_activity_kind || (s.updated_at > s.created_at ? "Updated" : "Created")}</p>
                           <time className="text-xs text-muted-foreground" dateTime={new Date(s.last_activity_at || s.updated_at || s.created_at).toISOString()}>
                             {new Date(s.last_activity_at || s.updated_at || s.created_at).toLocaleString()}
+                          </time>
+                        </td>
+                        <td>
+                          <time className="text-xs text-muted-foreground" dateTime={new Date(s.created_at).toISOString()}>
+                            {new Date(s.created_at).toLocaleString()}
                           </time>
                         </td>
                         <td>

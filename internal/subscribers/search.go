@@ -31,7 +31,7 @@ func subscriberSearchQuery(brandID, afterID int64, limit int, f SearchFilter) (s
 		sortColumn = f.Sort
 	}
 	switch sortColumn {
-	case "id", "email", "name", "status", "gdpr_consent_at", "created_at":
+	case "id", "email", "name", "status", "gdpr_consent_at", "created_at", "last_activity":
 	default:
 		return "", nil, errors.New("unsupported subscriber sort column")
 	}
@@ -45,6 +45,11 @@ func subscriberSearchQuery(brandID, afterID int64, limit int, f SearchFilter) (s
 	sortValue := "s." + sortColumn
 	if sortColumn == "gdpr_consent_at" {
 		sortValue = "coalesce(s.gdpr_consent_at, 0)"
+	}
+	if sortColumn == "last_activity" {
+		// Match populateLastActivity, including profiles without activity records.
+		sortValue = `max(s.created_at,s.updated_at,coalesce(s.marketing_unsubscribed_at,s.created_at),
+coalesce((SELECT max(a.at) FROM subscriber_activity a WHERE a.subscriber_id=s.id AND a.brand_id=s.brand_id),s.created_at))`
 	}
 	f.EmailPrefix = strings.ToLower(strings.TrimSpace(f.EmailPrefix))
 	for _, c := range f.EmailPrefix {
@@ -79,15 +84,15 @@ func subscriberSearchQuery(brandID, afterID int64, limit int, f SearchFilter) (s
 	} else if afterID > 0 {
 		// Use the last row's sort value and ID together so duplicate values never
 		// skip or repeat recipients. The cursor lookup stays inside the brand.
-		value := strings.ReplaceAll(sortValue, "s.", "")
+		value := sortValue
 		if sortColumn == "gdpr_consent_at" {
 			// SQLite does not derive an expression-index range from the row
 			// comparison below. Supply the inclusive first-key bound explicitly;
 			// the tuple still handles equal consent values and the ID tie breaker.
-			q += " AND " + sortValue + " " + comparison + "= (SELECT " + value + " FROM subscribers WHERE brand_id=? AND id=?)"
+			q += " AND " + sortValue + " " + comparison + "= (SELECT " + value + " FROM subscribers s WHERE s.brand_id=? AND s.id=?)"
 			args = append(args, brandID, afterID)
 		}
-		q += " AND (" + sortValue + ",s.id) " + comparison + " (SELECT " + value + ",id FROM subscribers WHERE brand_id=? AND id=?)"
+		q += " AND (" + sortValue + ",s.id) " + comparison + " (SELECT " + value + ",s.id FROM subscribers s WHERE s.brand_id=? AND s.id=?)"
 		args = append(args, brandID, afterID)
 	}
 	if f.EmailPrefix != "" {

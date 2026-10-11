@@ -29,9 +29,21 @@ test("subscriber columns and row actions", async ({ page, context }) => {
   });
   await page.goto("/subscribers");
   const table = page.locator("table");
-  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Email", "Last activity", "Action"]);
+  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Email", "Last activity", "Created at", "Action"]);
   await expect(table.locator(".avatar")).toHaveCount(0);
   await expect(table.getByText("complaint", { exact: true })).toBeVisible();
+  await expect(table.locator('time[datetime="2023-11-14T22:13:20.000Z"]')).toBeVisible();
+  for (const [label, column] of [["Last activity", "last_activity"], ["Created at", "created_at"]]) {
+    for (const direction of ["asc", "desc"]) {
+      const request = page.waitForRequest(request => {
+        const url = new URL(request.url());
+        return url.pathname === "/api/v1/subscribers" && url.searchParams.get("sort") === column && url.searchParams.get("direction") === direction && url.searchParams.get("after") === "0";
+      });
+      await table.getByRole("button", { name: `Sort by ${label}`, exact: false }).click();
+      await request;
+      await expect(table.getByRole("columnheader").filter({ hasText: label })).toHaveAttribute("aria-sort", direction === "asc" ? "ascending" : "descending");
+    }
+  }
   await page.screenshot({ path: test.info().outputPath("postbox-subscribers.png"), fullPage: true });
   await page.getByRole("button", { name: "Edit ada@example.com", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Subscriber profile" })).toBeVisible();

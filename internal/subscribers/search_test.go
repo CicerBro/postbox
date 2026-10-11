@@ -119,3 +119,54 @@ func TestSubscriberSortedPagination(t *testing.T) {
 		}
 	}
 }
+
+func TestSubscriberLastActivitySortedPagination(t *testing.T) {
+	s, brand, list := fixture(t)
+	_, err := s.db.Writer.Exec(`INSERT INTO subscribers(brand_id,email,created_at,updated_at,marketing_unsubscribed_at) VALUES
+(?, 'created@example.org', 30, 0, NULL),
+(?, 'updated@example.org', 10, 50, NULL),
+(?, 'unsubscribed@example.org', 10, 20, 60),
+(?, 'activity@example.org', 10, 20, NULL),
+(?, 'tied@example.org', 10, 50, NULL)`, brand.ID, brand.ID, brand.ID, brand.ID, brand.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Writer.Exec(`INSERT INTO subscriber_activity(brand_id,subscriber_id,kind,at)
+SELECT brand_id,id,'open',CASE email WHEN 'activity@example.org' THEN 70 ELSE 5 END FROM subscribers;
+INSERT INTO list_subscribers(list_id,subscriber_id,status,created_at,updated_at)
+SELECT ?,id,'subscribed',0,0 FROM subscribers`, list.ID); err != nil {
+		t.Fatal(err)
+	}
+	// An activity from a different brand must never affect the displayed or sorted time.
+	if _, err = s.db.Writer.Exec(`INSERT INTO subscriber_activity(brand_id,subscriber_id,kind,at)
+SELECT brand_id+1,id,'click',1000 FROM subscribers WHERE email='created@example.org'`); err != nil {
+		t.Fatal(err)
+	}
+	wantEmails := []string{"created@example.org", "updated@example.org", "tied@example.org", "unsubscribed@example.org", "activity@example.org"}
+	wantTimes := []int64{30, 50, 50, 60, 70}
+	for _, filter := range []SearchFilter{{}, {ListID: list.ID, MembershipStatus: "subscribed"}, {EmailPrefix: "updated@"}, {Status: "active"}} {
+		for _, direction := range []string{"asc", "desc"} {
+			filter.Sort, filter.Direction = "last_activity", direction
+			emails, times := wantEmails, wantTimes
+			if filter.EmailPrefix != "" {
+				emails, times = wantEmails[1:2], wantTimes[1:2]
+			}
+			var after int64
+			for i := range emails {
+				position := i
+				if direction == "desc" {
+					position = len(emails) - 1 - i
+				}
+				rows, err := s.SearchFiltered(context.Background(), brand.ID, after, 1, filter)
+				if err != nil || len(rows) != 1 || rows[0].Email != emails[position] || rows[0].LastActivityAt != times[position] {
+					t.Fatalf("filter %+v page %d: %+v, %v; want %s at %d", filter, i, rows, err, emails[position], times[position])
+				}
+				after = rows[0].ID
+			}
+			rows, err := s.SearchFiltered(context.Background(), brand.ID, after, 1, filter)
+			if err != nil || len(rows) != 0 {
+				t.Fatalf("filter %+v end: %+v, %v", filter, rows, err)
+			}
+		}
+	}
+}
