@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
+import { useApp } from "../../lib/app-context";
 import type { ReactNode } from "react";
 import { Badge } from "../ui/badge";
 import type { Subscriber as ContractSubscriber } from "../../lib/generated-contracts";
@@ -22,12 +23,24 @@ export type CustomField = {
   type: string;
   is_filterable: boolean;
 };
-export type Subscriber = Omit<Pick<
-  ContractSubscriber,
-  "id" | "email" | "name" | "status" | "fields" |
-  "gdpr_consent_at" | "marketing_unsubscribed_at" | "gdpr_consent_ip" |
-  "created_at" | "updated_at" | "last_activity_at" | "last_activity_kind"
->, "fields"> & { fields: ContractSubscriber["fields"] | string };
+export type Subscriber = Omit<
+  Pick<
+    ContractSubscriber,
+    | "id"
+    | "email"
+    | "name"
+    | "status"
+    | "fields"
+    | "gdpr_consent_at"
+    | "marketing_unsubscribed_at"
+    | "gdpr_consent_ip"
+    | "created_at"
+    | "updated_at"
+    | "last_activity_at"
+    | "last_activity_kind"
+  >,
+  "fields"
+> & { fields: ContractSubscriber["fields"] | string };
 export const tableClass =
   "w-full text-sm [&_th]:text-left [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:py-2 [&_th]:h-10 [&_th]:py-2 [&_tr]:border-b [&_tbody_tr:last-child]:border-0 [&_td]:px-3 [&_th]:px-3";
 export function SubscriberStatusBadge({ status }: { status: string }) {
@@ -73,6 +86,15 @@ export function useSubscribersQuery<T>(
     enabled: brandId > 0 && enabled,
   });
 }
+export function useCanWriteSubscribers(brandId: number) {
+  const { session, brands } = useApp();
+  return (
+    session.admin ||
+    !!brands
+      .find((brand) => brand.id === brandId)
+      ?.permissions?.includes("write")
+  );
+}
 export function useSubscriberAction<T = unknown>(brandId: number) {
   const client = useQueryClient();
   return useMutation({
@@ -86,7 +108,7 @@ export function useSubscriberAction<T = unknown>(brandId: number) {
   });
 }
 export function parseFields(
-	value: Subscriber["fields"] | string,
+  value: Subscriber["fields"] | string,
 ): Record<string, unknown> {
   const fields = typeof value === "string" ? JSON.parse(value) : value;
   return fields && typeof fields === "object" && !Array.isArray(fields)

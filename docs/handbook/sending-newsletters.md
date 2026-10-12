@@ -22,7 +22,7 @@ Ordinary profile edits, CSV imports and list additions cannot undo a brand marke
 
 ## Accept new signups
 
-Open **Settings > Public subscriptions** to control hosted and embedded signup forms. Both the application switch and the selected brand switch must be on. An administrator controls the application switch; brand writers control their brand's switch. Changes take effect immediately.
+Open **Brand settings > Subscriptions** (`/brands/:brandId/settings/subscriptions`) to control hosted and embedded signup forms for the selected brand. Both the application switch and the brand switch must be on. Administrators control the application switch under **Administration > Application policies** (`/admin/policies`); brand writers control their brand's switch. When the application policy blocks signup, the brand page explains the restriction. Changes take effect immediately.
 
 Disabling signup returns HTTP 403 for the hosted form and submissions and prevents new embed forms from being generated. Existing confirmation and unsubscribe links continue to work. For bot protection, configure both Turnstile keys in the [server configuration](configuration.md).
 
@@ -42,7 +42,7 @@ Before starting a campaign, review its checklist:
 - The intended lists or segment contain the right contacts and respect consent and suppressions.
 - The email renders correctly, links resolve, and unsubscribe links are present.
 - The account has sufficient quota and its event destination is configured.
-- Sending is enabled in Settings.
+- An administrator has enabled sending in **Administration > Operations** (`/admin/operations`).
 
 Start the campaign or choose its scheduled delivery time. Postbox prepares an audience snapshot, then checks eligibility again before dispatch. Its sender adapts concurrency to the SES quota and measured request latency. Campaigns sharing the same AWS account and region share the rate limit.
 

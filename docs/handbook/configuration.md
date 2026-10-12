@@ -57,7 +57,7 @@ Explicit flags override environment values, which override these native defaults
 
 Sending, public signup switches, AWS keys and event resources are persisted application or brand settings. Set them through the UI or API; they have no main-binary environment flags.
 
-Administrators can configure **Failed job retention (days)** under **Settings → Failed jobs**, or `GET`/`PATCH /api/v1/job-settings` with `failed_job_retention_days`. The application-wide default is 30 days; allowed values are integers from 1 through 3650. The setting is persisted in the database and applies to every brand on the next hourly housekeeping run without restarting. Retention starts at terminal failure, including mail jobs held after an interrupted worker. On upgrade, existing failures receive the upgrade time as their initial failure timestamp. Lowering retention can remove older failures on the next run. Pending, running and successful jobs are preserved.
+Administrators can configure **Failed job retention (days)** under **Administration > Application policies** (`/admin/policies`), or `GET`/`PATCH /api/v1/job-settings` with `failed_job_retention_days`. The application-wide default is 30 days; allowed values are integers from 1 through 3650. The setting is persisted in the database and applies to every brand on the next hourly housekeeping run without restarting. Retention starts at terminal failure, including mail jobs held after an interrupted worker. On upgrade, existing failures receive the upgrade time as their initial failure timestamp. Lowering retention can remove older failures on the next run. Pending, running and successful jobs are preserved.
 
 ## Value formats
 

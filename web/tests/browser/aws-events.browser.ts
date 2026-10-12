@@ -36,8 +36,7 @@ async function fixture(context: BrowserContext, admin = true) {
 
 test("admin provisions SES and SNS and refreshes confirmation", async ({ page, context }, testInfo) => {
   const state = await fixture(context);
-  await page.goto("/settings?brand_id=1");
-  await page.getByRole("button", { name: "Amazon SES", exact: true }).click();
+  await page.goto("/brands/1/settings/sending");
   const setup = page.getByRole("button", { name: "Set up SES and SNS", exact: true });
   await expect(page.getByRole("combobox", { name: "AWS region", exact: true })).toContainText("eu-west-1");
   await expect(setup).toBeEnabled();
@@ -63,8 +62,7 @@ test("saved credentials show masked placeholders without submitting them and kee
   const state = await fixture(context);
   state.hasToken = true;
   state.setup = 1;
-  await page.goto("/settings?brand_id=1");
-  await page.getByRole("button", { name: "Amazon SES", exact: true }).click();
+  await page.goto("/brands/1/settings/sending");
   const access = page.getByLabel("Access key ID", { exact: true });
   const secret = page.getByLabel("Secret access key", { exact: true });
   const token = page.getByLabel("Session token (optional)", { exact: true });
@@ -100,8 +98,7 @@ test("saved credentials show masked placeholders without submitting them and kee
 test("brand readers refresh status without provisioning controls", async ({ page, context }) => {
   const state = await fixture(context, false);
   state.confirmed = true;
-  await page.goto("/settings?brand_id=1");
-  await page.getByRole("button", { name: "Amazon SES", exact: true }).click();
+  await page.goto("/brands/1/settings/sending");
   await expect(page.getByRole("button", { name: "Set up SES and SNS" })).toHaveCount(0);
   await page.getByRole("button", { name: "Refresh event status" }).click();
   await expect(page.getByText("Event delivery is ready. SNS subscription confirmed.")).toBeVisible();

@@ -413,7 +413,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
       <ErrorMessage
         error={segments.error || fields.error || lists.error || campaigns.error}
       />
-      <div className="table-card">
+      <div className="table-card segments-table-card">
         <div className="table-toolbar toolbar flex flex-wrap items-center justify-between gap-3">
           <div className="relative w-full max-w-sm">
             <Search

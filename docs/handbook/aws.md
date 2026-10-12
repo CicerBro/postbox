@@ -6,7 +6,7 @@ Postbox uses AWS IAM API credentials to send through SES and configure SNS deliv
 
 Sign in to AWS with an administrator who can manage IAM users and policies. Choose the account and SES region you will use for the brand, and note the 12-digit account ID from the account menu at the top right of the console.
 
-Open the [Amazon SES console](https://console.aws.amazon.com/ses/) and select that region in the console's region selector. Under **Configuration > Identities**, check your sender domain, or create it later through Postbox's **Domains** page. Publish the verification records at your DNS provider. Under **Account dashboard**, check whether SES is in the sandbox. Select **Request production access** before sending to an ordinary audience; see AWS's [production access instructions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html). Verification, sandbox status and quotas are specific to the region.
+Open the [Amazon SES console](https://console.aws.amazon.com/ses/) and select that region in the console's region selector. Under **Configuration > Identities**, check your sender domain, or create it later through Postbox's **Brand settings > Sending & domains** page. Publish the verification records at your DNS provider. Under **Account dashboard**, check whether SES is in the sandbox. Select **Request production access** before sending to an ordinary audience; see AWS's [production access instructions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html). Verification, sandbox status and quotas are specific to the region.
 
 ## Create the API keys in IAM
 
@@ -22,7 +22,7 @@ The administrator creating the user, policies and keys needs IAM management perm
 
 ## Save the keys in Postbox
 
-Sign in to Postbox as an administrator, select the brand, and open **Settings > Amazon SES**.
+Sign in to Postbox as an administrator, select the brand, and open **Brand settings > Sending & domains** (`/brands/:brandId/settings/sending`).
 
 | Postbox field | Value to enter |
 | --- | --- |
@@ -93,7 +93,7 @@ For AWS action and resource definitions, see the [SNS authorization reference](h
 
 ## Automatic SES and SNS setup
 
-In **Settings > Amazon SES**, save the connection, then select **Set up SES and SNS**. A blank topic ARN creates a Standard topic in the saved SES region. A saved topic is reused and must belong to that AWS account and region. A blank configuration set generates one and saves it to the brand; a saved name is reused and created in SES if missing.
+In **Brand settings > Sending & domains** (`/brands/:brandId/settings/sending`), save the connection, then select **Set up SES and SNS**. A blank topic ARN creates a Standard topic in the saved SES region. A saved topic is reused and must belong to that AWS account and region. A blank configuration set generates one and saves it to the brand; a saved name is reused and created in SES if missing.
 
 Setup preserves unrelated topic-policy statements and adds or updates its own statement allowing only SES from this account and configuration set to publish. Its permission follows AWS's [SES event destination policy](https://docs.aws.amazon.com/ses/latest/dg/event-publishing-add-event-destination-sns.html):
 

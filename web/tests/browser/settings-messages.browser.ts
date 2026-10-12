@@ -34,8 +34,7 @@ async function fixture(context: BrowserContext) {
 
 test("message cards start collapsed, use the campaign editor at full width, and persist toggles", async ({ page, context }) => {
   const { state, writes } = await fixture(context);
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Messages", exact: true }).click();
+  await page.goto("/brands/1/settings/subscriptions");
   await expect(page.locator(".email-editor")).toHaveCount(0);
   const card = page.getByRole("button", { name: "Subscription thank-you page", exact: true });
   await expect(card).toHaveAttribute("aria-expanded", "false");
@@ -59,7 +58,6 @@ test("message cards start collapsed, use the campaign editor at full width, and 
   expect(state.thankyou_html).toBe("<h1>New thank you</h1>");
   expect(writes[0].thankyou_email).toBeNull();
   await page.reload();
-  await page.getByRole("button", { name: "Messages", exact: true }).click();
   await expect(page.getByRole("switch", { name: "Enable Welcome email", exact: true })).not.toBeChecked();
   await expect(page.locator(".email-editor")).toHaveCount(0);
   for (const label of ["Subscription thank-you page", "Double opt-in email"]) {
@@ -72,8 +70,7 @@ test("message cards start collapsed, use the campaign editor at full width, and 
 
 test("an incomplete enabled email opens for correction even while collapsed", async ({ page, context }) => {
   const { writes } = await fixture(context);
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Messages", exact: true }).click();
+  await page.goto("/brands/1/settings/subscriptions");
   await page.getByRole("switch", { name: "Enable Goodbye email", exact: true }).click();
   await page.getByRole("button", { name: "Save messages", exact: true }).click();
   await expect(page.getByText("Enabled emails require a subject and HTML.", { exact: true })).toBeVisible();
@@ -85,8 +82,7 @@ test("an incomplete enabled email opens for correction even while collapsed", as
 test("message headers and editor fit on mobile", async ({ page, context }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await fixture(context);
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Messages", exact: true }).click();
+  await page.goto("/brands/1/settings/subscriptions");
   await page.screenshot({ path: "/tmp/postbox-settings-messages.png", fullPage: true });
   await page.getByRole("button", { name: "Subscription thank-you page", exact: true }).click();
   await expect(page.frameLocator('iframe[title="Email preview"]').getByRole("heading", { name: "Thanks for joining" })).toBeVisible();

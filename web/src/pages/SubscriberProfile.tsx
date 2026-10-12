@@ -27,6 +27,7 @@ import {
   parseFields,
   tableClass,
   useSubscriberAction,
+  useCanWriteSubscribers,
   useSubscribersQuery,
 } from "../components/subscribers/shared";
 type Membership = {
@@ -53,6 +54,7 @@ export function SubscriberProfile({
   onClose: () => void;
   initialAction?: "edit" | "delete" | "unsubscribe";
 }) {
+  const canWrite = useCanWriteSubscribers(brandId);
   const { formatDateTime } = useDateTime();
   const [email, setEmail] = useState(subscriber?.email || "");
   const [name, setName] = useState(subscriber?.name || "");
@@ -68,7 +70,9 @@ export function SubscriberProfile({
   const [membershipConsent, setMembershipConsent] = useState(false);
   const [erase, setErase] = useState(initialAction === "delete");
   const [eraseEmail, setEraseEmail] = useState("");
-  const [unsubscribeList, setUnsubscribeList] = useState<number | null>(initialAction === "unsubscribe" ? 0 : null);
+  const [unsubscribeList, setUnsubscribeList] = useState<number | null>(
+    initialAction === "unsubscribe" ? 0 : null,
+  );
   const [activityCursor, setActivityCursor] = useState(0);
   const closeErase = () => {
     setErase(false);
@@ -104,6 +108,7 @@ export function SubscriberProfile({
   });
   const existing = subscriber ? memberships.data || [] : [];
   const save = async () => {
+    if (!canWrite) return;
     setError(undefined);
     try {
       const data = JSON.parse(json);
@@ -171,7 +176,10 @@ export function SubscriberProfile({
   };
   return (
     <>
-      <Dialog open={initialAction === "edit"} onOpenChange={(open) => !open && onClose()}>
+      <Dialog
+        open={initialAction === "edit"}
+        onOpenChange={(open) => !open && onClose()}
+      >
         <DialogContent className="w-[calc(100vw-2rem)] max-w-7xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -192,22 +200,33 @@ export function SubscriberProfile({
               <SubscriberStatusBadge status={subscriber.status} />
             </div>
           )}
+          {!canWrite && (
+            <p className="text-sm text-muted-foreground">
+              You have read-only access to this subscriber.
+            </p>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Email">
               <Input
                 type="email"
                 value={email}
-                disabled={!!subscriber}
+                disabled={!canWrite || !!subscriber}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </Field>
             <Field label="Name">
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <Input
+                readOnly={!canWrite}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
             </Field>
             <Field label="Subscriber status">
               <SelectField
                 value={status}
-                disabled={!!subscriber && subscriber.status !== "active"}
+                disabled={
+                  !canWrite || (!!subscriber && subscriber.status !== "active")
+                }
                 onValueChange={(value) => setStatus(value)}
                 options={statuses.map((s) => ({ value: s, label: s }))}
               />
@@ -226,6 +245,7 @@ export function SubscriberProfile({
                 <Field key={f.key} label={`${f.label} (${f.type})`}>
                   {f.type === "boolean" ? (
                     <SelectField
+                      disabled={!canWrite}
                       value={String(
                         typedFields[f.key] === null ||
                           typedFields[f.key] === undefined
@@ -241,6 +261,7 @@ export function SubscriberProfile({
                     />
                   ) : (
                     <Input
+                      readOnly={!canWrite}
                       type={
                         f.type === "number"
                           ? "number"
@@ -264,6 +285,7 @@ export function SubscriberProfile({
           )}
           <Field label="Custom fields JSON">
             <Textarea
+              readOnly={!canWrite}
               className="font-mono text-xs"
               rows={5}
               value={json}
@@ -274,8 +296,8 @@ export function SubscriberProfile({
             {subscriber?.marketing_unsubscribed_at && (
               <p className="text-sm text-destructive" role="status">
                 Unsubscribed from all marketing for this brand since{" "}
-                {formatDateTime(subscriber.marketing_unsubscribed_at)}.
-                List additions and profile edits will not restore eligibility.
+                {formatDateTime(subscriber.marketing_unsubscribed_at)}. List
+                additions and profile edits will not restore eligibility.
               </p>
             )}
             <p className="text-sm">
@@ -289,6 +311,7 @@ export function SubscriberProfile({
             </p>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
+                disabled={!canWrite}
                 checked={consent}
                 onCheckedChange={(checked) => setConsent(checked === true)}
               />
@@ -297,6 +320,7 @@ export function SubscriberProfile({
             {consent && (
               <Field label="Consent IP (optional)">
                 <Input
+                  readOnly={!canWrite}
                   value={consentIP}
                   onChange={(e) => setConsentIP(e.target.value)}
                 />
@@ -312,6 +336,7 @@ export function SubscriberProfile({
                 {lists.map((l) => (
                   <label className="flex gap-2 items-center text-sm" key={l.id}>
                     <Checkbox
+                      disabled={!canWrite}
                       checked={creationLists.includes(l.id)}
                       onCheckedChange={(checked) =>
                         setCreationLists(
@@ -335,6 +360,7 @@ export function SubscriberProfile({
           <div className="flex justify-end">
             <Button
               disabled={
+                !canWrite ||
                 action.isPending ||
                 !email.trim() ||
                 (!subscriber && creationLists.length > 0 && !consent)
@@ -378,7 +404,7 @@ export function SubscriberProfile({
                           <SubscriberStatusBadge status={m.status} />
                         </td>
                         <td>
-                          {m.status !== "unsubscribed" && (
+                          {canWrite && m.status !== "unsubscribed" && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -396,82 +422,87 @@ export function SubscriberProfile({
                   </tbody>
                 </table>
               )}
-              <Field label="Add or resubscribe to a list">
-                <SelectField
-                  value={String(selectedList)}
-                  onValueChange={(value) => {
-                    setSelectedList(value);
-                    setMembershipConsent(false);
-                  }}
-                  options={[
-                    { value: "", label: "Choose list" },
-                    ...lists.map((l) => ({
-                      value: String(l.id),
-                      label: `${l.name} (${l.opt_in} opt-in)`,
-                    })),
-                  ]}
-                />
-              </Field>
-              <label className="flex gap-2 text-sm items-start">
-                <Checkbox
-                  checked={membershipConsent}
-                  onCheckedChange={(checked) =>
-                    setMembershipConsent(checked === true)
-                  }
-                />
-                I have explicit permission to subscribe this subscriber,
-                including any previous opt-out.
-              </label>
-              <Button
-                variant="outline"
-                disabled={
-                  !selectedList ||
-                  !membershipConsent ||
-                  membershipAction.isPending ||
-                  subscriber.status !== "active"
-                }
-                onClick={async () => {
-                  try {
-                    const current = await api<Subscriber>(
-                      `/subscribers/by-email?email=${encodeURIComponent(subscriber.email)}`,
-                      { brandId },
-                    );
-                    await membershipAction.mutateAsync({
-                      path: `/subscribers/${subscriber.id}`,
-                      method: "PATCH",
-                      body: {
-                        email: current.email,
-                        name: current.name,
-                        fields: parseFields(current.fields),
-                        status: current.status,
-                        list_ids: [Number(selectedList)],
-                        resubscribe: true,
-                        consent: true,
-                      },
-                    });
-                    setSelectedList("");
-                    setMembershipConsent(false);
-                  } catch (e) {
-                    setError(e);
-                  }
-                }}
-              >
-                Subscribe to selected list
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                Double opt-in lists require confirmation. Bounced, complained or
-                blocklisted profiles cannot be reactivated here.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  membershipAction.reset();
-                  setUnsubscribeList(0);
-                }}
-              >
-                Unsubscribe from all lists
-              </Button>
+              {canWrite && (
+                <>
+                  <Field label="Add or resubscribe to a list">
+                    <SelectField
+                      value={String(selectedList)}
+                      onValueChange={(value) => {
+                        setSelectedList(value);
+                        setMembershipConsent(false);
+                      }}
+                      options={[
+                        { value: "", label: "Choose list" },
+                        ...lists.map((l) => ({
+                          value: String(l.id),
+                          label: `${l.name} (${l.opt_in} opt-in)`,
+                        })),
+                      ]}
+                    />
+                  </Field>
+                  <label className="flex gap-2 text-sm items-start">
+                    <Checkbox
+                      checked={membershipConsent}
+                      onCheckedChange={(checked) =>
+                        setMembershipConsent(checked === true)
+                      }
+                    />
+                    I have explicit permission to subscribe this subscriber,
+                    including any previous opt-out.
+                  </label>
+                  <Button
+                    variant="outline"
+                    disabled={
+                      !selectedList ||
+                      !membershipConsent ||
+                      membershipAction.isPending ||
+                      subscriber.status !== "active"
+                    }
+                    onClick={async () => {
+                      try {
+                        const current = await api<Subscriber>(
+                          `/subscribers/by-email?email=${encodeURIComponent(subscriber.email)}`,
+                          { brandId },
+                        );
+                        await membershipAction.mutateAsync({
+                          path: `/subscribers/${subscriber.id}`,
+                          method: "PATCH",
+                          body: {
+                            email: current.email,
+                            name: current.name,
+                            fields: parseFields(current.fields),
+                            status: current.status,
+                            list_ids: [Number(selectedList)],
+                            resubscribe: true,
+                            consent: true,
+                          },
+                        });
+                        setSelectedList("");
+                        setMembershipConsent(false);
+                      } catch (e) {
+                        setError(e);
+                      }
+                    }}
+                  >
+                    Subscribe to selected list
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Double opt-in lists require confirmation. Bounced,
+                    complained or blocklisted profiles cannot be reactivated
+                    here.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      membershipAction.reset();
+                      setUnsubscribeList(0);
+                    }}
+                  >
+                    Unsubscribe from all lists
+                  </Button>
+                </>
+              )}
             </section>
           )}
           {subscriber && (
@@ -525,7 +556,7 @@ export function SubscriberProfile({
               </div>
             </section>
           )}
-          {subscriber && (
+          {subscriber && canWrite && (
             <div className="border-t pt-4">
               <Button
                 variant="destructive"
@@ -546,7 +577,10 @@ export function SubscriberProfile({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={erase} onOpenChange={(open) => !open && closeErase()}>
+      <Dialog
+        open={canWrite && erase}
+        onOpenChange={(open) => !open && closeErase()}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Permanently erase subscriber?</DialogTitle>
@@ -591,7 +625,7 @@ export function SubscriberProfile({
         </DialogContent>
       </Dialog>
       <Dialog
-        open={unsubscribeList !== null}
+        open={canWrite && unsubscribeList !== null}
         onOpenChange={(open) => !open && closeUnsubscribe()}
       >
         <DialogContent>

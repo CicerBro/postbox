@@ -1,26 +1,20 @@
 import { Globe2, ExternalLink } from "lucide-react";
-import { BrandIdentity } from "../components/settings/BrandIdentity";
+import { Navigate } from "react-router-dom";
 import { Section } from "../components/settings/Common";
 import { SESDomain } from "../components/settings/SESDomain";
 export function DomainsPage({ brandId }: { brandId: number }) {
   return (
+    <Navigate
+      replace
+      to={brandId ? `/brands/${brandId}/settings/sending` : "/account/security"}
+    />
+  );
+}
+export function DomainsSettings({ brandId }: { brandId: number }) {
+  return (
     <div className="space-y-6">
-      <div className="page-heading">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Domains</h1>
-          <p className="page-subtitle">
-            Configure your sending identity and branded tracking links.
-          </p>
-        </div>
-        <Globe2
-          size={24}
-          className="text-muted-foreground"
-          aria-hidden="true"
-        />
-      </div>
       {brandId ? (
         <>
-          <BrandIdentity key={brandId} brandId={brandId} />
           <SESDomain key={`ses-${brandId}`} brandId={brandId} />
           <Section
             title="Additional sending setup"

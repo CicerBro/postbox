@@ -18,12 +18,6 @@ export function Jobs() {
     "id" | "queue" | "attempts" | "created_at" | "last_error"
   >("id");
   const [queue, setQueue] = useState("");
-  const [retentionDays, setRetentionDays] = useState<string>();
-  const action = useAction();
-  const settings = useQuery({
-    queryKey: ["job-settings"],
-    queryFn: () => api<{ failed_job_retention_days: number }>("/job-settings"),
-  });
   const q = useInfiniteQuery({
     queryKey: ["failed-jobs"],
     initialPageParam: 0,
@@ -41,45 +35,9 @@ export function Jobs() {
     <Section title="Failed jobs">
       <p className="text-sm text-muted-foreground">
         Global dead-letter jobs after retries are exhausted. Payloads and
-        webhook signing secrets are not displayed. Sorting and queue filtering apply to
-        loaded rows.
+        webhook signing secrets are not displayed. Sorting and queue filtering
+        apply to loaded rows.
       </p>
-      <form
-        className="space-y-3 rounded-lg border p-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          action.run(async () => {
-            await api("/job-settings", {
-              method: "PATCH",
-              body: { failed_job_retention_days: Number(retentionDays ?? settings.data?.failed_job_retention_days) },
-            });
-            await settings.refetch();
-            setRetentionDays(undefined);
-          }, "Failed job retention saved.");
-        }}
-      >
-        <Field
-          label="Failed job retention (days)"
-          className="w-full"
-          type="number"
-          min={1}
-          max={3650}
-          step={1}
-          required
-          value={retentionDays ?? settings.data?.failed_job_retention_days ?? ""}
-          onChange={(event) => setRetentionDays(event.target.value)}
-          disabled={!settings.data || action.busy}
-          aria-describedby="failed-job-retention-help"
-        />
-        <p id="failed-job-retention-help" className="text-sm text-muted-foreground">
-          Applies to every brand. Hourly housekeeping deletes failed jobs after
-          this many days from their final failure. Changes apply on the next run.
-        </p>
-        <Button disabled={!settings.data || action.busy}>
-          {action.busy ? "Saving…" : "Save retention"}
-        </Button>
-        <Message error={settings.error ?? action.error} message={action.message} />
-      </form>
       <div className="toolbar">
         <label htmlFor="jobs-queue" className="block space-y-2 text-sm">
           Queue
@@ -89,7 +47,10 @@ export function Jobs() {
             onValueChange={setQueue}
             options={[
               { value: "", label: "All queues" },
-              ...[...new Set(rows.map((r) => r.queue))].map((value) => ({ value, label: value })),
+              ...[...new Set(rows.map((r) => r.queue))].map((value) => ({
+                value,
+                label: value,
+              })),
             ]}
           />
         </label>
@@ -119,9 +80,18 @@ export function Jobs() {
               <tr>
                 <SortableTableHead label="Job" {...sorting.header("id")} />
                 <SortableTableHead label="Queue" {...sorting.header("queue")} />
-                <SortableTableHead label="Attempts" {...sorting.header("attempts")} />
-                <SortableTableHead label="Created" {...sorting.header("created_at")} />
-                <SortableTableHead label="Error" {...sorting.header("last_error")} />
+                <SortableTableHead
+                  label="Attempts"
+                  {...sorting.header("attempts")}
+                />
+                <SortableTableHead
+                  label="Created"
+                  {...sorting.header("created_at")}
+                />
+                <SortableTableHead
+                  label="Error"
+                  {...sorting.header("last_error")}
+                />
               </tr>
             </thead>
             <tbody>
@@ -151,6 +121,68 @@ export function Jobs() {
           Load more jobs
         </Button>
       )}
+    </Section>
+  );
+}
+
+export function JobRetention() {
+  const [retentionDays, setRetentionDays] = useState<string>();
+  const action = useAction();
+  const settings = useQuery({
+    queryKey: ["job-settings"],
+    queryFn: () => api<{ failed_job_retention_days: number }>("/job-settings"),
+  });
+  return (
+    <Section title="Failed job retention">
+      <form
+        className="space-y-3 rounded-lg border p-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          action.run(async () => {
+            await api("/job-settings", {
+              method: "PATCH",
+              body: {
+                failed_job_retention_days: Number(
+                  retentionDays ?? settings.data?.failed_job_retention_days,
+                ),
+              },
+            });
+            await settings.refetch();
+            setRetentionDays(undefined);
+          }, "Failed job retention saved.");
+        }}
+      >
+        <Field
+          label="Failed job retention (days)"
+          className="w-full"
+          type="number"
+          min={1}
+          max={3650}
+          step={1}
+          required
+          value={
+            retentionDays ?? settings.data?.failed_job_retention_days ?? ""
+          }
+          onChange={(event) => setRetentionDays(event.target.value)}
+          disabled={!settings.data || action.busy}
+          aria-describedby="failed-job-retention-help"
+        />
+        <p
+          id="failed-job-retention-help"
+          className="text-sm text-muted-foreground"
+        >
+          Applies to every brand. Hourly housekeeping deletes failed jobs after
+          this many days from their final failure. Changes apply on the next
+          run.
+        </p>
+        <Button disabled={!settings.data || action.busy}>
+          {action.busy ? "Saving…" : "Save retention"}
+        </Button>
+        <Message
+          error={settings.error ?? action.error}
+          message={action.message}
+        />
+      </form>
     </Section>
   );
 }

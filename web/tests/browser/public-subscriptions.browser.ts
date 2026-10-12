@@ -9,7 +9,7 @@ async function settingsFixture(context: BrowserContext, admin = true) {
     if (path === "/auth/session") {
       body = { user_id: 1, admin, csrf_token: "session-token" };
     } else if (path === "/brands") {
-      body = [{ id: 1, name: "Acme", from_email: "sender@example.org" }];
+      body = [{ id: 1, name: "Acme", permissions: ["read", "write"], from_email: "sender@example.org" }];
     } else if (path === "/application-settings") {
       if (request.method() === "PATCH") {
         state.application = request.postDataJSON().public_subscriptions_enabled;
@@ -37,33 +37,36 @@ async function settingsFixture(context: BrowserContext, admin = true) {
 
 test("public subscription controls persist each switch and show the effective application override", async ({ page, context }) => {
   const state = await settingsFixture(context);
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Public subscriptions", exact: true }).click();
+  await page.goto("/brands/1/settings/subscriptions");
   const app = page.getByRole("switch", { name: "Allow public subscriptions across the application" });
   const brand = page.getByRole("switch", { name: "Allow public subscriptions for this brand" });
   await expect(page.getByText("Subscription form URLs", { exact: true })).toHaveCount(0);
-  await expect(app).toBeChecked();
+  await expect(app).toHaveCount(0);
   await expect(brand).toBeChecked();
   await expect(page.getByText("Public signup is enabled for this brand.", { exact: true })).toBeVisible();
   await brand.click();
   await expect(page.getByText("Public signup is disabled for this brand.", { exact: true })).toBeVisible();
+  await page.goto("/admin/policies");
+  await expect(app).toBeChecked();
   await app.click();
-  await expect(page.getByText("Public signup is disabled across the application.", { exact: true })).toBeVisible();
+  await expect(app).not.toBeChecked();
+  await page.goto("/brands/1/settings/subscriptions");
   await brand.click();
   await expect(brand).toBeChecked();
-  await expect(page.getByText("Public signup is disabled across the application.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Blocked by application policy" })).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: "Public subscriptions", exact: true }).click();
-  await expect(app).not.toBeChecked();
+  await expect(page.getByRole("status").filter({ hasText: "Blocked by application policy" })).toBeVisible();
+  await expect(app).toHaveCount(0);
   await expect(brand).toBeChecked();
+  await page.goto("/admin/policies");
+  await expect(app).not.toBeChecked();
   expect(state.applicationWrites).toBe(1);
   expect(state.brandWrites).toBe(2);
 });
 
 test("brand members can change brand signup without application controls", async ({ page, context }) => {
   const state = await settingsFixture(context, false);
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Public subscriptions", exact: true }).click();
+  await page.goto("/brands/1/settings/subscriptions");
   await expect(page.getByRole("switch", { name: "Allow public subscriptions across the application" })).toHaveCount(0);
   await page.getByRole("switch", { name: "Allow public subscriptions for this brand" }).click();
   await expect(page.getByText("Public signup is disabled for this brand.", { exact: true })).toBeVisible();

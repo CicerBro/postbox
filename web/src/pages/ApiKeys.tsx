@@ -25,7 +25,13 @@ type Key = {
   last_used_at: number | null;
   revoked_at: number | null;
 };
-export function ApiKeysPage({ brandId }: { brandId: number }) {
+export function ApiKeysPage({
+  brandId,
+  embedded = false,
+}: {
+  brandId: number;
+  embedded?: boolean;
+}) {
   const sorting = useTableSort<"name" | "scopes" | "used" | "status">("name");
   const { session } = useApp();
   const qc = useQueryClient();
@@ -73,7 +79,11 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
     <div className="space-y-6">
       <div className="page-heading">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">API keys</h1>
+          {embedded ? (
+            <h3 className="text-lg font-medium">API keys</h3>
+          ) : (
+            <h1 className="text-2xl font-bold tracking-tight">API keys</h1>
+          )}
           <p className="page-subtitle">
             Connect your tools with secure access to this brand.
           </p>
@@ -155,9 +165,18 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
                 <tr>
                   <SortableTableHead label="Name" {...sorting.header("name")} />
                   <th>Prefix</th>
-                  <SortableTableHead label="Scopes" {...sorting.header("scopes")} />
-                  <SortableTableHead label="Last used" {...sorting.header("used")} />
-                  <SortableTableHead label="Status" {...sorting.header("status")} />
+                  <SortableTableHead
+                    label="Scopes"
+                    {...sorting.header("scopes")}
+                  />
+                  <SortableTableHead
+                    label="Last used"
+                    {...sorting.header("used")}
+                  />
+                  <SortableTableHead
+                    label="Status"
+                    {...sorting.header("status")}
+                  />
                   <th>
                     <span className="sr-only">Actions</span>
                   </th>
@@ -166,8 +185,12 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
               <tbody>
                 {keys.map((k) => (
                   <tr className="border-t" key={k.id}>
-                    <td className="p-3"><span className="row-title">{k.name}</span></td>
-                    <td className="p-3"><code className="row-subtitle">{k.prefix}</code></td>
+                    <td className="p-3">
+                      <span className="row-title">{k.name}</span>
+                    </td>
+                    <td className="p-3">
+                      <code className="row-subtitle">{k.prefix}</code>
+                    </td>
                     <td className="p-3">
                       <div className="flex flex-wrap gap-1 capitalize">
                         {strings(k.scopes).map((scope) => (

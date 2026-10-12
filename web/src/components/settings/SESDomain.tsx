@@ -68,7 +68,7 @@ export function SESDomain({ brandId }: { brandId: number }) {
           </form>
           <p className="text-sm text-muted-foreground">AWS region: {settings.data.region}. You can enter a parent domain if your sender uses a subdomain.</p>
           {domain && <DomainIdentity key={`${brandId}:${domain}:${settings.data.updated_at}:${settings.data.region}`} brandId={brandId} domain={domain} connectionVersion={settings.data.updated_at} region={settings.data.region} />}
-        </> : settings.data ? <p className="text-sm text-muted-foreground">Save this brand’s AWS access keys in Settings &gt; Amazon SES to verify its domain.</p> : null}
+        </> : settings.data ? <p className="text-sm text-muted-foreground">Save this brand’s AWS access keys in Sending &amp; domains to verify its domain.</p> : null}
     </Section>
   );
 }

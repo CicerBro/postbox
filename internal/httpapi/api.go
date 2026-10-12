@@ -26,11 +26,14 @@ import (
 )
 
 type Config struct {
-	TrustedProxies                             []netip.Prefix
-	AWSProvider                                *awsbrand.Provider
-	SecureCookies                              bool
-	SessionTTL                                 time.Duration
-	BaseURL, TurnstileSecret, TurnstileSiteKey string
+	TrustedProxies                                         []netip.Prefix
+	AWSProvider                                            *awsbrand.Provider
+	SecureCookies                                          bool
+	SessionTTL                                             time.Duration
+	BaseURL, TurnstileSecret, TurnstileSiteKey             string
+	BackupsConfigured, GeoIPConfigured                     bool
+	RawEventRetentionDays, MaxSendWorkers, SoftBounceLimit int
+	RecoveryPolicy                                         string
 }
 type API struct {
 	passkeys         *webauthn.WebAuthn
@@ -80,6 +83,7 @@ func (a *API) Register(m *http.ServeMux) {
 	a.route(m, "PATCH /api/v1/brands/{brand}", a.brand)
 	a.route(m, "DELETE /api/v1/brands/{brand}", a.brand)
 	a.route(m, "GET /api/v1/overview", a.overview)
+	a.route(m, "GET /api/v1/deployment-settings", a.deploymentSettings)
 	a.route(m, "GET /api/v1/api-keys", a.keys)
 	a.route(m, "POST /api/v1/api-keys", a.keys)
 	a.route(m, "DELETE /api/v1/api-keys/{id}", a.keys)

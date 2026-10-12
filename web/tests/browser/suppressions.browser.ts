@@ -29,8 +29,7 @@ test("suppression search and filters query all pages and reset pagination", asyn
     }
     await route.fulfill({ json: body });
   });
-  await page.goto("/settings");
-  await page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: "Suppressions", exact: true }).click();
+  await page.goto("/subscribers?tab=suppressions");
   await expect(page.getByRole("cell", { name: "import-1@example.org", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "my-addition@example.org", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Load more", exact: true }).click();
@@ -55,8 +54,8 @@ test("suppression search and filters query all pages and reset pagination", asyn
   await expect(page.getByRole("cell", { name: "import-1@example.org", exact: true })).toBeVisible();
   await expect(page.getByLabel("Search suppressions")).toHaveValue("");
 
-  await page.getByRole("combobox", { name: /^Show/ }).click();
-  await page.getByRole("option", { name: "Global only", exact: true }).click();
+  await expect(page.getByRole("option", { name: "Global only", exact: true })).toHaveCount(0);
+  await page.goto("/admin/suppressions");
   await expect(page.getByRole("cell", { name: "blocked.example", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "import-1@example.org", exact: true })).toHaveCount(0);
   expect(requests.at(-1)?.has("brand_id")).toBe(false);

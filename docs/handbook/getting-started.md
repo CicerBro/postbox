@@ -1,6 +1,6 @@
 # Getting started
 
-Get Postbox running, connect a brand to Amazon SES, and prepare your first send. Sending stays disabled until you turn it on in Settings.
+Get Postbox running, connect a brand to Amazon SES, and prepare your first send. Sending stays disabled until an administrator turns it on in **Administration > Operations** (`/admin/operations`).
 
 ## Start an instance
 
@@ -35,7 +35,7 @@ Open <http://localhost:8080> and sign in with your password and authenticator co
 
 ## Connect a brand
 
-A brand holds its sender identity, audience and AWS connection. Select or create the brand you will send from, then open **Settings > Amazon SES** as an administrator.
+A brand holds its sender identity, audience and AWS connection. Select or create the brand you will send from, then open **Brand settings > Sending & domains** (`/brands/:brandId/settings/sending`) as an administrator.
 
 1. Follow [Create the API keys in IAM](aws.md#create-the-api-keys-in-iam) to create a dedicated user, attach the Postbox policies and retrieve the keys in the AWS Console. Enter the brand's AWS access key, secret key, optional session token and SES region, then select **Save Amazon SES settings**.
 2. Check the connection and review its account status and sending quota.
@@ -47,7 +47,7 @@ SES identities and quotas belong to an AWS account and region. Use the same regi
 
 ## Verify your sender domain
 
-Open **Domains** for the selected brand. It starts with the domain from the sender email. You can enter a parent domain and select **View domain** instead.
+Open **Brand settings > Sending & domains** (`/brands/:brandId/settings/sending`) for the selected brand. It starts with the domain from the sender email. You can enter a parent domain and select **View domain** instead.
 
 1. Select **Verify domain** to create a missing identity with Easy DKIM.
 2. Copy the displayed DNS record names and values into your DNS provider.
@@ -63,7 +63,7 @@ For a custom return path, set a **MAIL FROM subdomain**, such as `bounce.example
 
 Delivery events let Postbox reconcile accepted sends and process bounces and complaints. Configure them before sending a production campaign.
 
-As an administrator, open **Settings > Amazon SES**:
+As an administrator, open **Brand settings > Sending & domains** (`/brands/:brandId/settings/sending`):
 
 1. Save the brand's region and AWS keys with the runtime and setup permissions from the [SES & SNS Setup](aws.md). Leave **SNS topic ARN** blank to create a topic, or save an existing Standard topic ARN from the same account and region.
 2. Select **Set up SES and SNS**. Postbox creates or reuses the topic, adds its SES publish policy, creates or reuses the configuration set, configures its event destination and subscribes this deployment's HTTPS endpoint.
@@ -77,4 +77,4 @@ Set `POSTBOX_BASE_URL` to the deployment's public HTTPS origin before setup. SNS
 
 Build a small audience with documented consent, create a campaign, and send a test to yourself. Review the sender domain, audience, content, unsubscribe links and SES quota in the campaign checklist. Follow [Sending newsletters](sending-newsletters.md) for the complete workflow.
 
-When those checks are complete, enable sending in **Settings**. The switch is stored in the database and survives restarts. It also controls test and transactional email jobs, including confirmation emails. Missing credentials produce errors; the service never silently substitutes a test sender.
+When those checks are complete, enable sending in **Administration > Operations** (`/admin/operations`). The switch is stored in the database and survives restarts. It also controls test and transactional email jobs, including confirmation emails. Missing credentials produce errors; the service never silently substitutes a test sender.

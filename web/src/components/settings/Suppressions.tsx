@@ -24,11 +24,25 @@ type Suppression = {
   value: string;
   reason: string;
 };
-export function Suppressions({ brandId }: { brandId: number }) {
+export function Suppressions({
+  brandId = 0,
+  scope: pageScope = "brand",
+}: {
+  brandId?: number;
+  scope?: "brand" | "global";
+}) {
   const sorting = useTableSort<"value" | "kind" | "scope" | "reason">("value");
-  const { session } = useApp();
+  const { session, brand } = useApp();
+  const canEdit =
+    pageScope === "global"
+      ? session.admin
+      : session.admin ||
+        (brand?.id === brandId &&
+          brand.permissions?.includes("write") === true);
   const qc = useQueryClient();
-  const [scope, setScope] = useState("effective");
+  const [scope, setScope] = useState(
+    pageScope === "global" ? "global" : "effective",
+  );
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterKind, setFilterKind] = useState("");
@@ -37,16 +51,28 @@ export function Suppressions({ brandId }: { brandId: number }) {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 250);
     return () => clearTimeout(timer);
   }, [search]);
-  const [target, setTarget] = useState("brand");
+  const target = pageScope;
   const [kind, setKind] = useState("email");
   const [value, setValue] = useState("");
   const [editing, setEditing] = useState<Suppression | null>(null);
   const a = useAction();
   const q = useInfiniteQuery({
-    queryKey: ["suppressions", brandId, scope, debouncedSearch, filterKind, filterReason],
+    queryKey: [
+      "suppressions",
+      brandId,
+      scope,
+      debouncedSearch,
+      filterKind,
+      filterReason,
+    ],
+    enabled: pageScope === "global" ? session.admin : brandId > 0,
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) => {
-      const params = new URLSearchParams({ scope, after: String(pageParam), limit: "100" });
+      const params = new URLSearchParams({
+        scope,
+        after: String(pageParam),
+        limit: "100",
+      });
       if (debouncedSearch) params.set("q", debouncedSearch);
       if (filterKind) params.set("kind", filterKind);
       if (filterReason) params.set("reason", filterReason);
@@ -60,74 +86,72 @@ export function Suppressions({ brandId }: { brandId: number }) {
   });
   const rows = sorting.sort(q.data?.pages.flat() ?? [], (row, column) =>
     column === "scope"
-      ? row.brand_id === null ? "Global" : "Brand"
+      ? row.brand_id === null
+        ? "Global"
+        : "Brand"
       : row[column],
   );
   return (
-    <Section title="Suppressions">
+    <Section
+      title={
+        pageScope === "global" ? "Global suppressions" : "Brand suppressions"
+      }
+    >
       <p className="text-sm text-muted-foreground">
-        Effective suppressions include brand and global entries. Removing an
-        entry does not reactivate bounced or complained subscribers. Sorting applies
-        to loaded rows.
+        {pageScope === "global"
+          ? "These suppressions apply to every brand."
+          : "Effective suppressions include brand entries and inherited global blocks. Global blocks are managed in Administration."}{" "}
+        Removing an entry does not reactivate bounced or complained subscribers.
+        Sorting applies to loaded rows.
       </p>
-      <form
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void a.run(async () => {
-            await api(`/suppressions?scope=${target}`, {
-              method: "POST",
-              ...(target === "global" ? {} : { brandId }),
-              body: { kind, value },
-            });
-            setValue("");
-            await qc.invalidateQueries({ queryKey: ["suppressions"] });
-          }, "Suppression added.");
-        }}
-      >
-        <div className="flex flex-wrap gap-3">
-          <label htmlFor="suppression-kind" className="text-sm space-y-2">
-            Kind
-            <SelectField
-              id="suppression-kind"
-              value={kind}
-              onValueChange={setKind}
-              options={[
-                { value: "email", label: "Email" },
-                { value: "domain", label: "Domain" },
-              ]}
-            />
-          </label>
-          {session.admin && (
-            <label htmlFor="suppression-target" className="text-sm space-y-2">
-              Scope
+      {canEdit && (
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void a.run(async () => {
+              await api(`/suppressions?scope=${target}`, {
+                method: "POST",
+                ...(target === "global" ? {} : { brandId }),
+                body: { kind, value },
+              });
+              setValue("");
+              await qc.invalidateQueries({ queryKey: ["suppressions"] });
+            }, "Suppression added.");
+          }}
+        >
+          <div className="flex flex-wrap gap-3">
+            <label htmlFor="suppression-kind" className="text-sm space-y-2">
+              Kind
               <SelectField
-                id="suppression-target"
-                value={target}
-                onValueChange={setTarget}
+                id="suppression-kind"
+                value={kind}
+                onValueChange={setKind}
                 options={[
-                  { value: "brand", label: "Selected brand" },
-                  { value: "global", label: "All brands" },
+                  { value: "email", label: "Email" },
+                  { value: "domain", label: "Domain" },
                 ]}
               />
             </label>
-          )}
-        </div>
-        <Field
-          label={kind === "email" ? "Email address" : "Domain"}
-          type={kind === "email" ? "email" : "text"}
-          pattern={kind === "email" ? "[^@\\s]+@[^@\\s]+\\.[^@\\s]+" : undefined}
-          title={
-            kind === "email"
-              ? "Enter an email address such as name@example.com."
-              : undefined
-          }
-          required
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-        <Button disabled={a.busy}>Add suppression</Button>
-      </form>
+          </div>
+          <Field
+            label={kind === "email" ? "Email address" : "Domain"}
+            type={kind === "email" ? "email" : "text"}
+            pattern={
+              kind === "email" ? "[^@\\s]+@[^@\\s]+\\.[^@\\s]+" : undefined
+            }
+            title={
+              kind === "email"
+                ? "Enter an email address such as name@example.com."
+                : undefined
+            }
+            required
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+          <Button disabled={a.busy}>Add suppression</Button>
+        </form>
+      )}
       <Message {...a} />
       <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
         <Field
@@ -138,20 +162,27 @@ export function Suppressions({ brandId }: { brandId: number }) {
           onChange={(e) => setSearch(e.target.value)}
         />
         <div className="grid gap-3 sm:grid-cols-3">
-          <label htmlFor="suppression-scope" className="block text-sm space-y-2">
-            Show
-            <SelectField
-              id="suppression-scope"
-              value={scope}
-              onValueChange={setScope}
-              options={[
-                { value: "effective", label: "Effective: brand and global" },
-                { value: "brand", label: "Brand only" },
-                ...(session.admin ? [{ value: "global", label: "Global only" }] : []),
-              ]}
-            />
-          </label>
-          <label htmlFor="suppression-filter-kind" className="block text-sm space-y-2">
+          {pageScope === "brand" && (
+            <label
+              htmlFor="suppression-scope"
+              className="block text-sm space-y-2"
+            >
+              Show
+              <SelectField
+                id="suppression-scope"
+                value={scope}
+                onValueChange={setScope}
+                options={[
+                  { value: "effective", label: "Effective: brand and global" },
+                  { value: "brand", label: "Brand only" },
+                ]}
+              />
+            </label>
+          )}
+          <label
+            htmlFor="suppression-filter-kind"
+            className="block text-sm space-y-2"
+          >
             Filter by kind
             <SelectField
               id="suppression-filter-kind"
@@ -164,7 +195,10 @@ export function Suppressions({ brandId }: { brandId: number }) {
               ]}
             />
           </label>
-          <label htmlFor="suppression-filter-reason" className="block text-sm space-y-2">
+          <label
+            htmlFor="suppression-filter-reason"
+            className="block text-sm space-y-2"
+          >
             Filter by reason
             <SelectField
               id="suppression-filter-reason"
@@ -182,23 +216,29 @@ export function Suppressions({ brandId }: { brandId: number }) {
           </label>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant={filterReason === "manual" ? "default" : "outline"} onClick={() => setFilterReason("manual")}>
+          <Button
+            variant={filterReason === "manual" ? "default" : "outline"}
+            onClick={() => setFilterReason("manual")}
+          >
             Manual additions
           </Button>
           {(search || filterKind || filterReason) && (
-            <Button variant="ghost" onClick={() => {
-              setSearch("");
-              setDebouncedSearch("");
-              setFilterKind("");
-              setFilterReason("");
-            }}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSearch("");
+                setDebouncedSearch("");
+                setFilterKind("");
+                setFilterReason("");
+              }}
+            >
               Clear filters
             </Button>
           )}
         </div>
         <p className="text-sm text-muted-foreground">
-          Search and filters apply to all entries in this scope. Manual additions
-          can also include entries imported from Sendy.
+          Search and filters apply to all entries in this scope. Manual
+          additions can also include entries imported from Sendy.
         </p>
       </div>
       <Message error={q.error} />
@@ -210,7 +250,11 @@ export function Suppressions({ brandId }: { brandId: number }) {
         </Button>
       ) : !q.data?.pages.flat().length ? (
         <div className="empty-panel">
-          <h3>{debouncedSearch || filterKind || filterReason ? "No matching suppressions" : "No suppressions in this scope"}</h3>
+          <h3>
+            {debouncedSearch || filterKind || filterReason
+              ? "No matching suppressions"
+              : "No suppressions in this scope"}
+          </h3>
           <p className="page-subtitle">
             {debouncedSearch || filterKind || filterReason
               ? "Try another search or clear the filters."
@@ -225,7 +269,10 @@ export function Suppressions({ brandId }: { brandId: number }) {
                 <SortableTableHead label="Value" {...sorting.header("value")} />
                 <SortableTableHead label="Kind" {...sorting.header("kind")} />
                 <SortableTableHead label="Scope" {...sorting.header("scope")} />
-                <SortableTableHead label="Reason" {...sorting.header("reason")} />
+                <SortableTableHead
+                  label="Reason"
+                  {...sorting.header("reason")}
+                />
                 <th>
                   <span className="sr-only">Actions</span>
                 </th>
@@ -247,51 +294,54 @@ export function Suppressions({ brandId }: { brandId: number }) {
                   </td>
                   <td>{s.reason}</td>
                   <td>
-                    {(s.brand_id !== null || session.admin) && (
-                      <div className="flex items-center gap-1 pr-3">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="action-edit"
-                          aria-label={`Edit suppression for ${s.value}`}
-                          title="Edit suppression"
-                          disabled={a.busy}
-                          onClick={() => setEditing(s)}
-                        >
-                          <Pencil size={16} aria-hidden="true" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="action-delete"
-                          aria-label={`Remove suppression for ${s.value}`}
-                          title="Remove suppression"
-                          disabled={a.busy}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `Remove suppression for ${s.value}? Existing subscriber statuses will remain unchanged.`,
+                    {canEdit &&
+                      (pageScope === "global"
+                        ? s.brand_id === null
+                        : s.brand_id === brandId) && (
+                        <div className="flex items-center gap-1 pr-3">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="action-edit"
+                            aria-label={`Edit suppression for ${s.value}`}
+                            title="Edit suppression"
+                            disabled={a.busy}
+                            onClick={() => setEditing(s)}
+                          >
+                            <Pencil size={16} aria-hidden="true" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="action-delete"
+                            aria-label={`Remove suppression for ${s.value}`}
+                            title="Remove suppression"
+                            disabled={a.busy}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Remove suppression for ${s.value}? Existing subscriber statuses will remain unchanged.`,
+                                )
                               )
-                            )
-                              void a.run(async () => {
-                                const global = s.brand_id === null;
-                                await api(
-                                  `/suppressions/${s.id}?scope=${global ? "global" : "brand"}`,
-                                  {
-                                    method: "DELETE",
-                                    ...(global ? {} : { brandId }),
-                                  },
-                                );
-                                await qc.invalidateQueries({
-                                  queryKey: ["suppressions"],
-                                });
-                              }, "Suppression removed.");
-                          }}
-                        >
-                          <Trash2 size={16} aria-hidden="true" />
-                        </Button>
-                      </div>
-                    )}
+                                void a.run(async () => {
+                                  const global = s.brand_id === null;
+                                  await api(
+                                    `/suppressions/${s.id}?scope=${global ? "global" : "brand"}`,
+                                    {
+                                      method: "DELETE",
+                                      ...(global ? {} : { brandId }),
+                                    },
+                                  );
+                                  await qc.invalidateQueries({
+                                    queryKey: ["suppressions"],
+                                  });
+                                }, "Suppression removed.");
+                            }}
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </Button>
+                        </div>
+                      )}
                   </td>
                 </tr>
               ))}
@@ -346,8 +396,8 @@ function EditSuppression({
         <DialogHeader>
           <DialogTitle>Edit suppression</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            This entry applies to {global ? "all brands" : "the selected brand"}.
-            Existing subscriber statuses will remain unchanged.
+            This entry applies to {global ? "all brands" : "the selected brand"}
+            . Existing subscriber statuses will remain unchanged.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -386,7 +436,9 @@ function EditSuppression({
           <Field
             label={kind === "email" ? "Email address" : "Domain"}
             type={kind === "email" ? "email" : "text"}
-            pattern={kind === "email" ? "[^@\\s]+@[^@\\s]+\\.[^@\\s]+" : undefined}
+            pattern={
+              kind === "email" ? "[^@\\s]+@[^@\\s]+\\.[^@\\s]+" : undefined
+            }
             title={
               kind === "email"
                 ? "Enter an email address such as name@example.com."

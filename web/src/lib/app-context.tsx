@@ -9,6 +9,7 @@ export interface Brand {
   reply_to?: string;
   tracking_domain?: string;
   configuration_set?: string;
+  permissions?: ("read" | "write" | "send")[];
 }
 export const AppContext = createContext<{
   brandId: number;

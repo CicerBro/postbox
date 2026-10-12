@@ -90,7 +90,7 @@ The SQL dump import reads local files and writes the Postbox database. It does n
 
 Check sender identities, custom fields, timestamps, membership states and historical reports. Aggregate reports cannot supply missing recipient-level events or SES message IDs. Legacy dates without an offset are treated as UTC, so compare them with your previous installation's timezone.
 
-An actual import turns sending off and leaves it off, including after failure. Restart the service when the import is complete, review the [first-send checks](sending-newsletters.md#send-or-schedule), then explicitly enable sending in Settings.
+An actual import turns sending off and leaves it off, including after failure. Restart the service when the import is complete, review the [first-send checks](sending-newsletters.md#send-or-schedule), then explicitly enable sending in **Administration > Operations** (`/admin/operations`).
 
 ## Retry safely
 

@@ -487,7 +487,11 @@ test("preview toolbar stays above the pane and fits desktop and mobile screens",
     expect((await frame.boundingBox())!.width).toBeLessThanOrEqual(width);
     await page.getByRole("button", { name: "Merge tags", exact: true }).click();
     const menu = page.getByRole("menu");
-    await expect(menu.getByRole("menuitem")).toHaveCount(7);
+    await expect(menu.getByRole("menuitem")).toHaveText([
+      "name{{ name }}", 'name (fallback: there){{ name | "there" }}',
+      "email{{ email }}", "unsubscribe{{ unsubscribe }}", "webversion{{ webversion }}",
+      "currentdaydate{{ currentdaydate }}", "currentmonth{{ currentmonth }}", "currentyear{{ currentyear }}",
+    ]);
     const menuBox = (await menu.boundingBox())!;
     expect(menuBox.x).toBeGreaterThanOrEqual(0);
     expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width);

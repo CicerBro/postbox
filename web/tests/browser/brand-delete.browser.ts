@@ -41,14 +41,8 @@ async function fixture(context: BrowserContext, admin = true, single = false) {
   return state;
 }
 async function openBrand(page: Page) {
-  await page.goto("/settings");
-  await page
-    .getByRole("navigation", { name: "Settings sections" })
-    .getByRole("button", { name: "Brand", exact: true })
-    .click();
-  await expect(page.getByLabel("Brand name", { exact: true })).toHaveValue(
-    "Acme",
-  );
+  await page.goto("/brands/1/settings/danger");
+  await expect(page.getByRole("heading", { name: "Delete brand", exact: true })).toBeVisible();
 }
 async function confirm(page: Page) {
   await page.getByRole("button", { name: "Delete brand", exact: true }).click();
@@ -133,9 +127,7 @@ test("failed deletion keeps the brand and permits retry", async ({
 });
 test("non-admins cannot access brand deletion", async ({ page, context }) => {
   const state = await fixture(context, false);
-  await openBrand(page);
-  await expect(
-    page.getByRole("button", { name: "Delete brand", exact: true }),
-  ).toHaveCount(0);
+  await page.goto("/brands/1/settings/danger");
+  await expect(page.getByRole("button", { name: "Delete brand", exact: true })).toHaveCount(0);
   expect(state.deletes).toBe(0);
 });

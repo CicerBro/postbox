@@ -14,7 +14,8 @@ import {
   Trash2,
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { Suppressions } from "../components/settings/Suppressions";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -39,6 +40,7 @@ import {
   parseFields,
   tableClass,
   useSubscriberAction,
+  useCanWriteSubscribers,
   useSubscribersQuery,
 } from "../components/subscribers/shared";
 import {
@@ -55,16 +57,20 @@ const statuses = ["active", "bounced", "complained", "blocklisted"];
 function useTableSort<T>(rows: T[]) {
   const [column, setColumn] = useState<keyof T | null>(null);
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
-  const sorted = column === null
-    ? rows
-    : [...rows].sort((a, b) => {
-        const av = a[column] ?? "";
-        const bv = b[column] ?? "";
-        const comparison = typeof av === "number" && typeof bv === "number"
-          ? av - bv
-          : String(av).localeCompare(String(bv), undefined, { numeric: true });
-        return direction === "asc" ? comparison : -comparison;
-      });
+  const sorted =
+    column === null
+      ? rows
+      : [...rows].sort((a, b) => {
+          const av = a[column] ?? "";
+          const bv = b[column] ?? "";
+          const comparison =
+            typeof av === "number" && typeof bv === "number"
+              ? av - bv
+              : String(av).localeCompare(String(bv), undefined, {
+                  numeric: true,
+                });
+          return direction === "asc" ? comparison : -comparison;
+        });
   const head = (label: string, key: keyof T) => (
     <SortableTableHead
       label={label}
@@ -86,6 +92,7 @@ function CustomFields({
   brandId: number;
   fields: CustomField[];
 }) {
+  const canWrite = useCanWriteSubscribers(brandId);
   const [editing, setEditing] = useState<CustomField | null>(null);
   const { sorted: sortedFields, head } = useTableSort(fields);
   const action = useSubscriberAction(brandId);
@@ -107,6 +114,7 @@ function CustomFields({
         </div>
         <Button
           variant="outline"
+          disabled={!canWrite}
           onClick={() => {
             action.reset();
             setEditing(blank);
@@ -146,6 +154,7 @@ function CustomFields({
                     <Button
                       variant="default"
                       size="sm"
+                      disabled={!canWrite}
                       onClick={() => {
                         action.reset();
                         setEditing({ ...f });
@@ -221,7 +230,9 @@ function CustomFields({
               Cancel
             </Button>
             <Button
-              disabled={!editing?.key || !editing.label || action.isPending}
+              disabled={
+                !canWrite || !editing?.key || !editing.label || action.isPending
+              }
               onClick={async () => {
                 if (!editing) return;
                 try {
@@ -284,6 +295,7 @@ function ListNotificationsDialog({
   list: SubscriberList;
   onClose: () => void;
 }) {
+  const canWrite = useCanWriteSubscribers(brandId);
   const settings = useSubscribersQuery<{
     overrides: ListNotifications;
     effective: ListNotifications;
@@ -313,23 +325,41 @@ function ListNotificationsDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{list.name} messages and pages</DialogTitle>
+          <DialogTitle>{list.name}: subscription emails & pages</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Use brand defaults or customize messages for this list. Welcome emails
-          are sent after subscribed consent. Confirmation emails support{" "}
-          {"{{ confirmation_url }}"}.
+          Defaults flow from Postbox defaults to brand defaults to this list's
+          overrides. Customize only the messages that should differ for this
+          list. Welcome emails are sent after subscribed consent. Confirmation
+          emails support {"{{ confirmation_url }}"}.
         </p>
+        <Link
+          className="text-sm text-primary underline"
+          to={`/brands/${brandId}/settings/subscriptions`}
+          onClick={onClose}
+        >
+          Manage brand subscription defaults
+        </Link>
+        {!canWrite && (
+          <p className="text-sm text-muted-foreground">
+            You have read-only access to this list.
+          </p>
+        )}
         <ErrorMessage error={settings.error || action.error} />
         {settings.isPending ? (
           <p role="status">Loading settings…</p>
         ) : (
           ready &&
           notificationNames.map((n) => (
-            <fieldset key={n.key} className="border rounded-lg p-4 space-y-3">
+            <fieldset
+              key={n.key}
+              disabled={!canWrite}
+              className="border rounded-lg p-4 space-y-3"
+            >
               <legend className="font-medium text-sm px-1">{n.label}</legend>
               <label className="flex gap-2 text-sm items-center">
                 <Checkbox
+                  disabled={!canWrite}
                   checked={draft[n.key] !== undefined}
                   onCheckedChange={(checked) =>
                     setDraft((current) => {
@@ -351,7 +381,7 @@ function ListNotificationsDialog({
                     ? n.key === "confirmation_page_html" &&
                       settings.data?.overrides.thankyou_html
                       ? "Uses this list's thank-you page."
-                      : "Inherited from brand settings."
+                      : "Inherited from brand defaults or Postbox defaults."
                     : n.email && n.key !== "confirmation_email"
                       ? "No email configured in brand settings."
                       : "Uses the default hosted page or confirmation message."}
@@ -429,10 +459,10 @@ function ListNotificationsDialog({
             disabled={action.isPending}
             onClick={onClose}
           >
-            Cancel
+            {canWrite ? "Cancel" : "Close"}
           </Button>
           <Button
-            disabled={!ready || invalid || action.isPending}
+            disabled={!canWrite || !ready || invalid || action.isPending}
             onClick={async () => {
               try {
                 await action.mutateAsync({
@@ -467,6 +497,7 @@ function Lists({
   createRequest?: boolean;
   onCreatedRequest?: () => void;
 }) {
+  const canWrite = useCanWriteSubscribers(brandId);
   const [listSearch, setListSearch] = useState("");
   const { sorted: sortedLists, head } = useTableSort(lists);
   const visibleLists = sortedLists.filter((list) =>
@@ -480,21 +511,23 @@ function Lists({
   const [form, setForm] = useState<SubscriberList | null>(null);
   const action = useSubscriberAction(brandId);
   useEffect(() => {
-    if (createRequest) {
+    if (createRequest && canWrite) {
       setEditing({ id: 0, name: "", opt_in: "double", uuid: "" });
       onCreatedRequest?.();
     }
-  }, [createRequest, onCreatedRequest]);
+  }, [createRequest, onCreatedRequest, canWrite]);
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="section-heading text-lg font-semibold">Lists</h2>
           <p className="page-subtitle text-sm text-muted-foreground mt-1">
-            Organize audiences and manage subscription preferences.
+            Manage each list’s opt-in mode, subscribe form, and subscription
+            overrides.
           </p>
         </div>
         <Button
+          disabled={!canWrite}
           onClick={() => {
             action.reset();
             setEditing({ id: 0, name: "", opt_in: "double", uuid: "" });
@@ -558,7 +591,9 @@ function Lists({
                       </span>
                       <div>
                         <span className="row-title font-medium">{l.name}</span>
-                        <p className="row-subtitle">API ID: <code>{l.id}</code></p>
+                        <p className="row-subtitle">
+                          API ID: <code>{l.id}</code>
+                        </p>
                       </div>
                     </div>
                   </td>
@@ -576,6 +611,7 @@ function Lists({
                         size="icon"
                         variant="outline"
                         className="action-edit"
+                        disabled={!canWrite}
                         aria-label={`Edit list ${l.name}`}
                         title="Edit list"
                         onClick={() => {
@@ -589,6 +625,7 @@ function Lists({
                         size="icon"
                         variant="outline"
                         className="action-delete"
+                        disabled={!canWrite}
                         aria-label={`Delete list ${l.name}`}
                         title="Delete list"
                         onClick={() => {
@@ -624,7 +661,7 @@ function Lists({
                             <DropdownMenu.Item
                               onSelect={() => setNotifications(l)}
                             >
-                              Messages and pages
+                              Subscription emails & pages
                             </DropdownMenu.Item>
                           </DropdownMenu.Content>
                         </DropdownMenu.Portal>
@@ -682,7 +719,7 @@ function Lists({
               Cancel
             </Button>
             <Button
-              disabled={!editing?.name.trim() || action.isPending}
+              disabled={!canWrite || !editing?.name.trim() || action.isPending}
               onClick={async () => {
                 if (!editing) return;
                 try {
@@ -722,7 +759,7 @@ function Lists({
             </Button>
             <Button
               variant="destructive"
-              disabled={action.isPending}
+              disabled={!canWrite || action.isPending}
               onClick={async () => {
                 try {
                   await action.mutateAsync({
@@ -761,10 +798,29 @@ function Lists({
 }
 
 function SubscribersWorkspace({ brandId }: { brandId: number }) {
+  const canWrite = useCanWriteSubscribers(brandId);
   const { formatDateTime } = useDateTime();
   const [searchParams, setSearchParams] = useSearchParams();
   const [createList, setCreateList] = useState(false);
-  const [tab, setTab] = useState("subscribers");
+  const requestedTab = searchParams.get("tab") || "subscribers";
+  const tab = [
+    "subscribers",
+    "lists",
+    "import",
+    "bulk",
+    "fields",
+    "housekeeping",
+    "suppressions",
+  ].includes(requestedTab)
+    ? requestedTab
+    : "subscribers";
+  const setTab = (value: string) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("tab", value);
+      return next;
+    });
+  };
   const [after, setAfter] = useState(0);
   const [sort, setSort] = useState("id");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
@@ -776,8 +832,13 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
   const [profile, setProfile] = useState<Subscriber | null | undefined>(
     undefined,
   );
-  const [profileAction, setProfileAction] = useState<"edit" | "delete" | "unsubscribe">("edit");
-  const openProfile = (subscriber: Subscriber | null, action: typeof profileAction = "edit") => {
+  const [profileAction, setProfileAction] = useState<
+    "edit" | "delete" | "unsubscribe"
+  >("edit");
+  const openProfile = (
+    subscriber: Subscriber | null,
+    action: typeof profileAction = "edit",
+  ) => {
     setProfileAction(action);
     setProfile(subscriber);
   };
@@ -786,17 +847,18 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
   const [lookupBusy, setLookupBusy] = useState(false);
   useEffect(() => {
     const request = searchParams.get("new");
-    if (request === "subscriber" || request === "contact") openProfile(null);
-    if (request === "list") {
-      setTab("lists");
+    if (canWrite && (request === "subscriber" || request === "contact"))
+      openProfile(null);
+    if (canWrite && request === "list") {
       setCreateList(true);
     }
     if (request) {
       const next = new URLSearchParams(searchParams);
       next.delete("new");
+      if (canWrite && request === "list") next.set("tab", "lists");
       setSearchParams(next, { replace: true });
     }
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, canWrite]);
   const lists = useQuery({
     queryKey: ["subscribers", brandId, "lists"],
     queryFn: ({ signal }) =>
@@ -848,7 +910,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
             Manage subscriber profiles, consent and audience memberships.
           </p>
         </div>
-        <Button onClick={() => openProfile(null)}>
+        <Button disabled={!canWrite} onClick={() => openProfile(null)}>
           <Plus size={16} />
           New subscriber
         </Button>
@@ -861,6 +923,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
           ["bulk", "Mass actions"],
           ["fields", "Custom fields"],
           ["housekeeping", "Housekeeping"],
+          ["suppressions", "Suppressions"],
         ].map(([value, label]) => (
           <Button
             key={value}
@@ -868,6 +931,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
             aria-selected={tab === value}
             variant={tab === value ? "default" : "ghost"}
             size="sm"
+            disabled={!canWrite && ["bulk", "housekeeping"].includes(value)}
             onClick={() => setTab(value)}
           >
             {label}
@@ -1020,35 +1084,81 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                         }}
                       >
                         <td>
-                          <span className="row-title block max-w-[20rem] truncate" title={s.name || "Unnamed subscriber"}>
+                          <span
+                            className="row-title block max-w-[20rem] truncate"
+                            title={s.name || "Unnamed subscriber"}
+                          >
                             {s.name || "Unnamed subscriber"}
                           </span>
                         </td>
                         <td className="text-muted-foreground">
-                          <span className="block max-w-[24rem] truncate" title={s.email}>
+                          <span
+                            className="block max-w-[24rem] truncate"
+                            title={s.email}
+                          >
                             {s.email}
                           </span>
                         </td>
                         <td>
-                          <p className="text-sm capitalize">{s.last_activity_kind || (s.updated_at > s.created_at ? "Updated" : "Created")}</p>
-                          <time className="text-xs text-muted-foreground" dateTime={new Date(s.last_activity_at || s.updated_at || s.created_at).toISOString()}>
-                            {formatDateTime(s.last_activity_at || s.updated_at || s.created_at)}
+                          <p className="text-sm capitalize">
+                            {s.last_activity_kind ||
+                              (s.updated_at > s.created_at
+                                ? "Updated"
+                                : "Created")}
+                          </p>
+                          <time
+                            className="text-xs text-muted-foreground"
+                            dateTime={new Date(
+                              s.last_activity_at ||
+                                s.updated_at ||
+                                s.created_at,
+                            ).toISOString()}
+                          >
+                            {formatDateTime(
+                              s.last_activity_at ||
+                                s.updated_at ||
+                                s.created_at,
+                            )}
                           </time>
                         </td>
                         <td>
-                          <time className="text-xs text-muted-foreground" dateTime={new Date(s.created_at).toISOString()}>
+                          <time
+                            className="text-xs text-muted-foreground"
+                            dateTime={new Date(s.created_at).toISOString()}
+                          >
                             {formatDateTime(s.created_at)}
                           </time>
                         </td>
                         <td>
                           <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" aria-label={`Edit ${s.email}`} title="Edit" onClick={() => openProfile(s)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`${canWrite ? "Edit" : "View"} ${s.email}`}
+                              title={canWrite ? "Edit" : "View"}
+                              onClick={() => openProfile(s)}
+                            >
                               <Pencil size={16} aria-hidden="true" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="text-destructive" aria-label={`Delete ${s.email}`} title="Delete" onClick={() => openProfile(s, "delete")}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive"
+                              disabled={!canWrite}
+                              aria-label={`Delete ${s.email}`}
+                              title="Delete"
+                              onClick={() => openProfile(s, "delete")}
+                            >
                               <Trash2 size={16} aria-hidden="true" />
                             </Button>
-                            <Button variant="ghost" size="icon" aria-label={`Unsubscribe ${s.email}`} title="Unsubscribe" onClick={() => openProfile(s, "unsubscribe")}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={!canWrite}
+                              aria-label={`Unsubscribe ${s.email}`}
+                              title="Unsubscribe"
+                              onClick={() => openProfile(s, "unsubscribe")}
+                            >
                               <UserMinus size={16} aria-hidden="true" />
                             </Button>
                           </div>
@@ -1113,18 +1223,28 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
         ))}
       {tab === "import" && (
         <div className="space-y-6">
-          <CSVImport
-            brandId={brandId}
-            lists={lists.data || []}
-            fields={fields.data || []}
-          />
+          {canWrite && (
+            <CSVImport
+              brandId={brandId}
+              lists={lists.data || []}
+              fields={fields.data || []}
+            />
+          )}
           <ExportSubscribers brandId={brandId} lists={lists.data || []} />
         </div>
       )}
-      {tab === "bulk" && (
+      {!canWrite && ["bulk", "housekeeping"].includes(tab) && (
+        <p className="text-sm text-muted-foreground">
+          Brand write access is required for this tool.
+        </p>
+      )}
+      {tab === "bulk" && canWrite && (
         <MassOperations brandId={brandId} lists={lists.data || []} />
       )}
-      {tab === "housekeeping" && <Housekeeping brandId={brandId} />}
+      {tab === "housekeeping" && canWrite && <Housekeeping brandId={brandId} />}
+      {tab === "suppressions" && (
+        <Suppressions brandId={brandId} scope="brand" />
+      )}
       {profile !== undefined && (
         <SubscriberProfile
           key={`${profile?.id || "new"}-${profileAction}`}

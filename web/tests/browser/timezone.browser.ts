@@ -19,12 +19,11 @@ test('searchable account timezone persists and formats dates after navigation an
     else if (path === '/templates') body = [{ id: 1, name: 'Welcome', html: '<p>Hello</p>', updated_at: Date.UTC(2026, 0, 1, 1, 30) }];
     await route.fulfill({ json: body });
   });
-  await page.goto('/settings');
-  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  await page.goto('/account/preferences');
   const picker = page.getByRole('combobox', { name: 'Timezone', exact: true });
   await expect(picker).toHaveValue('Browser timezone (Europe/Amsterdam)');
   await picker.fill('los angeles');
-  await expect(page.getByRole('option')).toHaveCount(1);
+  await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1);
   await picker.press('Enter');
   await expect(page.getByRole('status')).toHaveText('Timezone saved.');
   await expect(picker).toHaveValue('America/Los_Angeles');
@@ -32,8 +31,7 @@ test('searchable account timezone persists and formats dates after navigation an
   await page.goto('/templates');
   await expect(page.getByRole('row').filter({ hasText: 'Welcome' })).toContainText('Dec 31, 2025');
   await expect(page.getByRole('row').filter({ hasText: 'Welcome' })).toContainText('5:30');
-  await page.goto('/settings');
-  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  await page.goto('/account/preferences');
   await expect(picker).toHaveValue('America/Los_Angeles');
   await picker.fill('no-such-zone');
   await expect(page.getByText('No matching timezones.')).toBeVisible();
@@ -55,8 +53,7 @@ test('failed preference save retains the active timezone and can be retried', as
     }
     await route.fulfill({ json: path === '/auth/session' ? { user_id: 1, admin: false, csrf_token: 'token', timezone: 'Asia/Tokyo' } : [] });
   });
-  await page.goto('/settings');
-  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  await page.goto('/account/preferences');
   const picker = page.getByRole('combobox', { name: 'Timezone', exact: true });
   await picker.fill('UTC');
   await picker.press('Enter');

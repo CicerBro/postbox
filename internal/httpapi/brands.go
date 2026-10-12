@@ -13,9 +13,10 @@ import (
 func (a *API) brands(w http.ResponseWriter, r *http.Request) {
 	i := r.Context().Value(identityKey{}).(*identity)
 	if r.Method == "GET" {
-		q := "SELECT b.* FROM brands b WHERE b.id>?"
+		projection, args := brandPermissionProjection(i)
+		q := "SELECT b.*, " + projection + " AS permissions FROM brands b WHERE b.id>?"
 		after, limit := page(r)
-		args := []any{after}
+		args = append(args, after)
 		if !i.Admin {
 			if i.BrandID != 0 {
 				q += " AND b.id=?"
@@ -28,6 +29,9 @@ func (a *API) brands(w http.ResponseWriter, r *http.Request) {
 		q += " ORDER BY b.id LIMIT ?"
 		args = append(args, limit)
 		v, e := queryRows(r.Context(), a.db.Reader, q, args...)
+		if e == nil {
+			e = decodeBrandPermissions(v)
+		}
 		result(w, v, e)
 		return
 	}
@@ -43,7 +47,12 @@ func (a *API) brand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "GET" {
-		v, e := queryRows(r.Context(), a.db.Reader, "SELECT * FROM brands WHERE id=?", id)
+		projection, args := brandPermissionProjection(r.Context().Value(identityKey{}).(*identity))
+		args = append(args, id)
+		v, e := queryRows(r.Context(), a.db.Reader, "SELECT b.*, "+projection+" AS permissions FROM brands b WHERE b.id=?", args...)
+		if e == nil {
+			e = decodeBrandPermissions(v)
+		}
 		if e == nil && len(v) == 0 {
 			e = sql.ErrNoRows
 		}
@@ -60,6 +69,31 @@ func (a *API) brand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.saveBrand(w, r, id)
+}
+
+// Include only the current caller's grants, never another user's membership.
+func brandPermissionProjection(i *identity) (string, []any) {
+	if i.Admin {
+		return `?`, []any{`["read","write","send"]`}
+	}
+	if i.BrandID != 0 {
+		scopes, _ := json.Marshal(i.Scopes)
+		return `?`, []any{string(scopes)}
+	}
+	return `(SELECT u.permissions FROM user_brands u WHERE u.brand_id=b.id AND u.user_id=?)`, []any{i.UserID}
+}
+
+func decodeBrandPermissions(rows []map[string]any) error {
+	for _, row := range rows {
+		permissions := []string{}
+		if raw, ok := row["permissions"].(string); ok {
+			if err := json.Unmarshal([]byte(raw), &permissions); err != nil {
+				return err
+			}
+		}
+		row["permissions"] = permissions
+	}
+	return nil
 }
 func (a *API) saveBrand(w http.ResponseWriter, r *http.Request, id int64) {
 	var in struct {

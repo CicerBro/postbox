@@ -53,6 +53,25 @@ func (a *API) documentRoute(pattern string) {
 		op["description"] = "Download the generated API specification. Requires an active user session; API keys do not grant documentation access."
 		op["parameters"] = []map[string]any{}
 	}
+	if method == "GET" && path == "/api/v1/deployment-settings" {
+		op["security"] = []map[string]any{{"cookieAuth": []string{}}}
+		op["parameters"] = []map[string]any{}
+		op["description"] = "Read safe deployment configuration managed through environment variables and startup flags. Requires an administrator session. Credentials and local paths are never returned."
+		properties := map[string]any{}
+		for _, name := range []string{"base_url", "recovery_policy"} {
+			properties[name] = map[string]any{"type": "string"}
+		}
+		for _, name := range []string{"secure_cookies", "turnstile_configured", "backups_configured", "geoip_configured"} {
+			properties[name] = map[string]any{"type": "boolean"}
+		}
+		for _, name := range []string{"session_ttl_seconds", "trusted_proxy_count", "raw_event_retention_days", "max_send_workers", "soft_bounce_limit"} {
+			properties[name] = map[string]any{"type": "integer"}
+		}
+		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Safe deployment configuration", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": properties}}}}
+	}
+	if method == "GET" && (path == "/api/v1/brands" || path == "/api/v1/brands/{brand}") {
+		op["description"] = "Returns brand records with permissions as a JSON array for the current caller. Administrator sessions receive read, write and send; brand users receive their actual brand grants; API keys receive their scopes."
+	}
 	if method != "GET" && method != "DELETE" {
 		op["requestBody"] = map[string]any{"required": true, "content": map[string]any{"application/json": map[string]any{"schema": requestSchema(path)}}}
 	}
