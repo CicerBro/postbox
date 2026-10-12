@@ -1,0 +1,1 @@
+import{n as e}from"./rolldown-runtime-CbXtAM7H.js";import{Q as t,X as n,n as r}from"./button-BEwBd8Al.js";var i=e(t(),1),a=n(),o=i.forwardRef(({className:e,...t},n)=>(0,a.jsx)(`textarea`,{ref:n,className:r(`input textarea`,e),...t}));o.displayName=`Textarea`;export{o as t};

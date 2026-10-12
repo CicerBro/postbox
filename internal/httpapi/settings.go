@@ -57,6 +57,12 @@ func (a *API) settings(w http.ResponseWriter, r *http.Request) {
 			if !allowed {
 				return fmt.Errorf("unknown setting %s", key)
 			}
+			if string(raw) == "null" {
+				if _, e := c.ExecContext(r.Context(), "DELETE FROM settings WHERE key=?", prefix+key); e != nil {
+					return e
+				}
+				continue
+			}
 			value := ""
 			if key == "goodbye_email" || key == "thankyou_email" || key == "confirmation_email" {
 				var mail struct {

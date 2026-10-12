@@ -33,6 +33,8 @@ type Props = {
   onChange: (html: string) => void;
   brandId: number;
   readOnly?: boolean;
+  previewMode?: "rendered" | "source";
+  mergeTags?: string[];
   subject?: string;
   campaignId?: number;
   text?: string;
@@ -95,6 +97,8 @@ export function EmailEditor({
   onChange,
   brandId,
   readOnly = false,
+  previewMode = "rendered",
+  mergeTags,
   subject = "",
   campaignId = 0,
   text = "",
@@ -142,7 +146,7 @@ export function EmailEditor({
       api<{ id: number; key: string; label: string }[]>("/custom-fields", {
         brandId,
       }),
-    enabled: brandId > 0,
+    enabled: brandId > 0 && mergeTags === undefined,
   });
   const [previewSource, setPreviewSource] = useState(value);
   useEffect(() => {
@@ -159,7 +163,7 @@ export function EmailEditor({
         body: htmlRequest.body,
         signal,
       }),
-    enabled: brandId > 0 && mode === "raw" && recipientReady,
+    enabled: previewMode === "rendered" && brandId > 0 && mode === "raw" && recipientReady,
     retry: false,
     gcTime: 0,
   });
@@ -169,12 +173,12 @@ export function EmailEditor({
       method: "POST", brandId,
       body: { html: "<p></p>", text, subscriber_id: recipient?.id ?? 0, campaign_id: campaignId }, signal,
     }),
-    enabled: brandId > 0 && mode === "raw" && recipientReady && !!text.trim(),
+    enabled: previewMode === "rendered" && brandId > 0 && mode === "raw" && recipientReady && !!text.trim(),
     retry: false, gcTime: 0,
   });
-  const previewError = (hasAudience ? recipients.error : null) ?? samplePreview.error;
-  const previewPending = (!recipientReady && !recipients.isError) || previewSource !== value ||
-    (recipientReady && (samplePreview.isPending || samplePreview.isFetching));
+  const previewError = previewMode === "source" ? null : (hasAudience ? recipients.error : null) ?? samplePreview.error;
+  const previewPending = previewMode === "rendered" && ((!recipientReady && !recipients.isError) || previewSource !== value ||
+    (recipientReady && (samplePreview.isPending || samplePreview.isFetching)));
   useEffect(() => {
     if (!rawHost.current || mode !== "raw") return;
     const editor = new EditorView({
@@ -390,7 +394,7 @@ export function EmailEditor({
                   <DropdownMenu.Content className="dropdown-content email-editor-tags" align="start" sideOffset={6}>
                     <DropdownMenu.Label className="dropdown-label">Click a variable to copy</DropdownMenu.Label>
                     {[
-                      ...[
+                      ...(mergeTags ?? [
                         "name",
                         "email",
                         "unsubscribe",
@@ -398,11 +402,11 @@ export function EmailEditor({
                         "currentdaydate",
                         "currentmonth",
                         "currentyear",
-                      ].map((value) => ({ value, label: value })),
-                      ...(fields.data?.map((f) => ({
+                      ]).map((value) => ({ value, label: value })),
+                      ...(mergeTags === undefined ? fields.data?.map((f) => ({
                         value: f.key,
                         label: `${f.label} (${f.key})`,
-                      })) ?? []),
+                      })) ?? [] : []),
                     ].map(({ value, label }) => (
                       <DropdownMenu.Item key={value} textValue={label} onSelect={() => { void copyTag(value); }}>
                         <span>{label}</span><code>{`{{ ${value} }}`}</code>
@@ -450,7 +454,9 @@ export function EmailEditor({
       {mode === "raw" ? (
         <>
           <p className="mb-2 text-sm text-muted-foreground" role="status">
-            {previewPending
+            {previewMode === "source"
+                ? "Preview of your HTML. Placeholders are shown as written."
+                : previewPending
                 ? "Rendering preview…"
                 : previewError
                   ? "Preview could not be rendered. Correct the error to restore it."
@@ -481,14 +487,14 @@ export function EmailEditor({
                   title="Email preview"
                   sandbox="allow-popups allow-popups-to-escape-sandbox"
                   referrerPolicy="no-referrer"
-                  srcDoc={previewLinkTargets(samplePreview.data?.html ?? "")}
+                  srcDoc={previewLinkTargets(previewMode === "source" ? value : samplePreview.data?.html ?? "")}
                   className="mx-auto block h-[960px] border-0 bg-white"
                   style={{ width: mobile ? "var(--newsletter-mobile-width)" : "100%", maxWidth: "100%" }}
                 />
               )}
             </div>
           </div>
-          {recipientReady && samplePreview.data && (
+          {previewMode === "rendered" && recipientReady && samplePreview.data && (
             <div className="col-span-full text-sm">
               {subject && <p>Rendered subject: {samplePreview.data.subject}</p>}
               <details>

@@ -142,10 +142,12 @@ func requestSchema(path string) map[string]any {
 	case strings.HasSuffix(path, "/memberships"):
 		return map[string]any{"type": "array", "items": map[string]any{"type": "object", "required": []string{"list_id", "status"}, "properties": map[string]any{"list_id": map[string]any{"type": "integer"}, "status": map[string]any{"type": "string", "enum": []string{"subscribed", "unsubscribed"}}}}}
 	case strings.HasSuffix(path, "/settings"):
-		add("goodbye_html", "string")
-		add("thankyou_html", "string")
-		add("goodbye_email", "object")
-		add("confirmation_email", "object")
+		for _, name := range []string{"goodbye_html", "thankyou_html"} {
+			props[name] = map[string]any{"type": "string", "nullable": true, "description": "Null clears the custom brand page and restores the built-in version."}
+		}
+		for _, name := range []string{"goodbye_email", "thankyou_email", "confirmation_email"} {
+			props[name] = map[string]any{"type": "object", "nullable": true, "description": "Null clears the custom brand email. Confirmation uses the built-in email; optional welcome and goodbye emails stop unless a list overrides them.", "required": []string{"subject", "html"}, "properties": map[string]any{"subject": map[string]any{"type": "string", "minLength": 1}, "html": map[string]any{"type": "string", "minLength": 1}, "text": map[string]any{"type": "string"}}}
+		}
 	case strings.Contains(path, "suppressions"):
 		props["kind"] = map[string]any{"type": "string", "enum": []string{"email", "domain"}}
 		props["value"] = map[string]any{"type": "string", "description": "A plain email address with a full domain for email rules, or a domain without @ for domain rules."}
