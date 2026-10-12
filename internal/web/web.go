@@ -70,9 +70,12 @@ func spaPath(p string) bool {
 	switch p {
 	case "/", "/login", "/overview", "/campaigns", "/campaigns/new", "/subscribers", "/contacts", "/templates", "/segments", "/domains", "/api-keys", "/settings":
 		return true
+	case "/account", "/account/security", "/account/preferences",
+		"/admin", "/admin/users", "/admin/policies", "/admin/operations", "/admin/suppressions", "/admin/deployment":
+		return true
 	}
 	parts := strings.Split(strings.Trim(p, "/"), "/")
-	if len(parts) < 2 || parts[0] != "campaigns" {
+	if len(parts) < 2 || (parts[0] != "campaigns" && parts[0] != "brands") {
 		return false
 	}
 	for _, c := range parts[1] {
@@ -80,5 +83,23 @@ func spaPath(p string) bool {
 			return false
 		}
 	}
-	return parts[1] != "" && (len(parts) == 2 || len(parts) == 3 && parts[2] == "report")
+	if parts[1] == "" {
+		return false
+	}
+	if parts[0] == "brands" {
+		if len(parts) < 3 || parts[2] != "settings" {
+			return false
+		}
+		if len(parts) == 3 {
+			return true
+		}
+		if len(parts) == 4 {
+			switch parts[3] {
+			case "general", "sending", "subscriptions", "integrations", "danger":
+				return true
+			}
+		}
+		return false
+	}
+	return len(parts) == 2 || len(parts) == 3 && parts[2] == "report"
 }

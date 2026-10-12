@@ -14,9 +14,16 @@ func TestRoutes(t *testing.T) {
 		code int
 	}{
 		{"/", 200}, {"/subscribers", 200}, {"/contacts", 200}, {"/api-keys", 200}, {"/settings", 200}, {"/campaigns/42/report", 200},
+		{"/account", 200}, {"/account/security", 200}, {"/account/preferences", 200},
+		{"/admin", 200}, {"/admin/users", 200}, {"/admin/policies", 200}, {"/admin/operations", 200}, {"/admin/suppressions", 200}, {"/admin/deployment", 200},
+		{"/brands/42/settings", 200}, {"/brands/42/settings/general", 200}, {"/brands/42/settings/sending", 200},
+		{"/brands/42/settings/subscriptions", 200}, {"/brands/42/settings/integrations", 200}, {"/brands/42/settings/danger", 200},
 		{"/api", 404}, {"/api/v1/unknown", 404}, {"/unknown", 404}, {"/assets/missing.js", 404},
 		{"/docs", 404}, {"/docs/index.html", 404}, {"/docs/assets/postbox-campaigns.png", 404},
 		{"/../index.html", 404}, {"/assets/../index.html", 404}, {"/campaigns/not-an-id", 404},
+		{"/admin/unknown", 404}, {"/admin/policies/extra", 404}, {"/account/unknown", 404},
+		{"/brands/not-an-id/settings/general", 404}, {"/brands//settings/general", 404},
+		{"/brands/42", 404}, {"/brands/42/unknown", 404}, {"/brands/42/settings/unknown", 404}, {"/brands/42/settings/general/extra", 404},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, tc.path, nil)
@@ -67,6 +74,9 @@ func TestHTMLProxyProtectionAndBeaconPolicy(t *testing.T) {
 		{Handler(), "/", "no-cache, no-transform", 200},
 		{Handler(), "/index.html", "no-cache, no-transform", 301},
 		{Handler(), "/campaigns/42", "no-cache, no-transform", 200},
+		{Handler(), "/admin/policies", "no-cache, no-transform", 200},
+		{Handler(), "/account/security", "no-cache, no-transform", 200},
+		{Handler(), "/brands/42/settings/general", "no-cache, no-transform", 200},
 		{DocsHandler(), "/docs/", "private, no-store, no-transform", 200},
 		{DocsHandler(), "/docs/api", "private, no-store, no-transform", 200},
 	} {
