@@ -71,8 +71,10 @@ export function Security() {
         )}
       </div>
       <p className="text-sm text-muted-foreground">
-        Confirm your password to change sign-in factors. Removing a factor signs
-        out all sessions.
+        {session.totp_enabled
+          ? "Enter your current password and a code from your authenticator app to change sign-in factors."
+          : "Enter your current password to change sign-in factors."}{" "}
+        Removing a factor signs out all sessions.
       </p>
       <div className="grid gap-4 xl:grid-cols-2">
         <Field
@@ -194,14 +196,22 @@ export function Security() {
             Use your device or a security key for a faster, secure sign-in.
           </p>
           <Field
-            label="New passkey name"
+            label="New passkey name (optional)"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Personal laptop"
           />
+          <p id="passkey-requirements" className="text-sm text-muted-foreground">
+            {enrollment
+              ? "Finish or cancel authenticator setup before adding a passkey. Then enter your current password and, if your authenticator is enabled, a code in the fields above."
+              : session.totp_enabled
+                ? "To add a passkey, fill in your current password and authenticator code in the fields above."
+                : "To add a passkey, fill in your current password in the field above. No authenticator code is required."}
+          </p>
           <Button
             variant="outline"
             className="security-factor-button security-passkey"
+            aria-describedby="passkey-requirements"
             disabled={
               a.busy ||
               !password ||
