@@ -2,6 +2,7 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { useApp } from "../lib/app-context";
 import { BrandIdentity } from "../components/settings/BrandIdentity";
 import { Security } from "../components/settings/Security";
+import { EmailAddress } from "../components/settings/EmailAddress";
 import { Messages } from "../components/settings/Messages";
 import { Webhooks } from "../components/settings/Webhooks";
 import { Suppressions } from "../components/settings/Suppressions";
@@ -120,7 +121,12 @@ export function SettingsPage({
           <h2 className="border-b pb-4 text-lg font-medium">
             {tabs.find(([id]) => id === section)?.[1]}
           </h2>
-          {area === "account" && section === "security" && <Security />}
+          {area === "account" && section === "security" && (
+            <>
+              <EmailAddress />
+              <Security />
+            </>
+          )}
           {area === "account" && section === "preferences" && (
             <>
               <ProfilePreferences />

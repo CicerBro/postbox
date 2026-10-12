@@ -22,6 +22,7 @@ func (a *API) registerUsers(m *http.ServeMux) {
 	a.route(m, "POST /api/v1/auth/totp/verify", a.verifyTOTP)
 	a.route(m, "DELETE /api/v1/auth/totp", a.deleteTOTP)
 	a.route(m, "DELETE /api/v1/users/{id}/totp", a.resetTOTP)
+	a.route(m, "PATCH /api/v1/auth/email", a.changeEmail)
 	a.documentUsers()
 }
 func (a *API) userAdmin(w http.ResponseWriter, r *http.Request) bool {

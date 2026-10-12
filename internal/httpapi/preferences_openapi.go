@@ -1,6 +1,14 @@
 package httpapi
 
 func documentPreferences(method, path string, op map[string]any) {
+	if path == "/api/v1/auth/email" {
+		op["security"] = []map[string]any{{"cookieAuth": []string{}}}
+		op["description"] = "Change the signed-in user's email. Requires the current password, authenticator code when enabled, and session CSRF token. Other sessions and pending passkey ceremonies are revoked. The current session and account access are retained."
+		props := map[string]any{"email": map[string]any{"type": "string", "format": "email"}, "password": map[string]any{"type": "string"}, "code": map[string]any{"type": "string", "description": "Required when an authenticator is enabled."}}
+		op["requestBody"] = map[string]any{"required": true, "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"email", "password"}, "properties": props}}}}
+		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Saved sign-in email", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"email"}, "properties": map[string]any{"email": props["email"]}}}}}
+		return
+	}
 	if path != "/api/v1/auth/preferences" && path != "/api/v1/auth/session" {
 		return
 	}
