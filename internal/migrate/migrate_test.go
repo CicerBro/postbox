@@ -63,6 +63,12 @@ func TestImportStatusesArchiveAndIdempotency(t *testing.T) {
 	if r.Deduplicated != 1 || r.Suppressed != 2 {
 		t.Fatalf("report: %+v", r)
 	}
+	if scalar(t, db, "SELECT count(*) FROM lists WHERE length(uuid)=32 AND uuid NOT GLOB '*[^0-9a-f]*'") != 2 {
+		t.Fatal("imported list IDs must be plain hex tokens")
+	}
+	if scalar(t, db, "SELECT count(*) FROM campaigns WHERE length(uuid)=32 AND uuid NOT GLOB '*[^0-9a-f]*'") != 2 {
+		t.Fatal("imported campaign IDs must be plain hex tokens")
+	}
 	if scalar(t, db, "SELECT count(*) FROM subscribers") != 6 {
 		t.Fatal("normalized dedup failed")
 	}

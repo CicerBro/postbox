@@ -312,7 +312,7 @@ func (i *importer) insert(q string, args ...any) (int64, error) {
 }
 func (i *importer) uuid(entity, id string) string {
 	h := sha256.Sum256([]byte(i.source + "\x00" + entity + "\x00" + id))
-	return fmt.Sprintf("sendy-%x", h[:16])
+	return fmt.Sprintf("%x", h[:16])
 }
 func (i *importer) row(r Row) error {
 	id := r.get("id")

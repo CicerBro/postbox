@@ -207,9 +207,9 @@ func TestConsolidatedInitialMigrationChecksumAccepted(t *testing.T) {
 	}
 	// Supply the tables used by later data migrations without replaying the baseline.
 	if _, err = legacy.Exec(`
-		CREATE TABLE campaigns(id INTEGER PRIMARY KEY, brand_id INTEGER, status TEXT, finished_at INTEGER, updated_at INTEGER);
+		CREATE TABLE campaigns(id INTEGER PRIMARY KEY, brand_id INTEGER, uuid TEXT, status TEXT, finished_at INTEGER, updated_at INTEGER);
 		CREATE TABLE migration_identities(entity TEXT, target_id INTEGER);
-		CREATE TABLE lists(id INTEGER PRIMARY KEY, brand_id INTEGER);
+		CREATE TABLE lists(id INTEGER PRIMARY KEY, brand_id INTEGER, uuid TEXT);
 		CREATE TABLE segments(id INTEGER PRIMARY KEY, brand_id INTEGER);
 		CREATE TABLE campaign_targets(campaign_id INTEGER, target_type TEXT, target_id INTEGER, mode TEXT);
 		CREATE TABLE jobs(id INTEGER PRIMARY KEY, status TEXT);
