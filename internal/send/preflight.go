@@ -194,10 +194,9 @@ func (e *Engine) Checklist(ctx context.Context, id int64, opts PreflightOptions)
 	}
 	out.Checks.Links = checkPreflightLinks(ctx, links, c.fields, sample, opts)
 	for _, l := range out.Checks.Links {
-		if l.Status == "broken" || l.Status == "blocked" {
-			addError("link", l.URL+": "+l.Message)
-		}
-		if l.Status == "warning" {
+		// Link checks are advisory: remote sites can reject automated requests.
+		// URL safety restrictions still prevent the checker from making requests.
+		if l.Status == "broken" || l.Status == "blocked" || l.Status == "warning" {
 			out.Checks.Warnings = append(out.Checks.Warnings, PreflightIssue{Code: "link", Message: l.URL + ": " + l.Message})
 		}
 		if l.Personalized {

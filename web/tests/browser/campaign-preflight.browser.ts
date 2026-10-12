@@ -17,12 +17,12 @@ function checklist(): Checklist {
     quota: { MaxSendRate: 170, Max24HourSend: 350000, SentLast24Hours: 0 },
     fits_daily_quota: true,
     checks: {
-      ready: false,
-      errors: links.map((link) => ({
+      ready: true,
+      errors: [],
+      warnings: links.map((link) => ({
         code: "link",
         message: `${link.url}: HTTP 403`,
       })),
-      warnings: [],
       links,
       html_bytes: 12288,
       html_clipping: false,
@@ -67,7 +67,7 @@ async function fixture(context: BrowserContext, result: Checklist) {
 }
 
 for (const mobile of [false, true]) {
-  test(`preflight explains repeated 403 failures and preserves the sending block on ${mobile ? "mobile" : "desktop"}`, async ({
+  test(`preflight explains repeated 403 failures and allows sending on ${mobile ? "mobile" : "desktop"}`, async ({
     page,
     context,
   }, testInfo) => {
@@ -81,9 +81,11 @@ for (const mobile of [false, true]) {
       .click();
     const results = page.getByRole("region", { name: "Preflight results" });
     await expect(
-      results.getByRole("heading", { name: "Review before sending" }),
+      results.getByRole("heading", { name: "Ready to send" }),
     ).toBeVisible();
-    await expect(results).toContainText("Sending blocked");
+    await expect(results).not.toContainText("Sending blocked");
+    await expect(results).toContainText("do not block sending or scheduling");
+    await expect(results).toContainText("Cloudflare or other bot protection");
     await expect(results).toContainText("5 links could not be verified");
     await expect(results).toContainText(
       "The website refused the automated check (HTTP 403).",
@@ -107,7 +109,7 @@ for (const mobile of [false, true]) {
       results.getByText("https://example.org/terms", { exact: true }),
     ).toBeVisible();
     await expect(
-      results.getByText("Failed · HTTP 403", { exact: true }),
+      results.getByText("Unverified · HTTP 403", { exact: true }),
     ).toHaveCount(5);
     expect(
       await page.evaluate(
@@ -117,10 +119,11 @@ for (const mobile of [false, true]) {
     await page
       .getByRole("button", { name: "Start sending", exact: true })
       .click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByRole("alert")).toContainText(
-      "Resolve the preflight errors",
-    );
+    await expect(page.getByRole("dialog", { name: "Start campaign?" })).toBeVisible();
+    await page.getByRole("button", { name: "Keep reviewing", exact: true }).click();
+    await page.locator('input[type="datetime-local"]').fill("2099-01-01T12:00");
+    await page.getByRole("button", { name: "Schedule", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Schedule campaign?" })).toBeVisible();
   });
 }
 
@@ -184,6 +187,8 @@ test("quota failures and clipping stay distinct from passing checks", async ({
   context,
 }) => {
   const result = checklist();
+  result.checks.ready = false;
+  result.checks.warnings = [];
   result.fits_daily_quota = false;
   result.checks.links = [];
   result.checks.errors = [
@@ -213,6 +218,8 @@ test("template errors do not present unavailable estimates as passing checks", a
   context,
 }) => {
   const result = checklist();
+  result.checks.ready = false;
+  result.checks.warnings = [];
   result.checks.errors = [
     {
       code: "merge_tag",

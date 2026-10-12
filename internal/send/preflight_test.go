@@ -2,6 +2,7 @@ package send
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/netip"
@@ -129,7 +130,7 @@ func TestChecklistBrokenAndPersonalizedLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := e.Checklist(context.Background(), 1, PreflightOptions{Client: preflightTestClient(404)})
-	if err != nil || got.Checks.Ready || len(got.Checks.Links) != 1 || !got.Checks.Links[0].Personalized || len(got.Checks.Warnings) == 0 {
+	if err != nil || !got.Checks.Ready || len(got.Checks.Errors) != 0 || len(got.Checks.Links) != 1 || !got.Checks.Links[0].Personalized || len(got.Checks.Warnings) != 2 {
 		t.Fatalf("%+v %v", got, err)
 	}
 }
@@ -191,5 +192,37 @@ func TestChecklistMissingRecipientFieldWarning(t *testing.T) {
 	}
 	if !found || !got.Checks.Ready {
 		t.Fatalf("%+v", got)
+	}
+}
+
+func TestChecklistLinkFailuresAreAdvisory(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		url    string
+		client *http.Client
+		status string
+	}{
+		{"forbidden", "https://example.org/premium", preflightTestClient(403), "broken"},
+		{"not_found", "https://example.org/missing", preflightTestClient(404), "broken"},
+		{"server_error", "https://example.org/", preflightTestClient(503), "broken"},
+		{"timeout", "https://example.org/", &http.Client{Transport: preflightTransport(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("request timed out")
+		})}, "broken"},
+		{"restricted_url", "http://localhost/", preflightTestClient(200), "blocked"},
+		{"redirect", "https://example.org/", preflightTestClient(302), "warning"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, e, _ := fixture(t, 1)
+			if _, err := db.Writer.Exec(`UPDATE campaigns SET html=? WHERE id=1`, `<a href="`+tc.url+`">Read</a>`); err != nil {
+				t.Fatal(err)
+			}
+			got, err := e.Checklist(context.Background(), 1, PreflightOptions{Client: tc.client})
+			if err != nil || !got.Checks.Ready || len(got.Checks.Errors) != 0 || len(got.Checks.Links) != 1 || got.Checks.Links[0].Status != tc.status {
+				t.Fatalf("%+v %v", got, err)
+			}
+			if len(got.Checks.Warnings) != 1 || got.Checks.Warnings[0].Code != "link" || !strings.Contains(got.Checks.Warnings[0].Message, tc.url) {
+				t.Fatalf("missing link notification: %+v", got.Checks.Warnings)
+			}
+		})
 	}
 }

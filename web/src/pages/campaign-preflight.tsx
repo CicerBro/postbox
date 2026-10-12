@@ -43,9 +43,10 @@ export function Preflight({ data }: { data: Checklist }) {
   const warnings = (c.warnings ?? []).filter(
     (issue) =>
       !["link", "personalized_link"].includes(issue.code) ||
-      !reviewLinks.some((link) => issue.message.startsWith(`${link.url}: `)),
+      !links.some((link) => issue.message.startsWith(`${link.url}: `)),
   );
-  const hasNotes = warnings.length > 0 || reviewLinks.length > 0;
+  const hasNotes =
+    warnings.length > 0 || reviewLinks.length > 0 || failedLinks.length > 0;
   const unavailable = (c.errors ?? []).some((issue) =>
     ["template", "merge_tag", "audience"].includes(issue.code),
   );
@@ -108,24 +109,10 @@ export function Preflight({ data }: { data: Checklist }) {
       </div>
 
       <div className="space-y-6 p-5 sm:p-6">
-        {(errors.length > 0 || failedLinks.length > 0) && (
+        {errors.length > 0 && (
           <div className="space-y-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
             <h4 className="font-semibold">What needs attention</h4>
-            {errors.length > 0 && <Issues issues={errors} />}
-            {failedLinks.length > 0 && (
-              <div>
-                <p className="text-sm font-semibold">
-                  {number(failedLinks.length)}{" "}
-                  {failedLinks.length === 1 ? "link could" : "links could"} not
-                  be verified
-                </p>
-                <p className="mt-1 max-w-3xl text-sm leading-relaxed">
-                  {allForbidden
-                    ? "The website refused the automated check (HTTP 403). This does not necessarily mean the pages are broken. Open them to verify the destinations and check whether the website allows automated requests."
-                    : "Some destinations failed the automated check. Review the link results below and correct any invalid URLs or inaccessible pages."}
-                </p>
-              </div>
-            )}
+            <Issues issues={errors} />
           </div>
         )}
 
@@ -135,6 +122,21 @@ export function Preflight({ data }: { data: Checklist }) {
             <div className="min-w-0 space-y-2">
               <h4 className="text-sm font-semibold">Worth reviewing</h4>
               {warnings.length > 0 && <Issues issues={warnings} />}
+              {failedLinks.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold">
+                    {number(failedLinks.length)}{" "}
+                    {failedLinks.length === 1 ? "link could" : "links could"} not
+                    be verified
+                  </p>
+                  <p className="mt-1 max-w-3xl text-sm leading-relaxed">
+                    {allForbidden
+                      ? "The website refused the automated check (HTTP 403). Cloudflare or other bot protection may block these requests even when the pages work in a browser. Open the links to verify the destinations."
+                      : "Some destinations failed the automated check. Review the link results below and correct any invalid URLs or inaccessible pages."}
+                    {" "}Link checks are advisory and do not block sending or scheduling.
+                  </p>
+                </div>
+              )}
               {reviewLinks.length > 0 && (
                 <p className="text-sm leading-relaxed">
                   {number(reviewLinks.length)}{" "}
@@ -254,7 +256,7 @@ export function Preflight({ data }: { data: Checklist }) {
               <span className="ml-1 font-normal text-muted-foreground">
                 ({number(links.length)} checked
                 {failedLinks.length > 0
-                  ? `, ${number(failedLinks.length)} failed`
+                  ? `, ${number(failedLinks.length)} unverified`
                   : ""}
                 )
               </span>
@@ -291,18 +293,12 @@ export function Preflight({ data }: { data: Checklist }) {
                   </div>
                   <Badge
                     className="w-fit shrink-0"
-                    variant={
-                      link.status === "ok"
-                        ? "success"
-                        : ["broken", "blocked"].includes(link.status)
-                          ? "destructive"
-                          : "warning"
-                    }
+                    variant={link.status === "ok" ? "success" : "warning"}
                   >
                     {link.status === "ok"
                       ? "Passed"
                       : ["broken", "blocked"].includes(link.status)
-                        ? "Failed"
+                        ? "Unverified"
                         : "Review"}
                     {link.http_status ? ` · HTTP ${link.http_status}` : ""}
                   </Badge>
