@@ -2,7 +2,7 @@ services:
   postbox:
     build:
       context: .
-    image: postbox:local
+    image: ghcr.io/cicerbro/postbox:latest
     restart: unless-stopped
     dns:
       - 1.1.1.1
