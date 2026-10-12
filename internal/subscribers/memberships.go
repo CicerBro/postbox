@@ -54,69 +54,75 @@ func loadMembershipBatch(ctx context.Context, c *sql.Conn, brand int64, listIDs 
 		return loaded, nil
 	}
 	// Query only selected lists and reject foreign or nonexistent lists before writes.
-	args := []any{brand}
-	placeholders := make([]string, len(listIDs))
-	for i, id := range listIDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
-	rows, err := c.QueryContext(ctx, "SELECT id,opt_in FROM lists WHERE brand_id=? AND id IN ("+strings.Join(placeholders, ",")+")", args...)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var id int64
-		var opt string
-		if err = rows.Scan(&id, &opt); err != nil {
-			rows.Close()
+	for start := 0; start < len(listIDs); start += 500 {
+		selected := listIDs[start:min(start+500, len(listIDs))]
+		args := []any{brand}
+		placeholders := make([]string, len(selected))
+		for i, id := range selected {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		rows, err := c.QueryContext(ctx, "SELECT id,opt_in FROM lists WHERE brand_id=? AND id IN ("+strings.Join(placeholders, ",")+")", args...)
+		if err != nil {
 			return nil, err
 		}
-		loaded.optIn[id] = opt
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
+		for rows.Next() {
+			var id int64
+			var opt string
+			if err = rows.Scan(&id, &opt); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			loaded.optIn[id] = opt
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
 	for _, id := range listIDs {
 		if _, ok := loaded.optIn[id]; !ok {
 			return nil, fmt.Errorf("list %d does not belong to brand", id)
 		}
 	}
-	// Bounded IN queries keep database parameter counts and memory independent of
-	// total file size, including when the import uses its maximum batch size.
-	for start := 0; start < len(batch); start += 500 {
-		end := min(start+500, len(batch))
-		args = []any{brand}
-		placeholders = make([]string, end-start)
-		for i, in := range batch[start:end] {
-			placeholders[i] = "?"
-			args = append(args, in.Email)
-		}
-		listPlaceholders := make([]string, len(listIDs))
-		for i, id := range listIDs {
-			listPlaceholders[i] = "?"
-			args = append(args, id)
-		}
-		rows, err = c.QueryContext(ctx, "SELECT s.email,ls.list_id,ls.status FROM subscribers s JOIN list_subscribers ls ON ls.subscriber_id=s.id WHERE s.brand_id=? AND s.email IN ("+strings.Join(placeholders, ",")+") AND ls.list_id IN ("+strings.Join(listPlaceholders, ",")+")", args...)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			var email, status string
-			var list int64
-			if err = rows.Scan(&email, &list, &status); err != nil {
-				rows.Close()
+	// Bound both dimensions so varying list selections in a bulk request cannot
+	// exceed SQLite's parameter limit, even at the maximum import batch size.
+	for listStart := 0; listStart < len(listIDs); listStart += 500 {
+		selected := listIDs[listStart:min(listStart+500, len(listIDs))]
+		for start := 0; start < len(batch); start += 500 {
+			end := min(start+500, len(batch))
+			args := []any{brand}
+			placeholders := make([]string, end-start)
+			for i, in := range batch[start:end] {
+				placeholders[i] = "?"
+				args = append(args, in.Email)
+			}
+			listPlaceholders := make([]string, len(selected))
+			for i, id := range selected {
+				listPlaceholders[i] = "?"
+				args = append(args, id)
+			}
+			rows, err := c.QueryContext(ctx, "SELECT s.email,ls.list_id,ls.status FROM subscribers s JOIN list_subscribers ls ON ls.subscriber_id=s.id WHERE s.brand_id=? AND s.email IN ("+strings.Join(placeholders, ",")+") AND ls.list_id IN ("+strings.Join(listPlaceholders, ",")+")", args...)
+			if err != nil {
 				return nil, err
 			}
-			if _, ok := loaded.optIn[list]; ok {
-				loaded.set(email, list, status)
+			for rows.Next() {
+				var email, status string
+				var list int64
+				if err = rows.Scan(&email, &list, &status); err != nil {
+					rows.Close()
+					return nil, err
+				}
+				if _, ok := loaded.optIn[list]; ok {
+					loaded.set(email, list, status)
+				}
 			}
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, err
+			err = rows.Err()
+			rows.Close()
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	return loaded, nil
@@ -232,6 +238,14 @@ func (s *Service) applyMemberships(ctx context.Context, c *sql.Conn, in UpsertIn
 	if v.Status != "active" {
 		if e = unsubscribeMemberships(ctx, c, in.BrandID, v.ID, 0, false, !in.SuppressNotifications); e != nil {
 			return v, e
+		}
+		// A delivery suppression changes every membership, including lists absent
+		// from this input. Keep the transaction cache accurate for later rows with
+		// the same email and a different list selection.
+		if memberships != nil {
+			for id := range memberships.previous[v.Email] {
+				memberships.set(v.Email, id, "unsubscribed")
+			}
 		}
 	}
 	_, e = c.ExecContext(ctx, "INSERT INTO subscriber_activity(brand_id,subscriber_id,kind,at,detail) VALUES(?,?,'upsert',?,'{}')", in.BrandID, v.ID, at)

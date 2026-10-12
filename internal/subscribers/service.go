@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"postbox/internal/consent"
 	"postbox/internal/jobs"
 	"postbox/internal/render"
@@ -96,8 +97,7 @@ func (s *Service) UpdateList(ctx context.Context, v List) error {
 	return e
 }
 func (s *Service) DeleteList(ctx context.Context, brandID, id int64) error {
-	_, e := s.db.Writer.ExecContext(ctx, "DELETE FROM lists WHERE brand_id=? AND id=?", brandID, id)
-	return e
+	return s.db.DeleteList(ctx, brandID, id)
 }
 
 const subscriberColumns = "id,brand_id,email,name,fields,status,gdpr_consent_at,coalesce(gdpr_consent_ip,''),created_at,updated_at,marketing_unsubscribed_at"
@@ -144,6 +144,63 @@ func (s *Service) Upsert(ctx context.Context, in UpsertInput) (Subscriber, error
 	var v Subscriber
 	e := s.db.Immediate(ctx, func(c *sql.Conn) error { var e error; v, e = s.upsert(ctx, c, in); return e })
 	return v, e
+}
+
+// UpsertBulk applies one bounded request atomically. List policy and existing
+// memberships are loaded once per batch, while each transition retains the
+// consent, suppression, counter, and notification behavior of a single upsert.
+func (s *Service) UpsertBulk(ctx context.Context, brand int64, inputs []UpsertInput) ([]Subscriber, error) {
+	if brand <= 0 {
+		return nil, errors.New("brand_id is required")
+	}
+	if len(inputs) > 1000 {
+		return nil, errors.New("bulk requests limited to 1000 subscribers")
+	}
+	batch := make([]UpsertInput, len(inputs))
+	lists := []int64{}
+	seen := map[int64]bool{}
+	for i, in := range inputs {
+		in.BrandID = brand
+		email, err := render.NormalizeEmail(in.Email)
+		if err != nil {
+			return nil, fmt.Errorf("subscriber %d: %w", i+1, err)
+		}
+		in.Email = email
+		batch[i] = in
+		for _, id := range in.ListIDs {
+			if !seen[id] {
+				seen[id] = true
+				lists = append(lists, id)
+			}
+		}
+	}
+	out := make([]Subscriber, 0, len(batch))
+	if len(batch) == 0 {
+		return out, nil
+	}
+	err := s.db.Immediate(ctx, func(c *sql.Conn) error {
+		memberships, err := loadMembershipBatch(ctx, c, brand, lists, batch)
+		if err != nil {
+			return err
+		}
+		stmt, err := c.PrepareContext(ctx, subscriberUpsertSQL)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+		for i, in := range batch {
+			v, err := s.upsertPrepared(ctx, c, in, stmt, memberships)
+			if err != nil {
+				return fmt.Errorf("subscriber %d: %w", i+1, err)
+			}
+			out = append(out, v)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 func (s *Service) upsert(ctx context.Context, c *sql.Conn, in UpsertInput) (Subscriber, error) {
 	return s.upsertPrepared(ctx, c, in, nil, nil)

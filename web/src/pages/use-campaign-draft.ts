@@ -25,7 +25,7 @@ type Draft = {
   inline: boolean;
   targets: Target[];
 };
-type RecoveryDraft = Draft & { baseline: string };
+type RecoveryDraft = Draft & { baseline: string; notice?: string };
 
 export function useCampaignDraft(brandId: number, routeID: number) {
   const navigate = useNavigate(),
@@ -101,7 +101,7 @@ export function useCampaignDraft(brandId: number, routeID: number) {
       targets: d.targets,
     });
     setBaseline(d.baseline);
-    setNotice("Unsaved edits restored. Review and save them when ready.", "info");
+    setNotice(d.notice ?? "Unsaved edits restored. Review and save them when ready.", "info");
     recovery.current = undefined;
     forgetDraft(recoveryKey);
   }, [routeID, recoveryKey]);
@@ -119,7 +119,7 @@ export function useCampaignDraft(brandId: number, routeID: number) {
         targets: d.targets,
       });
       setBaseline(d.baseline);
-      setNotice("Unsaved edits restored. Review and save them when ready.", "info");
+      setNotice(d.notice ?? "Unsaved edits restored. Review and save them when ready.", "info");
       hydrated.current = true;
       recovery.current = undefined;
       forgetDraft(recoveryKey);
@@ -168,7 +168,20 @@ export function useCampaignDraft(brandId: number, routeID: number) {
       setNotice("Draft saved.");
       client.invalidateQueries({ queryKey: ["campaigns", brandId] });
       client.invalidateQueries({ queryKey: ["campaign-checklist", brandId] });
-      if (!routeID) navigate(`/campaigns/${saved}`, { replace: true });
+      if (!routeID) {
+        // The saved route remounts the editor. Carry edits made during either
+        // save request across that boundary, retaining what actually reached
+        // the server as the baseline for preflight and send checks.
+        const { subject, html, text, inline, targets } = latestDraft.current;
+        const latest = { subject, html, text, inline, targets };
+        if (JSON.stringify(latest) !== result.basis)
+          rememberDraft(`${session.user_id}:${brandId}:${saved}`, {
+            ...latest,
+            baseline: result.basis,
+            notice: "Draft saved. Your newer edits are still unsaved.",
+          } satisfies RecoveryDraft);
+        navigate(`/campaigns/${saved}`, { replace: true });
+      }
       else
         client.invalidateQueries({ queryKey: ["campaign", brandId, routeID] });
     },

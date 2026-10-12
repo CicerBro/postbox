@@ -310,7 +310,7 @@ func TestCustomizedConfirmationAndFieldUpdate(t *testing.T) {
 	ctx := context.Background()
 	s, b, l := fixture(t)
 	s.SetBaseURL("https://example.org")
-	if e := s.db.SetSetting(ctx, fmt.Sprintf("brand.%d.confirmation_email", b.ID), `{"subject":"Join us","html":"<a href=\"{{ confirmation_url }}\">Join</a>","text":"Join {{ confirmation_url }}"}`); e != nil {
+	if e := s.db.SetBrandSetting(ctx, b.ID, "confirmation_email", `{"subject":"Join us","html":"<a href=\"{{ confirmation_url }}\">Join</a>","text":"Join {{ confirmation_url }}"}`); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "custom@example.org", ListIDs: []int64{l.ID}}); e != nil {
@@ -382,7 +382,7 @@ func TestMembershipTransitionsPreserveOtherAudiencesAndEmitOnce(t *testing.T) {
 	if _, e = s.db.Writer.Exec(`INSERT INTO webhooks(brand_id,url,events,secret) VALUES(?,'https://example.org/webhook','["subscribe","unsubscribe"]','secret')`, b.ID); e != nil {
 		t.Fatal(e)
 	}
-	if e = s.db.SetSetting(ctx, fmt.Sprintf("brand.%d.thankyou_email", b.ID), `{"subject":"Welcome","html":"<p>Hello {{ name }}</p>"}`); e != nil {
+	if e = s.db.SetBrandSetting(ctx, b.ID, "thankyou_email", `{"subject":"Welcome","html":"<p>Hello {{ name }}</p>"}`); e != nil {
 		t.Fatal(e)
 	}
 	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "reader@example.org", Name: "Reader", ListIDs: []int64{l.ID, other.ID}})
@@ -444,7 +444,7 @@ func TestConfirmationEmitsWelcomeOnlyAfterConsentTransition(t *testing.T) {
 	if _, e := s.db.Writer.Exec(`INSERT INTO webhooks(brand_id,url,events,secret) VALUES(?,'https://example.org/webhook','["subscribe"]','secret')`, b.ID); e != nil {
 		t.Fatal(e)
 	}
-	if e := s.db.SetSetting(ctx, fmt.Sprintf("brand.%d.thankyou_email", b.ID), `{"subject":"Welcome","html":"<p>Welcome</p>"}`); e != nil {
+	if e := s.db.SetBrandSetting(ctx, b.ID, "thankyou_email", `{"subject":"Welcome","html":"<p>Welcome</p>"}`); e != nil {
 		t.Fatal(e)
 	}
 	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "reader@example.org", ListIDs: []int64{l.ID}})

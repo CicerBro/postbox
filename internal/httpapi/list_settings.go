@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"postbox/internal/subscribers"
 )
 
 var listSettingNames = []string{"confirmation_email", "confirmation_page_html", "thankyou_email", "thankyou_html", "goodbye_email", "goodbye_html"}
@@ -23,7 +22,6 @@ func (a *API) listSettings(w http.ResponseWriter, r *http.Request) {
 		result(w, nil, e)
 		return
 	}
-	prefix := fmt.Sprintf("list.%d.", id)
 	if r.Method == "PATCH" {
 		var in map[string]json.RawMessage
 		if !decode(w, r, &in) {
@@ -81,18 +79,18 @@ func (a *API) listSettings(w http.ResponseWriter, r *http.Request) {
 			}
 			for key, value := range values {
 				if value == nil {
-					if _, e := c.ExecContext(r.Context(), "DELETE FROM settings WHERE key=?", prefix+key); e != nil {
+					if _, e := c.ExecContext(r.Context(), "DELETE FROM list_settings WHERE list_id=? AND name=?", id, key); e != nil {
 						return e
 					}
 				} else {
-					if _, e := c.ExecContext(r.Context(), "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", prefix+key, *value); e != nil {
+					if _, e := c.ExecContext(r.Context(), "INSERT INTO list_settings(list_id,name,value) VALUES(?,?,?) ON CONFLICT(list_id,name) DO UPDATE SET value=excluded.value", id, key, *value); e != nil {
 						return e
 					}
 				}
 				// Replacing or clearing confirmation email also clears old split overrides.
 				if key == "confirmation_email" {
 					for _, suffix := range []string{"confirmation_subject", "confirmation_html", "confirmation_text"} {
-						if _, e := c.ExecContext(r.Context(), "DELETE FROM settings WHERE key=?", prefix+suffix); e != nil {
+						if _, e := c.ExecContext(r.Context(), "DELETE FROM list_settings WHERE list_id=? AND name=?", id, suffix); e != nil {
 							return e
 						}
 					}
@@ -105,6 +103,28 @@ func (a *API) listSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	listValues, e := a.db.ListSettings(r.Context(), id)
+	if e != nil {
+		result(w, nil, e)
+		return
+	}
+	brandValues, e := a.db.BrandSettings(r.Context(), brand)
+	if e != nil {
+		result(w, nil, e)
+		return
+	}
+	readValue := func(values map[string]string, name string) (string, error) {
+		if raw, ok := values[name]; ok {
+			return raw, nil
+		}
+		return "", sql.ErrNoRows
+	}
+	effectiveValue := func(name string) (string, error) {
+		if raw, ok := listValues[name]; ok {
+			return raw, nil
+		}
+		return readValue(brandValues, name)
+	}
 	overrides, effective := map[string]any{}, map[string]any{}
 	for _, name := range listSettingNames {
 		decodeValue := func(raw string) (any, error) {
@@ -115,7 +135,7 @@ func (a *API) listSettings(w http.ResponseWriter, r *http.Request) {
 			}
 			return raw, nil
 		}
-		raw, e := a.db.Setting(r.Context(), prefix+name)
+		raw, e := readValue(listValues, name)
 		if e == nil {
 			v, e := decodeValue(raw)
 			if e != nil {
@@ -127,9 +147,9 @@ func (a *API) listSettings(w http.ResponseWriter, r *http.Request) {
 			result(w, nil, e)
 			return
 		}
-		raw, e = subscribers.NotificationSetting(r.Context(), a.db.Reader, brand, id, name)
+		raw, e = effectiveValue(name)
 		if name == "confirmation_page_html" && errors.Is(e, sql.ErrNoRows) {
-			raw, e = subscribers.NotificationSetting(r.Context(), a.db.Reader, brand, id, "thankyou_html")
+			raw, e = effectiveValue("thankyou_html")
 		}
 		if e == nil {
 			v, e := decodeValue(raw)
@@ -154,7 +174,7 @@ func (a *API) listSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		legacy := false
 		for suffix, field := range map[string]string{"confirmation_subject": "subject", "confirmation_html": "html", "confirmation_text": "text"} {
-			value, e := a.db.Setting(r.Context(), prefix+suffix)
+			value, e := readValue(listValues, suffix)
 			if e == nil {
 				message[field] = value
 				legacy = true

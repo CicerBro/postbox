@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"postbox/internal/store"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -140,6 +141,65 @@ func TestSNSFailureDiagnostics(t *testing.T) {
 	}
 }
 
+func TestUnknownSNSTopicsDoNotPopulateVerifierCache(t *testing.T) {
+	s := New(nil, &Config{
+		ResolveTopic: func(context.Context, string) (int64, error) { return 0, errors.New("unknown topic") },
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	for i := range 1000 {
+		w := httptest.NewRecorder()
+		s.SNS(w, httptest.NewRequest(http.MethodPost, "/events/sns", strings.NewReader(fmt.Sprintf(`{"TopicArn":"arn:aws:sns:eu-west-1:123:unknown-%d"}`, i))))
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("unknown topic status=%d", w.Code)
+		}
+	}
+	if len(s.verifiers) != 0 {
+		t.Fatalf("unknown topics cached: %d", len(s.verifiers))
+	}
+}
+
+func TestOwnedSNSTopicVerifierCacheIsBounded(t *testing.T) {
+	s := New(nil, nil)
+	v := s.topicVerifier("owned")
+	if s.topicVerifier("owned") != v {
+		t.Fatal("repeated topic did not reuse certificate cache")
+	}
+	for i := range maxTopicVerifiers * 2 {
+		s.topicVerifier(fmt.Sprintf("owned-%d", i))
+		if len(s.verifiers) > maxTopicVerifiers {
+			t.Fatalf("cache exceeded bound: %d", len(s.verifiers))
+		}
+	}
+}
+
+func TestOwnedSNSTopicVerifierCacheConcurrentCallers(t *testing.T) {
+	s := New(nil, nil)
+	shared := s.topicVerifier("shared")
+	var callers sync.WaitGroup
+	for range 16 {
+		callers.Go(func() {
+			if got := s.topicVerifier("shared"); got != shared {
+				t.Error("concurrent callers created duplicate verifiers")
+			}
+		})
+	}
+	callers.Wait()
+	for worker := range 16 {
+		callers.Go(func() {
+			for i := range maxTopicVerifiers {
+				topic := fmt.Sprintf("owned-%d-%d", worker, i)
+				if v := s.topicVerifier(topic); v.TopicARN != topic {
+					t.Errorf("wrong topic verifier: %s", v.TopicARN)
+				}
+			}
+		})
+	}
+	callers.Wait()
+	if len(s.verifiers) > maxTopicVerifiers {
+		t.Fatalf("concurrent cache exceeded bound: %d", len(s.verifiers))
+	}
+}
+
 func TestSNSVerification(t *testing.T) {
 	now := time.Now()
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
@@ -174,7 +234,7 @@ func TestSNSVerification(t *testing.T) {
 		}
 		return 1, nil
 	}})
-	service.verifiers.Store(v.TopicARN, v)
+	service.verifiers = map[string]*Verifier{v.TopicARN: v}
 	m.MessageID = "routed"
 	m.Message = `{"eventType":"Delivery","mail":{"messageId":"ses-id","tags":{"brand_id":["1"]}},"delivery":{"recipients":["user@example.com"]}}`
 	b, _ = canonical(m)
@@ -224,7 +284,7 @@ func eventDB(t *testing.T) *store.DB {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { db.Close() })
-	statements := []string{`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'Brand','','from@example.com',1),(2,'Other','','other@example.com',1)`, `INSERT INTO subscribers(id,brand_id,email,created_at,updated_at) VALUES(1,1,'user@example.com',1,1),(2,2,'user@example.com',1,1)`, `INSERT INTO lists(id,brand_id,uuid,name,opt_in,created_at) VALUES(1,1,'one','One','single',1),(2,2,'two','Two','single',1)`, `INSERT INTO list_subscribers(list_id,subscriber_id,status,created_at,updated_at) VALUES(1,1,'subscribed',1,1),(2,2,'subscribed',1,1)`, `INSERT INTO campaigns(id,brand_id,uuid,status,subject,html,created_at,updated_at) VALUES(1,1,'campaign','sending','Hi','Hi',1,1),(2,2,'other','sending','Hi','Hi',1,1)`, `INSERT INTO campaign_recipients(campaign_id,subscriber_id,status,message_id,snapshot_email) VALUES(1,1,'sent','ses-id','user@example.com'),(2,2,'pending',NULL,'user@example.com')`, `INSERT INTO campaign_stats(campaign_id) VALUES(1),(2)`}
+	statements := []string{`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'Brand','','from@example.com',1),(2,'Other','','other@example.com',1)`, `INSERT INTO subscribers(id,brand_id,email,created_at,updated_at,tracking_legacy) VALUES(1,1,'user@example.com',1,1,1),(2,2,'user@example.com',1,1,1)`, `INSERT INTO lists(id,brand_id,uuid,name,opt_in,created_at) VALUES(1,1,'one','One','single',1),(2,2,'two','Two','single',1)`, `INSERT INTO list_subscribers(list_id,subscriber_id,status,created_at,updated_at) VALUES(1,1,'subscribed',1,1),(2,2,'subscribed',1,1)`, `INSERT INTO campaigns(id,brand_id,uuid,status,subject,html,created_at,updated_at,tracking_legacy) VALUES(1,1,'campaign','sending','Hi','Hi',1,1,1),(2,2,'other','sending','Hi','Hi',1,1,1)`, `INSERT INTO campaign_recipients(campaign_id,subscriber_id,status,message_id,snapshot_email) VALUES(1,1,'sent','ses-id','user@example.com'),(2,2,'pending',NULL,'user@example.com')`, `INSERT INTO campaign_stats(campaign_id) VALUES(1),(2)`}
 	for _, q := range statements {
 		if _, e = db.Writer.Exec(q); e != nil {
 			t.Fatal(e)
@@ -302,6 +362,9 @@ func TestBounceThreshold(t *testing.T) {
 
 func TestFallbackUsesFrozenAddressBeforeMessageIDPersists(t *testing.T) {
 	db := eventDB(t)
+	if _, e := db.Writer.Exec(`INSERT INTO send_attempts(campaign_id,subscriber_id,attempt,started_at,outcome) VALUES(1,1,1,1,'started')`); e != nil {
+		t.Fatal(e)
+	}
 	if _, e := db.Writer.Exec(`UPDATE campaign_recipients SET message_id=NULL WHERE campaign_id=1`); e != nil {
 		t.Fatal(e)
 	}

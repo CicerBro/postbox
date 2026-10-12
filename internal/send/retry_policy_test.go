@@ -195,7 +195,7 @@ func TestUncertainHistoryBlocksNewAttempt(t *testing.T) {
 			if _, err = db.Writer.Exec(`INSERT INTO send_attempts(campaign_id,subscriber_id,attempt,started_at,outcome) VALUES(1,1,1,1,?)`, outcome); err != nil {
 				t.Fatal(err)
 			}
-			ok, err := e.beginAttempt(ctx, c, recipient{ID: 1, Email: "reader1@example.org"}, 2)
+			ok, err := e.beginAttempt(ctx, c, testAttemptRecipient(t, db, 1), 2)
 			if ok || !errors.Is(err, errUnsafeAttempt) {
 				t.Fatalf("new attempt allowed: ok=%v err=%v", ok, err)
 			}
@@ -221,9 +221,10 @@ func TestConcurrentAttemptInitiation(t *testing.T) {
 	}
 	other := New(db, e.sender, e.cfg)
 	results := make(chan bool, 2)
+	recipient := testAttemptRecipient(t, db, 1)
 	for _, engine := range []*Engine{e, other} {
 		go func(engine *Engine) {
-			ok, _ := engine.beginAttempt(ctx, c, recipient{ID: 1, Email: "reader1@example.org"}, 1)
+			ok, _ := engine.beginAttempt(ctx, c, recipient, 1)
 			results <- ok
 		}(engine)
 	}

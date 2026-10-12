@@ -188,7 +188,7 @@ func TestProductionAudiencePlans(t *testing.T) {
 				args       []any
 			}{
 				{"snapshot", "INSERT INTO campaign_recipients", append([]any{1}, args...)},
-				{"beginAttempt", "SELECT EXISTS(SELECT 1 FROM subscribers s", append(append([]any{}, args...), 41)},
+				{"beginAttempt", "SELECT EXISTS(SELECT 1 FROM subscribers s", append(append([]any{}, args...), 41, "identity")},
 			} {
 				q := audienceStatement(t, statement.fn, statement.prefix, audience)
 				rows, err := db.Reader.Query("EXPLAIN QUERY PLAN "+q, statement.args...)

@@ -9,6 +9,8 @@ func TestImportedPublicIDsMigration(t *testing.T) {
 	db := testDB(t)
 	_, err := db.Writer.Exec(`
 DELETE FROM schema_migrations WHERE name='007_imported_public_ids.sql';
+-- Simulate the pre-007 boundary, before tracking identities become immutable.
+DROP TRIGGER campaigns_tracking_identity_immutable;
 INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'Brand','Sender','sender@example.org',1);
 INSERT INTO lists(id,brand_id,uuid,name,opt_in,created_at) VALUES
 (1,1,'sendy-03b98c7c38d165c43fffc1be96d286d2','Imported','single',1),

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 )
@@ -30,8 +29,8 @@ func (a *API) publicSubscriptionSettings(ctx context.Context, brandID int64) (su
 	var app, brand string
 	err := a.db.Reader.QueryRowContext(ctx, `SELECT
 		COALESCE((SELECT value FROM settings WHERE key=?),'true'),
-		COALESCE((SELECT value FROM settings WHERE key=?),'true')`,
-		publicSubscriptionsKey, fmt.Sprintf("brand.%d.%s", brandID, publicSubscriptionsKey)).Scan(&app, &brand)
+		COALESCE((SELECT value FROM brand_settings WHERE brand_id=? AND name=?),'true')`,
+		publicSubscriptionsKey, brandID, publicSubscriptionsKey).Scan(&app, &brand)
 	if err != nil {
 		return subscriptionSettings{}, err
 	}
@@ -64,7 +63,7 @@ func (a *API) subscriptionSettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if r.Method == http.MethodPatch && !a.savePublicSubscriptionSwitch(w, r, fmt.Sprintf("brand.%d.%s", brandID, publicSubscriptionsKey)) {
+	if r.Method == http.MethodPatch && !a.savePublicSubscriptionSwitch(w, r, brandID) {
 		return
 	}
 	settings, err := a.publicSubscriptionSettings(r.Context(), brandID)
@@ -75,14 +74,14 @@ func (a *API) applicationSettings(w http.ResponseWriter, r *http.Request) {
 	if !a.userAdmin(w, r) {
 		return
 	}
-	if r.Method == http.MethodPatch && !a.savePublicSubscriptionSwitch(w, r, publicSubscriptionsKey) {
+	if r.Method == http.MethodPatch && !a.savePublicSubscriptionSwitch(w, r, 0) {
 		return
 	}
 	settings, err := a.publicSubscriptionSettings(r.Context(), 0)
 	result(w, map[string]bool{publicSubscriptionsKey: settings.ApplicationEnabled}, err)
 }
 
-func (a *API) savePublicSubscriptionSwitch(w http.ResponseWriter, r *http.Request, key string) bool {
+func (a *API) savePublicSubscriptionSwitch(w http.ResponseWriter, r *http.Request, brandID int64) bool {
 	var in map[string]json.RawMessage
 	if !decode(w, r, &in) {
 		return false
@@ -93,7 +92,13 @@ func (a *API) savePublicSubscriptionSwitch(w http.ResponseWriter, r *http.Reques
 		fail(w, http.StatusBadRequest, errors.New("public_subscriptions_enabled must be a boolean and the only setting"))
 		return false
 	}
-	if err := a.db.SetSetting(r.Context(), key, strconv.FormatBool(enabled)); err != nil {
+	var err error
+	if brandID == 0 {
+		err = a.db.SetSetting(r.Context(), publicSubscriptionsKey, strconv.FormatBool(enabled))
+	} else {
+		err = a.db.SetBrandSetting(r.Context(), brandID, publicSubscriptionsKey, strconv.FormatBool(enabled))
+	}
+	if err != nil {
 		result(w, nil, err)
 		return false
 	}

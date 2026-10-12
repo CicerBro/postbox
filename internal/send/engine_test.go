@@ -275,7 +275,8 @@ func BenchmarkResultsWriter(b *testing.B) {
 	}
 	batch := make([]result, 500)
 	for i := range batch {
-		batch[i] = result{id: int64(i + 1), status: "sent", messageID: fmt.Sprintf("benchmark-%d", i), at: time.Now().UnixMilli()}
+		r := testAttemptRecipient(b, db, int64(i+1))
+		batch[i] = result{campaignIdentity: c.trackingIdentity, subscriberIdentity: r.TrackingIdentity, id: int64(i + 1), status: "sent", messageID: fmt.Sprintf("benchmark-%d", i), at: time.Now().UnixMilli()}
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

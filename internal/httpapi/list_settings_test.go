@@ -30,10 +30,10 @@ func TestListSettingsScopeClearAndConsent(t *testing.T) {
 		t.Fatal(e)
 	}
 	path := fmt.Sprintf("/api/v1/lists/%d/settings?brand_id=%d", list.ID, brand.ID)
-	if e = db.SetSetting(ctx, fmt.Sprintf("brand.%d.confirmation_email", brand.ID), `{"subject":"Brand confirmation","html":"<a href=\"{{ confirmation_url }}\">Confirm</a>"}`); e != nil {
+	if e = db.SetBrandSetting(ctx, brand.ID, "confirmation_email", `{"subject":"Brand confirmation","html":"<a href=\"{{ confirmation_url }}\">Confirm</a>"}`); e != nil {
 		t.Fatal(e)
 	}
-	if e = db.SetSetting(ctx, fmt.Sprintf("brand.%d.thankyou_html", brand.ID), "Brand thanks"); e != nil {
+	if e = db.SetBrandSetting(ctx, brand.ID, "thankyou_html", "Brand thanks"); e != nil {
 		t.Fatal(e)
 	}
 	bad := request(m, "PATCH", path, `{"thankyou_html":"Must not persist","opt_in":"single"}`, &cookie, csrf)

@@ -30,7 +30,7 @@ func TestHostedThankyouAndJSONNegotiation(t *testing.T) {
 		t.Fatal("hosted signup or Turnstile changed", signup.Code, signup.Body)
 	}
 	assertHTMLPolicy(t, signup.Header(), htmlpolicy.Signup)
-	if e = db.SetSetting(ctx, fmt.Sprintf("brand.%d.thankyou_html", brand.ID), "<h1>Custom thanks</h1><script>alert(1)</script>"); e != nil {
+	if e = db.SetBrandSetting(ctx, brand.ID, "thankyou_html", "<h1>Custom thanks</h1><script>alert(1)</script>"); e != nil {
 		t.Fatal(e)
 	}
 	// Settings must round-trip the optional welcome configuration through authenticated APIs.

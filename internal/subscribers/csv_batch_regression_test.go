@@ -17,6 +17,8 @@ import (
 type importCountingDriver struct {
 	sqlite.Driver
 	listReads, membershipReads atomic.Int64
+	transactions               atomic.Int64
+	parameterLimit             int
 }
 
 type importCountingConn struct {
@@ -33,6 +35,9 @@ func (d *importCountingDriver) Open(name string) (driver.Conn, error) {
 }
 
 func (c *importCountingConn) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if c.counts.parameterLimit > 0 && len(args) > c.counts.parameterLimit {
+		return nil, fmt.Errorf("query exceeds %d parameters: %d", c.counts.parameterLimit, len(args))
+	}
 	if strings.Contains(q, "FROM lists") {
 		c.counts.listReads.Add(1)
 	}
@@ -42,6 +47,9 @@ func (c *importCountingConn) QueryContext(ctx context.Context, q string, args []
 	return c.Conn.(driver.QueryerContext).QueryContext(ctx, q, args)
 }
 func (c *importCountingConn) ExecContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	if q == "BEGIN IMMEDIATE" {
+		c.counts.transactions.Add(1)
+	}
 	return c.Conn.(driver.ExecerContext).ExecContext(ctx, q, args)
 }
 

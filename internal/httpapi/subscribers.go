@@ -150,17 +150,8 @@ func (a *API) subscribers(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, errors.New("bulk requests limited to 1000 subscribers"))
 			return
 		}
-		out := []subscribers.Subscriber{}
-		for _, in := range inputs {
-			in.BrandID = brand
-			v, e := s.Upsert(r.Context(), in)
-			if e != nil {
-				result(w, nil, e)
-				return
-			}
-			out = append(out, v)
-		}
-		result(w, out, nil)
+		out, e := s.UpsertBulk(r.Context(), brand, inputs)
+		result(w, out, e)
 		return
 	}
 	if r.Method == "GET" {
@@ -288,8 +279,8 @@ func (a *API) segments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "DELETE" {
-		res, e := a.db.Writer.ExecContext(r.Context(), "DELETE FROM segments WHERE brand_id=? AND id=?", brand, number(r.PathValue("id")))
-		result(w, map[string]bool{"deleted": true}, requireChanged(res, e))
+		e := a.db.DeleteSegment(r.Context(), brand, number(r.PathValue("id")))
+		result(w, map[string]bool{"deleted": true}, e)
 		return
 	}
 	var in subscribers.Segment

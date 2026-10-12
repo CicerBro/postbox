@@ -3,6 +3,7 @@ package tracking
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -61,6 +62,14 @@ func (s *Service) writer(ctx context.Context) {
 func (s *Service) writeBatch(ctx context.Context, records []record) error {
 	return s.db.Immediate(ctx, func(c *sql.Conn) error {
 		for _, ev := range records {
+			if ev.token != "" {
+				if err := s.recipientIdentity(ctx, c, ev.campaign, ev.subscriber, ev.token); err != nil {
+					if errors.Is(err, sql.ErrNoRows) || errors.Is(err, errRecipientIdentity) {
+						continue
+					}
+					return err
+				}
+			}
 			var first, firstHuman sql.NullInt64
 			kind := "opens"
 			stamp := "first_opened_at"

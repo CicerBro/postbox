@@ -29,7 +29,8 @@ type Service struct {
 	db         *store.DB
 	cfg        Config
 	Verifier   *Verifier
-	verifiers  sync.Map
+	verifierMu sync.Mutex
+	verifiers  map[string]*Verifier
 	processed  atomic.Uint64
 	duplicates atomic.Uint64
 	failures   atomic.Uint64
@@ -49,6 +50,31 @@ func New(db *store.DB, cfg *Config) *Service {
 	return &Service{db: db, cfg: c, Verifier: &Verifier{TopicARN: c.TopicARN, Client: c.HTTPClient}}
 }
 func (s *Service) Register(mux *http.ServeMux) { mux.HandleFunc("POST /events/sns", s.SNS) }
+
+const maxTopicVerifiers = 256
+
+// Call only after resolving an owned topic. Bounding this cache also releases
+// certificate caches for topics removed or replaced during configuration changes.
+func (s *Service) topicVerifier(topic string) *Verifier {
+	s.verifierMu.Lock()
+	defer s.verifierMu.Unlock()
+	if v := s.verifiers[topic]; v != nil {
+		return v
+	}
+	if s.verifiers == nil {
+		s.verifiers = make(map[string]*Verifier)
+	}
+	if len(s.verifiers) >= maxTopicVerifiers {
+		for key := range s.verifiers {
+			delete(s.verifiers, key)
+			break
+		}
+	}
+	v := &Verifier{TopicARN: topic, Client: s.cfg.HTTPClient}
+	s.verifiers[topic] = v
+	return v
+}
+
 func (s *Service) SNS(w http.ResponseWriter, r *http.Request) {
 	b, e := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 	if e != nil {
@@ -62,8 +88,12 @@ func (s *Service) SNS(w http.ResponseWriter, r *http.Request) {
 	if e == nil && s.cfg.ResolveTopic != nil {
 		stage = "topic_lookup"
 		brandID, e = s.cfg.ResolveTopic(r.Context(), m.TopicARN)
-		v, _ := s.verifiers.LoadOrStore(m.TopicARN, &Verifier{TopicARN: m.TopicARN, Client: s.cfg.HTTPClient})
-		verifier = v.(*Verifier)
+		if e == nil && brandID <= 0 {
+			e = errors.New("SNS topic has no brand")
+		}
+		if e == nil {
+			verifier = s.topicVerifier(m.TopicARN)
+		}
 	}
 	if e == nil {
 		stage = "signature_verification"

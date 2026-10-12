@@ -137,36 +137,7 @@ func positiveInt(v any) (int64, error) {
 	return n, nil
 }
 func (s *Service) validateFields(ctx context.Context, brandID int64, r Rule) error {
-	if r.Field == "list" || r.Field == "opened" || r.Field == "clicked" {
-		id, e := positiveInt(r.Value)
-		if e != nil {
-			return e
-		}
-		table := "campaigns"
-		if r.Field == "list" {
-			table = "lists"
-		}
-		var exists int
-		if e = s.db.Reader.QueryRowContext(ctx, "SELECT 1 FROM "+table+" WHERE id=? AND brand_id=?", id, brandID).Scan(&exists); e != nil {
-			return errors.New("referenced list or campaign unavailable in brand")
-		}
-	}
-
-	for _, c := range append(r.All, r.Any...) {
-		if e := s.validateFields(ctx, brandID, c); e != nil {
-			return e
-		}
-	}
-	if strings.HasPrefix(r.Field, "fields.") {
-		var n int
-		if e := s.db.Reader.QueryRowContext(ctx, "SELECT is_filterable FROM custom_fields WHERE brand_id=? AND key=?", brandID, strings.TrimPrefix(r.Field, "fields.")).Scan(&n); e != nil {
-			return fmt.Errorf("custom field unavailable: %w", e)
-		}
-		if n != 1 {
-			return errors.New("custom field must be filterable")
-		}
-	}
-	return nil
+	return s.ValidateSegments(ctx, brandID, []Rule{r})
 }
 func (s *Service) SegmentCount(ctx context.Context, brandID int64, r Rule) (int64, error) {
 	if e := s.validateFields(ctx, brandID, r); e != nil {
@@ -214,8 +185,5 @@ func (s *Service) SaveSegment(ctx context.Context, v Segment) (Segment, error) {
 
 // ValidateSegment enforces brand ownership and the filterable custom-field contract.
 func (s *Service) ValidateSegment(ctx context.Context, brandID int64, r Rule) error {
-	if _, _, e := CompileSegment(r); e != nil {
-		return e
-	}
-	return s.validateFields(ctx, brandID, r)
+	return s.ValidateSegments(ctx, brandID, []Rule{r})
 }

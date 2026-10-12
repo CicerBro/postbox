@@ -13,12 +13,15 @@ import (
 )
 
 // NotificationSetting resolves a list override before its brand default.
-// Callers must validate that listID belongs to brandID before using it.
+// List overrides are constrained to the requested brand.
 func NotificationSetting(ctx context.Context, q interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, brandID, listID int64, name string) (string, error) {
 	var value string
-	e := q.QueryRowContext(ctx, "SELECT value FROM settings WHERE key IN (?,?) ORDER BY CASE WHEN key=? THEN 0 ELSE 1 END LIMIT 1", fmt.Sprintf("list.%d.%s", listID, name), fmt.Sprintf("brand.%d.%s", brandID, name), fmt.Sprintf("list.%d.%s", listID, name)).Scan(&value)
+	e := q.QueryRowContext(ctx, `SELECT value FROM (
+		SELECT s.value,0 AS priority FROM list_settings s JOIN lists l ON l.id=s.list_id WHERE s.list_id=? AND l.brand_id=? AND s.name=?
+		UNION ALL SELECT value,1 AS priority FROM brand_settings WHERE brand_id=? AND name=?
+	) ORDER BY priority LIMIT 1`, listID, brandID, name, brandID, name).Scan(&value)
 	return value, e
 }
 
@@ -66,7 +69,7 @@ func EnqueueConfirmationTx(ctx context.Context, c *sql.Conn, brandID, listID, su
 	}
 	for suffix, target := range map[string]*string{"confirmation_subject": &subject, "confirmation_html": &body, "confirmation_text": &text} {
 		var custom string
-		e := c.QueryRowContext(ctx, "SELECT value FROM settings WHERE key=?", fmt.Sprintf("list.%d.%s", listID, suffix)).Scan(&custom)
+		e := c.QueryRowContext(ctx, "SELECT value FROM list_settings WHERE list_id=? AND name=?", listID, suffix).Scan(&custom)
 		if e == nil {
 			*target = strings.ReplaceAll(custom, "{{ confirmation_url }}", html.EscapeString(url))
 		} else if e != sql.ErrNoRows {

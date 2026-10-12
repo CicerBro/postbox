@@ -103,7 +103,11 @@ func TestPublicSubscriptionSwitches(t *testing.T) {
 	if _, err = db.Writer.Exec(`INSERT INTO campaign_recipients(campaign_id,subscriber_id,status) VALUES(1,?,'sent')`, pending.ID); err != nil {
 		t.Fatal(err)
 	}
-	r := httptest.NewRequest("POST", "https://track.example.org/u/"+token.Encode(secret, 1, pending.ID), strings.NewReader("list=all"))
+	var campaignIdentity, trackingIdentity string
+	if err = db.Reader.QueryRow(`SELECT c.tracking_identity,s.tracking_identity FROM campaigns c,subscribers s WHERE c.id=1 AND s.id=?`, pending.ID).Scan(&campaignIdentity, &trackingIdentity); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("POST", "https://track.example.org/u/"+token.EncodeBound(secret, 1, pending.ID, campaignIdentity, trackingIdentity), strings.NewReader("list=all"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
@@ -179,7 +183,7 @@ func TestSubscriptionSettingsAuthorizationAndValidation(t *testing.T) {
 	if w.Code != 403 {
 		t.Fatal("CSRF check bypassed", w.Code)
 	}
-	settings, err := db.Setting(ctx, "brand.1."+publicSubscriptionsKey)
+	settings, err := db.BrandSetting(ctx, 1, publicSubscriptionsKey)
 	if err != nil || settings != "false" {
 		t.Fatal("invalid request changed settings", settings, err)
 	}

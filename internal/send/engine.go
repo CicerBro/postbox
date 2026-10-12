@@ -346,25 +346,26 @@ func (e *Engine) SetEnabled(ctx context.Context, on bool) error {
 }
 
 type campaign struct {
-	delivery                                                                          *brandDelivery
-	audience                                                                          string
-	audienceArgs                                                                      []any
-	id, brand                                                                         int64
-	subject, html, text, fromName, fromEmail, replyTo, configSet, trackingURL, status string
-	inline                                                                            bool
-	fields                                                                            []string
-	prepared                                                                          *render.Prepared
-	date                                                                              time.Time
+	delivery                                                                                                  *brandDelivery
+	audience                                                                                                  string
+	audienceArgs                                                                                              []any
+	id, brand                                                                                                 int64
+	subject, html, text, fromName, fromEmail, replyTo, configSet, trackingURL, status, uuid, trackingIdentity string
+	inline                                                                                                    bool
+	fields                                                                                                    []string
+	prepared                                                                                                  *render.Prepared
+	date                                                                                                      time.Time
 }
 
 func (e *Engine) prepare(ctx context.Context, id int64, persist bool) (campaign, error) {
 	c := campaign{id: id}
 	var inline int
-	err := e.db.Reader.QueryRowContext(ctx, `SELECT c.brand_id,c.subject,c.html,coalesce(c.text,''),c.inline_css,c.status,b.from_name,b.from_email,coalesce(b.reply_to,''),coalesce(b.configuration_set,''),coalesce(b.tracking_domain,'') FROM campaigns c JOIN brands b ON b.id=c.brand_id WHERE c.id=?`, id).Scan(&c.brand, &c.subject, &c.html, &c.text, &inline, &c.status, &c.fromName, &c.fromEmail, &c.replyTo, &c.configSet, &c.trackingURL)
+	err := e.db.Reader.QueryRowContext(ctx, `SELECT c.brand_id,c.uuid,c.tracking_identity,c.subject,c.html,coalesce(c.text,''),c.inline_css,c.status,b.from_name,b.from_email,coalesce(b.reply_to,''),coalesce(b.configuration_set,''),coalesce(b.tracking_domain,'') FROM campaigns c JOIN brands b ON b.id=c.brand_id WHERE c.id=?`, id).Scan(&c.brand, &c.uuid, &c.trackingIdentity, &c.subject, &c.html, &c.text, &inline, &c.status, &c.fromName, &c.fromEmail, &c.replyTo, &c.configSet, &c.trackingURL)
 	if err != nil {
 		return c, err
 	}
 	c.inline = inline != 0
+	source := c
 	var fieldsJSON string
 	var at int64
 	err = e.db.Reader.QueryRowContext(ctx, `SELECT subject,html,text,from_name,from_email,reply_to,configuration_set,tracking_url,fields,prepared_at FROM campaign_preparations WHERE campaign_id=?`, id).Scan(&c.subject, &c.html, &c.text, &c.fromName, &c.fromEmail, &c.replyTo, &c.configSet, &c.trackingURL, &fieldsJSON, &at)
@@ -397,7 +398,7 @@ func (e *Engine) prepare(ctx context.Context, id int64, persist bool) (campaign,
 	if !errors.Is(err, sql.ErrNoRows) {
 		return c, err
 	}
-	rows, err := e.db.Reader.QueryContext(ctx, `SELECT key FROM custom_fields WHERE brand_id=?`, c.brand)
+	rows, err := e.db.Reader.QueryContext(ctx, `SELECT key FROM custom_fields WHERE brand_id=? ORDER BY key`, c.brand)
 	if err != nil {
 		return c, err
 	}
@@ -422,24 +423,77 @@ func (e *Engine) prepare(ctx context.Context, id int64, persist bool) (campaign,
 		c.trackingURL = "https://" + c.trackingURL
 	}
 	c.trackingURL = strings.TrimRight(c.trackingURL, "/")
-	if !persist {
-		c.prepared, err = render.Prepare(render.Options{CampaignID: id, Subject: c.subject, HTML: c.html, Text: c.text, TrackingURL: c.trackingURL, InlineCSS: c.inline, Fields: c.fields, Now: c.date})
+	c.prepared, err = render.Prepare(render.Options{CampaignID: id, Subject: c.subject, HTML: c.html, Text: c.text, TrackingURL: c.trackingURL, InlineCSS: c.inline, Fields: c.fields, Now: c.date})
+	if err != nil || !persist {
 		return c, err
 	}
+	var body, text string
+	var links []render.Link
+	existing := false
 	err = e.db.Immediate(ctx, func(conn *sql.Conn) error {
-		p, err := render.Prepare(render.Options{CampaignID: id, Subject: c.subject, HTML: c.html, Text: c.text, TrackingURL: c.trackingURL, InlineCSS: c.inline, Fields: c.fields, Now: c.date, LinkID: func(url string) (int64, error) {
-			var lid int64
-			err := conn.QueryRowContext(ctx, `INSERT INTO links(campaign_id,url) VALUES(?,?) ON CONFLICT(campaign_id,url) DO UPDATE SET url=excluded.url RETURNING id`, id, url).Scan(&lid)
-			return lid, err
-		}})
+		// A concurrent preparation owns the persisted snapshot. Reload it after
+		// releasing the writer rather than replacing its link mapping.
+		var found int
+		if err := conn.QueryRowContext(ctx, `SELECT 1 FROM campaign_preparations WHERE campaign_id=?`, id).Scan(&found); err == nil {
+			existing = true
+			return nil
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		var current campaign
+		var inline int
+		if err := conn.QueryRowContext(ctx, `SELECT c.brand_id,c.uuid,c.tracking_identity,c.subject,c.html,coalesce(c.text,''),c.inline_css,b.from_name,b.from_email,coalesce(b.reply_to,''),coalesce(b.configuration_set,''),coalesce(b.tracking_domain,'') FROM campaigns c JOIN brands b ON b.id=c.brand_id WHERE c.id=?`, id).Scan(&current.brand, &current.uuid, &current.trackingIdentity, &current.subject, &current.html, &current.text, &inline, &current.fromName, &current.fromEmail, &current.replyTo, &current.configSet, &current.trackingURL); err != nil {
+			return err
+		}
+		if current.brand != source.brand || current.uuid != source.uuid || current.trackingIdentity != source.trackingIdentity || current.subject != source.subject || current.html != source.html || current.text != source.text || (inline != 0) != source.inline || current.fromName != source.fromName || current.fromEmail != source.fromEmail || current.replyTo != source.replyTo || current.configSet != source.configSet || current.trackingURL != source.trackingURL {
+			return errors.New("campaign source changed during preparation; retry")
+		}
+		rows, err := conn.QueryContext(ctx, `SELECT key FROM custom_fields WHERE brand_id=? ORDER BY key`, c.brand)
 		if err != nil {
 			return err
 		}
-		c.prepared = p
-		f, _ := json.Marshal(c.fields)
-		_, err = conn.ExecContext(ctx, `INSERT INTO campaign_preparations(campaign_id,subject,html,text,from_name,from_email,reply_to,configuration_set,tracking_url,fields,prepared_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, id, p.Subject, p.HTML, p.Text, c.fromName, c.fromEmail, c.replyTo, c.configSet, c.trackingURL, string(f), c.date.UnixMilli())
+		var fields []string
+		for rows.Next() {
+			var field string
+			if err = rows.Scan(&field); err != nil {
+				rows.Close()
+				return err
+			}
+			fields = append(fields, field)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		if !slices.Equal(fields, c.fields) {
+			return errors.New("custom fields changed during preparation; retry")
+		}
+		ids := make(map[int64]int64, len(c.prepared.Links))
+		for _, link := range c.prepared.Links {
+			var id int64
+			if err := conn.QueryRowContext(ctx, `INSERT INTO links(campaign_id,url) VALUES(?,?) ON CONFLICT(campaign_id,url) DO UPDATE SET url=excluded.url RETURNING id`, c.id, link.URL).Scan(&id); err != nil {
+				return err
+			}
+			ids[link.ID] = id
+		}
+		body, text, links, err = c.prepared.BindLinkIDs(c.trackingURL, ids)
+		if err != nil {
+			return err
+		}
+		f, err := json.Marshal(c.fields)
+		if err != nil {
+			return err
+		}
+		_, err = conn.ExecContext(ctx, `INSERT INTO campaign_preparations(campaign_id,subject,html,text,from_name,from_email,reply_to,configuration_set,tracking_url,fields,prepared_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, id, c.prepared.Subject, body, text, c.fromName, c.fromEmail, c.replyTo, c.configSet, c.trackingURL, string(f), c.date.UnixMilli())
 		return err
 	})
+	if err == nil && existing {
+		return e.prepare(ctx, id, true)
+	}
+	if err == nil {
+		c.prepared, err = render.Restore(c.prepared.Subject, body, text, links, c.fields)
+	}
 	return c, err
 }
 func (e *Engine) audienceSQL(ctx context.Context, c campaign) (string, []any, error) {
@@ -471,38 +525,36 @@ func (e *Engine) audienceTargetsSQL(ctx context.Context, brandID int64, targets 
 	return e.audienceTargetsQuery(ctx, brandID, targets, true)
 }
 func (e *Engine) audienceTargetsQuery(ctx context.Context, brandID int64, targets []AudienceTarget, eligible bool) (string, []any, error) {
-	var err error
+	metadata, err := loadAudienceTargets(ctx, e.db.Reader, brandID, targets)
+	if err != nil {
+		return "", nil, err
+	}
+	parsed := map[int64]subscribers.Rule{}
+	var rules []subscribers.Rule
+	for key, source := range metadata {
+		if key.kind != "segment" {
+			continue
+		}
+		var rule subscribers.Rule
+		if err := json.Unmarshal([]byte(source), &rule); err != nil {
+			return "", nil, err
+		}
+		parsed[key.id] = rule
+		rules = append(rules, rule)
+	}
+	if err := subscribers.New(e.db).ValidateSegments(ctx, brandID, rules); err != nil {
+		return "", nil, err
+	}
 	var includes, excludes []string
 	var incArgs, excArgs []any
 	for _, t := range targets {
-		if t.ID <= 0 || (t.Type != "list" && t.Type != "segment") || (t.Mode != "include" && t.Mode != "exclude") {
-			return "", nil, errors.New("invalid audience target")
-		}
 		predicate := ""
 		var args []any
 		if t.Type == "list" {
-			var brand int64
-			if err = e.db.Reader.QueryRowContext(ctx, `SELECT brand_id FROM lists WHERE id=?`, t.ID).Scan(&brand); err != nil {
-				return "", nil, err
-			}
-			if brand != brandID {
-				return "", nil, fmt.Errorf("list %d belongs to another brand", t.ID)
-			}
 			predicate = `EXISTS(SELECT 1 FROM list_subscribers ls WHERE ls.list_id=? AND ls.subscriber_id=s.id AND ls.status='subscribed')`
 			args = []any{t.ID}
 		} else {
-			var rules string
-			if err = e.db.Reader.QueryRowContext(ctx, `SELECT rules FROM segments WHERE id=? AND brand_id=?`, t.ID, brandID).Scan(&rules); err != nil {
-				return "", nil, err
-			}
-			var rule subscribers.Rule
-			if err = json.Unmarshal([]byte(rules), &rule); err != nil {
-				return "", nil, err
-			}
-			if err = subscribers.New(e.db).ValidateSegment(ctx, brandID, rule); err != nil {
-				return "", nil, err
-			}
-			predicate, args, err = subscribers.CompileSegment(rule)
+			predicate, args, err = subscribers.CompileSegment(parsed[t.ID])
 			if err != nil {
 				return "", nil, err
 			}

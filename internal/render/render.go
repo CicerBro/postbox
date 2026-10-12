@@ -159,6 +159,28 @@ func Prepare(o Options) (*Prepared, error) {
 func Restore(subject, body, text string, links []Link, fields []string) (*Prepared, error) {
 	return prepareCompiled(subject, body, text, links, fields, time.Time{})
 }
+
+// BindLinkIDs substitutes durable IDs into already prepared sources. It does not
+// parse HTML or inline CSS, so callers can persist the result in a short write
+// transaction, then Restore the compiled renderer after releasing the writer.
+func (p *Prepared) BindLinkIDs(trackingURL string, ids map[int64]int64) (body, text string, links []Link, err error) {
+	base := strings.TrimRight(trackingURL, "/") + "/c/"
+	var htmlReplacements, textReplacements []string
+	for _, link := range p.Links {
+		id, ok := ids[link.ID]
+		if !ok || id <= 0 {
+			return "", "", nil, fmt.Errorf("missing durable ID for link %d", link.ID)
+		}
+		// Prepared sources contain canonical merge tags, including inside hrefs.
+		// Escape only the fixed URL prefix; escaping the tag would change it.
+		const tokenTag = `{{ token | "" }}`
+		old, next := strconv.FormatInt(link.ID, 10)+"/"+tokenTag, strconv.FormatInt(id, 10)+"/"+tokenTag
+		htmlReplacements = append(htmlReplacements, html.EscapeString(base)+old, html.EscapeString(base)+next)
+		textReplacements = append(textReplacements, base+old, base+next)
+		links = append(links, Link{ID: id, URL: link.URL})
+	}
+	return strings.NewReplacer(htmlReplacements...).Replace(p.HTML), strings.NewReplacer(textReplacements...).Replace(p.Text), links, nil
+}
 func prepareCompiled(subject, body, text string, links []Link, fields []string, now time.Time) (*Prepared, error) {
 	p := &Prepared{Links: append([]Link(nil), links...)}
 	var e error

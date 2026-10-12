@@ -15,18 +15,18 @@ func (a *API) settings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	prefix := fmt.Sprintf("brand.%d.", brand)
 	names := []string{"goodbye_html", "goodbye_email", "thankyou_html", "thankyou_email", "confirmation_email"}
 	if r.Method == "GET" {
+		values, e := a.db.BrandSettings(r.Context(), brand)
+		if e != nil {
+			result(w, nil, e)
+			return
+		}
 		out := map[string]any{}
 		for _, name := range names {
-			v, e := a.db.Setting(r.Context(), prefix+name)
-			if errors.Is(e, sql.ErrNoRows) {
+			v, found := values[name]
+			if !found {
 				continue
-			}
-			if e != nil {
-				result(w, nil, e)
-				return
 			}
 			if name == "goodbye_email" || name == "thankyou_email" || name == "confirmation_email" {
 				var x any
@@ -47,6 +47,10 @@ func (a *API) settings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e := a.db.Immediate(r.Context(), func(c *sql.Conn) error {
+		var found int
+		if e := c.QueryRowContext(r.Context(), "SELECT 1 FROM brands WHERE id=?", brand).Scan(&found); e != nil {
+			return e
+		}
 		for key, raw := range in {
 			allowed := false
 			for _, name := range names {
@@ -58,7 +62,7 @@ func (a *API) settings(w http.ResponseWriter, r *http.Request) {
 				return fmt.Errorf("unknown setting %s", key)
 			}
 			if string(raw) == "null" {
-				if _, e := c.ExecContext(r.Context(), "DELETE FROM settings WHERE key=?", prefix+key); e != nil {
+				if _, e := c.ExecContext(r.Context(), "DELETE FROM brand_settings WHERE brand_id=? AND name=?", brand, key); e != nil {
 					return e
 				}
 				continue
@@ -82,7 +86,7 @@ func (a *API) settings(w http.ResponseWriter, r *http.Request) {
 					return e
 				}
 			}
-			if _, e := c.ExecContext(r.Context(), "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", prefix+key, value); e != nil {
+			if _, e := c.ExecContext(r.Context(), "INSERT INTO brand_settings(brand_id,name,value) VALUES(?,?,?) ON CONFLICT(brand_id,name) DO UPDATE SET value=excluded.value", brand, key, value); e != nil {
 				return e
 			}
 		}

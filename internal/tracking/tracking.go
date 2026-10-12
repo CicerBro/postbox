@@ -39,7 +39,11 @@ type record struct {
 	machine                        bool
 	country                        string
 	raw                            bool
+	token                          string
 }
+
+var errRecipientIdentity = errors.New("tracking recipient identity does not match")
+
 type Service struct {
 	db           *store.DB
 	cfg          Config
@@ -111,7 +115,25 @@ func (s *Service) identity(r *http.Request) (int64, int64, error) {
 	if e = s.host(r, c); e != nil {
 		return 0, 0, e
 	}
+	if e = s.recipientIdentity(r.Context(), s.db.Reader, c, u, r.PathValue("token")); e != nil {
+		return 0, 0, e
+	}
 	return c, u, nil
+}
+
+func (s *Service) recipientIdentity(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, campaignID, subscriberID int64, value string) error {
+	var campaignIdentity, identity string
+	var campaignLegacy, subscriberLegacy bool
+	err := q.QueryRowContext(ctx, `SELECT c.tracking_identity,s.tracking_identity,c.tracking_legacy,s.tracking_legacy FROM campaign_recipients cr JOIN campaigns c ON c.id=cr.campaign_id JOIN subscribers s ON s.id=cr.subscriber_id AND s.brand_id=c.brand_id WHERE cr.campaign_id=? AND cr.subscriber_id=?`, campaignID, subscriberID).Scan(&campaignIdentity, &identity, &campaignLegacy, &subscriberLegacy)
+	if err != nil {
+		return err
+	}
+	if token.Legacy(value) && campaignLegacy && subscriberLegacy || token.MatchesIdentity(s.cfg.TokenSecret, value, campaignID, subscriberID, campaignIdentity, identity) {
+		return nil
+	}
+	return errRecipientIdentity
 }
 func (s *Service) host(r *http.Request, c int64) error {
 	var domain sql.NullString
@@ -151,7 +173,7 @@ func (s *Service) event(r *http.Request, c, u, l int64) record {
 			country = loc.Country.ISO
 		}
 	}
-	return record{c, u, l, at, machine, country, true}
+	return record{campaign: c, subscriber: u, link: l, at: at, machine: machine, country: country, raw: true, token: r.PathValue("token")}
 }
 
 var pixel, _ = base64.StdEncoding.DecodeString("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
@@ -243,6 +265,9 @@ func (s *Service) Click(w http.ResponseWriter, r *http.Request) {
 	if e == nil {
 		dest, e = render.ResolveLink(dest, recipient, allowed)
 	}
+	if e == nil {
+		e = s.recipientIdentity(r.Context(), s.db.Reader, c, u, r.PathValue("token"))
+	}
 	if e != nil {
 		http.NotFound(w, r)
 		return
@@ -286,6 +311,9 @@ func (s *Service) Web(w http.ResponseWriter, r *http.Request) {
 	}
 	var subject, body, text, fields, base string
 	e = s.db.Reader.QueryRowContext(r.Context(), `SELECT subject,html,text,fields,tracking_url FROM campaign_preparations WHERE campaign_id=?`, c).Scan(&subject, &body, &text, &fields, &base)
+	if e == nil && recipient.Token != "" {
+		e = s.recipientIdentity(r.Context(), s.db.Reader, c, recipient.ID, recipient.Token)
+	}
 	if e != nil {
 		http.NotFound(w, r)
 		return
@@ -357,7 +385,11 @@ func (s *Service) Goodbye(w http.ResponseWriter, r *http.Request) {
 	}
 	htmlpolicy.Set(w, htmlpolicy.Preferences, "no-store")
 	var goodbye string
-	_ = s.db.Reader.QueryRowContext(r.Context(), `SELECT value FROM settings WHERE key='brand.'||(SELECT brand_id FROM subscribers WHERE id=?)||'.goodbye_html'`, u).Scan(&goodbye)
+	_ = s.db.Reader.QueryRowContext(r.Context(), `SELECT value FROM brand_settings WHERE brand_id=(SELECT brand_id FROM subscribers WHERE id=?) AND name='goodbye_html'`, u).Scan(&goodbye)
+	if e = s.recipientIdentity(r.Context(), s.db.Reader, c, u, r.PathValue("token")); e != nil {
+		http.NotFound(w, r)
+		return
+	}
 	if goodbye == "" {
 		goodbye = `<h1>Unsubscribe</h1><p class="muted">Stop receiving emails from this sender.</p>`
 	}
@@ -398,9 +430,13 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	at := time.Now().UnixMilli()
+	var brand int64
+	var brandName, body string
 	e = s.db.Immediate(r.Context(), func(conn *sql.Conn) error {
-		var brand int64
-		if e = conn.QueryRowContext(r.Context(), `SELECT c.brand_id FROM campaigns c JOIN campaign_recipients cr ON cr.campaign_id=c.id WHERE cr.campaign_id=? AND cr.subscriber_id=?`, c, u).Scan(&brand); e != nil {
+		if err := s.recipientIdentity(r.Context(), conn, c, u, r.PathValue("token")); err != nil {
+			return err
+		}
+		if e = conn.QueryRowContext(r.Context(), `SELECT c.brand_id,b.name FROM campaigns c JOIN brands b ON b.id=c.brand_id JOIN campaign_recipients cr ON cr.campaign_id=c.id WHERE cr.campaign_id=? AND cr.subscriber_id=?`, c, u).Scan(&brand, &brandName); e != nil {
 			return e
 		}
 		ids := []int64{id}
@@ -457,19 +493,16 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		if _, e = conn.ExecContext(r.Context(), `UPDATE campaign_stats SET unsubscribes=unsubscribes+? WHERE campaign_id=?`, n, c); e != nil {
 			return e
 		}
+		body, e = subscribers.NotificationSetting(r.Context(), conn, brand, id, "goodbye_html")
+		if e != nil && e != sql.ErrNoRows {
+			return e
+		}
 		return nil
 	})
 	if e != nil {
 		http.Error(w, "unsubscribe could not be saved", 503)
 		return
 	}
-	var brand int64
-	var brandName string
-	if e = s.db.Reader.QueryRowContext(r.Context(), `SELECT b.id,b.name FROM brands b JOIN subscribers s ON s.brand_id=b.id WHERE s.id=?`, u).Scan(&brand, &brandName); e != nil {
-		http.Error(w, "unavailable", 503)
-		return
-	}
-	body, _ := subscribers.NotificationSetting(r.Context(), s.db.Reader, brand, id, "goodbye_html")
 	htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
 	if body == "" {
 		message := "You have been unsubscribed from all emails from this sender. You can close this page."
@@ -485,7 +518,7 @@ func (s *Service) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, body)
 }
 func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
-	_, u, e := s.identity(r)
+	c, u, e := s.identity(r)
 	if e != nil {
 		http.NotFound(w, r)
 		return
@@ -506,7 +539,13 @@ func (s *Service) Resubscribe(w http.ResponseWriter, r *http.Request) {
 	if e == nil {
 		service := subscribers.New(s.db)
 		service.SetBaseURL(s.cfg.BaseURL)
-		_, e = service.PublicSubscribe(r.Context(), subscribers.UpsertInput{BrandID: brand, Email: email, ListIDs: []int64{id}, Resubscribe: true, Consent: true})
+		_, e = service.PublicSubscribeChecked(r.Context(), subscribers.UpsertInput{BrandID: brand, Email: email, ListIDs: []int64{id}, Resubscribe: true, Consent: true}, func(conn *sql.Conn) error {
+			if err := s.recipientIdentity(r.Context(), conn, c, u, r.PathValue("token")); err != nil {
+				return err
+			}
+			var found int
+			return conn.QueryRowContext(r.Context(), `SELECT 1 FROM subscribers s JOIN list_subscribers ls ON ls.subscriber_id=s.id JOIN lists l ON l.id=ls.list_id AND l.brand_id=s.brand_id WHERE s.id=? AND s.brand_id=? AND s.email=? AND l.id=? AND s.status='active' AND NOT EXISTS(SELECT 1 FROM suppressions p WHERE (p.brand_id IS NULL OR p.brand_id=s.brand_id) AND ((p.kind='email' AND p.value=s.email) OR (p.kind='domain' AND p.value=s.domain)))`, u, brand, email, id).Scan(&found)
+		})
 	}
 	if e != nil {
 		http.Error(w, "re-subscription unavailable", 400)

@@ -18,7 +18,7 @@ func (e *Engine) Preview(ctx context.Context, id, subscriberID int64) (string, s
 	}
 	r := recipient{ID: subscriberID, Email: "preview@example.org", Name: "there", Fields: "{}"}
 	if subscriberID > 0 {
-		err = e.db.Reader.QueryRowContext(ctx, `SELECT coalesce(r.snapshot_email,s.email),coalesce(r.snapshot_name,s.name),coalesce(r.snapshot_fields,s.fields) FROM subscribers s LEFT JOIN campaign_recipients r ON r.subscriber_id=s.id AND r.campaign_id=? WHERE s.id=? AND s.brand_id=?`, id, subscriberID, c.brand).Scan(&r.Email, &r.Name, &r.Fields)
+		err = e.db.Reader.QueryRowContext(ctx, `SELECT coalesce(r.snapshot_email,s.email),coalesce(r.snapshot_name,s.name),coalesce(r.snapshot_fields,s.fields),s.tracking_identity FROM subscribers s LEFT JOIN campaign_recipients r ON r.subscriber_id=s.id AND r.campaign_id=? WHERE s.id=? AND s.brand_id=?`, id, subscriberID, c.brand).Scan(&r.Email, &r.Name, &r.Fields, &r.TrackingIdentity)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -31,7 +31,7 @@ func (e *Engine) Preview(ctx context.Context, id, subscriberID int64) (string, s
 	for k, x := range fields {
 		v[k] = fmt.Sprint(x)
 	}
-	tok := token.Encode(e.cfg.TokenSecret, id, subscriberID)
+	tok := token.EncodeBound(e.cfg.TokenSecret, id, subscriberID, c.trackingIdentity, r.TrackingIdentity)
 	return c.prepared.Render(render.Recipient{ID: subscriberID, Email: r.Email, Name: r.Name, Fields: v, Token: tok, UnsubscribeURL: c.trackingURL + "/u/" + tok, WebVersionURL: c.trackingURL + "/w/" + strconv.FormatInt(id, 10) + "/" + tok})
 }
 func (e *Engine) TestSend(ctx context.Context, id int64, addresses []string) error {
@@ -108,7 +108,7 @@ func (e *Engine) TestCampaign(ctx context.Context, id int64, addresses []string,
 		}
 		t := time.Now()
 		e.markRequest()
-		_, err = delivery.sender.Send(ctx, Request{From: (&mail.Address{Name: c.fromName, Address: c.fromEmail}).String(), To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: id})
+		_, err = delivery.sender.Send(ctx, Request{From: (&mail.Address{Name: c.fromName, Address: c.fromEmail}).String(), To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, Purpose: TestPurpose})
 		e.observe(time.Since(t), false)
 		e.requests.Add(1)
 		if err != nil {

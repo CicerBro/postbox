@@ -144,27 +144,42 @@ func TestBackupRecursAfterDestinationRepair(t *testing.T) {
 	if err := r.ScheduleMaintenance(ctx); err != nil {
 		t.Fatal(err)
 	}
-	for {
-		j, h, err := r.claim(ctx)
-		if err != nil {
-			t.Fatal(err)
+	// Claims rotate the registered queues randomly. Run whichever maintenance
+	// job is due first, with a bound so a missing backup fails promptly.
+	runBackup := func() Job {
+		t.Helper()
+		for range 2 {
+			j, h, err := r.claim(ctx)
+			if err != nil {
+				t.Fatalf("backup did not recur: %+v %v", j, err)
+			}
+			r.execute(ctx, j, h)
+			if j.Queue == "backup" {
+				return j
+			}
 		}
-		r.execute(ctx, j, h)
-		if j.Queue == "backup" {
-			break
-		}
+		t.Fatal("backup did not recur after running due maintenance jobs")
+		return Job{}
+	}
+	failed := runBackup()
+	var status string
+	if err := r.db.Reader.QueryRow(`SELECT status FROM jobs WHERE id=?`, failed.ID).Scan(&status); err != nil || status != "failed" {
+		t.Fatalf("first backup status=%q error=%v", status, err)
 	}
 	if err := os.Remove(dir); err != nil {
 		t.Fatal(err)
 	}
+	// Housekeeping can still be pending if the first claim selected backup.
 	if _, err := r.db.Writer.Exec(`UPDATE recurring_jobs SET next_run_at=0 WHERE queue='backup'`); err != nil {
 		t.Fatal(err)
 	}
-	j, h, err := r.claim(ctx)
-	if err != nil || j.Queue != "backup" {
-		t.Fatalf("backup did not recur: %+v %v", j, err)
+	succeeded := runBackup()
+	if succeeded.ID == failed.ID {
+		t.Fatalf("backup reused terminal occurrence %d", failed.ID)
 	}
-	r.execute(ctx, j, h)
+	if err := r.db.Reader.QueryRow(`SELECT status FROM jobs WHERE id=?`, succeeded.ID).Scan(&status); err != nil || status != "done" {
+		t.Fatalf("repaired backup status=%q error=%v", status, err)
+	}
 	files, err := filepath.Glob(filepath.Join(dir, "*.sqlite"))
 	if err != nil || len(files) != 1 {
 		t.Fatalf("backup files=%v error=%v", files, err)

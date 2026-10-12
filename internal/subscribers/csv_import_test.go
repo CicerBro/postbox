@@ -43,7 +43,7 @@ func TestImportCSVDoesNotQueueEmailsOrWebhooks(t *testing.T) {
 			if _, err := s.db.Writer.Exec(`INSERT INTO webhooks(brand_id,url,events,secret) VALUES(?,'https://example.org/webhook','["subscribe","unsubscribe"]','secret')`, brand.ID); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.db.SetSetting(ctx, fmt.Sprintf("brand.%d.thankyou_email", brand.ID), `{"subject":"Welcome","html":"<p>Hello</p>"}`); err != nil {
+			if err := s.db.SetBrandSetting(ctx, brand.ID, "thankyou_email", `{"subject":"Welcome","html":"<p>Hello</p>"}`); err != nil {
 				t.Fatal(err)
 			}
 			input := "email,status\nnew@example.org,active\nunsubscribe@example.org,unsubscribed\nbounce@example.org,bounced\n"

@@ -25,6 +25,11 @@ var migrations embed.FS
 const originalInitialMigrationChecksum = "c28283c4e7531dc17883dada93d129e8ecdb8e51ac5061af7b37db06c8bae220"
 const consolidatedInitialMigrationChecksum = "e89e92d4f0f2f762ca560dbfdac7e66fe997dab469e5bfab7ae3f23a953006e3"
 
+// A development server applied the expanded 011 before campaign identities were
+// moved into 012. Recognize only those exact bytes and retain their history.
+const originalTrackingIdentityChecksum = "571f4acd5edb2bb94b815a475faaab841e6f0814c0c70737af2e3d4a4b6c23c6"
+const expandedTrackingIdentityChecksum = "b825fbf0a5bc0d371a82e6ccd2b0c8535e314e0504bd3f2d23a30143f1bead35"
+
 type DB struct {
 	Writer *sql.DB
 	Reader *sql.DB
@@ -143,6 +148,12 @@ func (db *DB) migrate(ctx context.Context) error {
 			err = conn.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE name=?", f.Name()).Scan(&existing)
 			if err == nil {
 				if existing != checksum {
+					if f.Name() == "011_tracking_identity.sql" && existing == expandedTrackingIdentityChecksum && checksum == originalTrackingIdentityChecksum {
+						if err = verifyCampaignTrackingIdentity(ctx, conn); err != nil {
+							return fmt.Errorf("migration %s expanded schema: %w", f.Name(), err)
+						}
+						continue
+					}
 					if f.Name() != "001_initial.sql" || existing != originalInitialMigrationChecksum || checksum != consolidatedInitialMigrationChecksum {
 						return fmt.Errorf("migration %s checksum changed", f.Name())
 					}
@@ -154,8 +165,23 @@ func (db *DB) migrate(ctx context.Context) error {
 			if !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
-			if _, err = conn.ExecContext(ctx, string(source)); err != nil {
-				return fmt.Errorf("migration %s: %w", f.Name(), err)
+			alreadyExpanded := false
+			if f.Name() == "012_campaign_tracking_identity.sql" {
+				var trackingChecksum string
+				if err = conn.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE name='011_tracking_identity.sql'").Scan(&trackingChecksum); err != nil {
+					return err
+				}
+				if trackingChecksum == expandedTrackingIdentityChecksum {
+					if err = verifyCampaignTrackingIdentity(ctx, conn); err != nil {
+						return fmt.Errorf("migration %s expanded schema: %w", f.Name(), err)
+					}
+					alreadyExpanded = true
+				}
+			}
+			if !alreadyExpanded {
+				if _, err = conn.ExecContext(ctx, string(source)); err != nil {
+					return fmt.Errorf("migration %s: %w", f.Name(), err)
+				}
 			}
 			if _, err = conn.ExecContext(ctx, "INSERT INTO schema_migrations(name,checksum,applied_at) VALUES(?,?,?)", f.Name(), checksum, time.Now().UnixMilli()); err != nil {
 				return err

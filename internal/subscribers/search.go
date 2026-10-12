@@ -166,6 +166,11 @@ func (s *Service) SearchFiltered(ctx context.Context, brandID, afterID int64, li
 	return out, nil
 }
 
+const latestActivityQuery = `SELECT s.id, a.kind, a.at
+FROM subscribers s JOIN subscriber_activity a ON a.id=(
+ SELECT id FROM subscriber_activity WHERE subscriber_id=s.id AND brand_id=s.brand_id ORDER BY at DESC,id DESC LIMIT 1
+) WHERE s.brand_id=? AND s.id IN (`
+
 // Load activity for only the current page, without a request per subscriber.
 func (s *Service) populateLastActivity(ctx context.Context, brandID int64, subscribers []Subscriber) error {
 	if len(subscribers) == 0 {
@@ -187,10 +192,7 @@ func (s *Service) populateLastActivity(ctx context.Context, brandID int64, subsc
 		placeholders[i] = "?"
 		args = append(args, v.ID)
 	}
-	rows, err := s.db.Reader.QueryContext(ctx, `SELECT s.id, a.kind, a.at
-FROM subscribers s JOIN subscriber_activity a ON a.id=(
- SELECT id FROM subscriber_activity WHERE subscriber_id=s.id AND brand_id=s.brand_id ORDER BY at DESC,id DESC LIMIT 1
-) WHERE s.brand_id=? AND s.id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	rows, err := s.db.Reader.QueryContext(ctx, latestActivityQuery+strings.Join(placeholders, ",")+`)`, args...)
 	if err != nil {
 		return err
 	}

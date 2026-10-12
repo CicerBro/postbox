@@ -109,7 +109,8 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	var id int64
 	var hash string
 	var otp sql.NullString
-	err := a.db.Reader.QueryRowContext(r.Context(), "SELECT id,password_hash,totp_secret FROM users WHERE email=?", strings.ToLower(strings.TrimSpace(in.Email))).Scan(&id, &hash, &otp)
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	err := a.db.Reader.QueryRowContext(r.Context(), "SELECT id,password_hash,totp_secret FROM users WHERE email=?", email).Scan(&id, &hash, &otp)
 	if err != nil || !verifyPassword(hash, in.Password) {
 		fail(w, 401, errors.New("invalid credentials"))
 		return
@@ -128,9 +129,26 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	token := secret()
 	csrf := sessionCSRF(token)
 	expires := time.Now().Add(a.cfg.SessionTTL)
+	invalidCredentials := errors.New("invalid credentials")
 	err = a.db.Immediate(r.Context(), func(c *sql.Conn) error {
+		// Password verification is expensive, so do it before acquiring the writer.
+		// Recheck the validated credentials under the session insertion lock so
+		// account changes cannot be followed by a login using an obsolete snapshot.
+		var currentHash string
+		var currentOTP sql.NullString
+		err := c.QueryRowContext(r.Context(), "SELECT password_hash,totp_secret FROM users WHERE id=? AND email=?", id, email).Scan(&currentHash, &currentOTP)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && (currentHash != hash || currentOTP != otp) {
+			return invalidCredentials
+		}
+		if err != nil {
+			return err
+		}
 		return insertSession(r.Context(), c, id, token, csrf, expires)
 	})
+	if errors.Is(err, invalidCredentials) {
+		fail(w, 401, err)
+		return
+	}
 	if err != nil {
 		fail(w, 500, err)
 		return

@@ -24,11 +24,17 @@ type Quota struct {
 	SentLast24Hours float64 `json:"sent_last_24_hours"`
 }
 type Request struct {
-	From, To            string
-	Raw                 []byte
-	ConfigurationSet    string
-	BrandID, CampaignID int64
+	From, To                             string
+	Raw                                  []byte
+	ConfigurationSet                     string
+	BrandID, CampaignID                  int64
+	CampaignIdentity, SubscriberIdentity string
+	Attempt                              int
+	Purpose                              string
 }
+
+const TestPurpose = "test"
+
 type Sender interface {
 	GetAccount(context.Context) (Quota, error)
 	Send(context.Context, Request) (string, error)
@@ -72,7 +78,16 @@ func (s *AWS) GetAccount(ctx context.Context) (Quota, error) {
 	return Quota{a.SendQuota.MaxSendRate, a.SendQuota.Max24HourSend, a.SendQuota.SentLast24Hours}, nil
 }
 func (s *AWS) Send(ctx context.Context, r Request) (string, error) {
-	in := &sesv2.SendEmailInput{FromEmailAddress: aws.String(r.From), Destination: &types.Destination{ToAddresses: []string{r.To}}, Content: &types.EmailContent{Raw: &types.RawMessage{Data: r.Raw}}, EmailTags: []types.MessageTag{{Name: aws.String("brand_id"), Value: aws.String(strconv.FormatInt(r.BrandID, 10))}, {Name: aws.String("campaign_id"), Value: aws.String(strconv.FormatInt(r.CampaignID, 10))}}}
+	in := &sesv2.SendEmailInput{FromEmailAddress: aws.String(r.From), Destination: &types.Destination{ToAddresses: []string{r.To}}, Content: &types.EmailContent{Raw: &types.RawMessage{Data: r.Raw}}, EmailTags: []types.MessageTag{{Name: aws.String("brand_id"), Value: aws.String(strconv.FormatInt(r.BrandID, 10))}}}
+	if r.CampaignID > 0 && r.Purpose != TestPurpose {
+		in.EmailTags = append(in.EmailTags, types.MessageTag{Name: aws.String("campaign_id"), Value: aws.String(strconv.FormatInt(r.CampaignID, 10))})
+		if r.CampaignIdentity != "" && r.SubscriberIdentity != "" && r.Attempt > 0 {
+			in.EmailTags = append(in.EmailTags, types.MessageTag{Name: aws.String("campaign_identity"), Value: aws.String(r.CampaignIdentity)}, types.MessageTag{Name: aws.String("subscriber_identity"), Value: aws.String(r.SubscriberIdentity)}, types.MessageTag{Name: aws.String("send_attempt"), Value: aws.String(strconv.Itoa(r.Attempt))})
+		}
+	}
+	if r.Purpose != "" {
+		in.EmailTags = append(in.EmailTags, types.MessageTag{Name: aws.String("message_purpose"), Value: aws.String(r.Purpose)})
+	}
 	if r.ConfigurationSet != "" {
 		in.ConfigurationSetName = aws.String(r.ConfigurationSet)
 	}

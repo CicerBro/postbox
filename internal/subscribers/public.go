@@ -11,6 +11,12 @@ import (
 // PublicSubscribe accepts anonymous opt-in requests. Only creation may set profile
 // data; an existing address keeps its profile until an authenticated edit.
 func (s *Service) PublicSubscribe(ctx context.Context, in UpsertInput) (Subscriber, error) {
+	return s.PublicSubscribeChecked(ctx, in, nil)
+}
+
+// PublicSubscribeChecked verifies an opt-in capability in the same transaction
+// as the preference update, so deletion cannot transfer consent to a new row.
+func (s *Service) PublicSubscribeChecked(ctx context.Context, in UpsertInput, check func(*sql.Conn) error) (Subscriber, error) {
 	email, err := render.NormalizeEmail(in.Email)
 	if err != nil {
 		return Subscriber{}, err
@@ -25,6 +31,11 @@ func (s *Service) PublicSubscribe(ctx context.Context, in UpsertInput) (Subscrib
 	in.SuppressNotifications = false
 	var v Subscriber
 	err = s.db.Immediate(ctx, func(c *sql.Conn) error {
+		if check != nil {
+			if err := check(c); err != nil {
+				return err
+			}
+		}
 		at := nowMS()
 		var e error
 		v, e = s.findOnConn(ctx, c, in.BrandID, email)

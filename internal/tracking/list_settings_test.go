@@ -19,7 +19,11 @@ func TestListGoodbyeOverridesAndAllListsDefault(t *testing.T) {
 			}
 			ctx := context.Background()
 			for key, value := range map[string]string{"brand.1.goodbye_html": "Brand goodbye", "list.1.goodbye_html": "List goodbye", "brand.1.goodbye_email": `{"subject":"Brand goodbye","html":"Bye"}`, "list.1.goodbye_email": `{"subject":"List goodbye","html":"Bye"}`} {
-				if e := db.SetSetting(ctx, key, value); e != nil {
+				set := db.SetBrandSetting
+				if strings.HasPrefix(key, "list.") {
+					set = db.SetListSetting
+				}
+				if e := set(ctx, 1, strings.SplitN(key, ".", 3)[2], value); e != nil {
 					t.Fatal(e)
 				}
 			}

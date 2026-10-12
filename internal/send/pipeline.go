@@ -20,17 +20,20 @@ import (
 
 var errNotSending = errors.New("campaign is no longer sending")
 var errUnsafeAttempt = errors.New("recipient already has a potentially accepted attempt")
+var errStaleIdentity = errors.New("campaign or recipient identity is no longer current")
 
 type recipient struct {
 	ID                  int64
 	Email, Name, Fields string
 	Attempts            int
+	TrackingIdentity    string
 }
 type result struct {
-	id                     int64
-	status, messageID, err string
-	attempt                int
-	at                     int64
+	id                                   int64
+	status, messageID, err               string
+	attempt                              int
+	at                                   int64
+	campaignIdentity, subscriberIdentity string
 }
 
 func (e *Engine) render(c campaign, r recipient) ([]byte, error) {
@@ -46,7 +49,7 @@ func (e *Engine) renderWithSubjectPrefix(c campaign, r recipient, prefix string)
 	for k, v := range fields {
 		values[k] = fmt.Sprint(v)
 	}
-	tok := token.Encode(e.cfg.TokenSecret, c.id, r.ID)
+	tok := token.EncodeBound(e.cfg.TokenSecret, c.id, r.ID, c.trackingIdentity, r.TrackingIdentity)
 	unsubscribe := c.trackingURL + "/u/" + tok
 	subject, html, text, err := c.prepared.Render(render.Recipient{ID: r.ID, Email: r.Email, Name: r.Name, Fields: values, Token: tok, UnsubscribeURL: unsubscribe, WebVersionURL: c.trackingURL + "/w/" + strconv.FormatInt(c.id, 10) + "/" + tok})
 	if err != nil {
@@ -57,13 +60,13 @@ func (e *Engine) renderWithSubjectPrefix(c campaign, r recipient, prefix string)
 func (e *Engine) claim(ctx context.Context, id, last int64) ([]recipient, error) {
 	var items []recipient
 	err := e.db.Immediate(ctx, func(c *sql.Conn) error {
-		rows, err := c.QueryContext(ctx, `SELECT r.subscriber_id,coalesce(r.snapshot_email,s.email),coalesce(r.snapshot_name,s.name),coalesce(r.snapshot_fields,s.fields),r.attempts FROM campaign_recipients r JOIN subscribers s ON s.id=r.subscriber_id WHERE r.campaign_id=? AND r.status='pending' AND r.subscriber_id>? ORDER BY r.subscriber_id LIMIT ?`, id, last, e.cfg.ClaimBatch)
+		rows, err := c.QueryContext(ctx, `SELECT r.subscriber_id,coalesce(r.snapshot_email,s.email),coalesce(r.snapshot_name,s.name),coalesce(r.snapshot_fields,s.fields),r.attempts,s.tracking_identity FROM campaign_recipients r JOIN subscribers s ON s.id=r.subscriber_id WHERE r.campaign_id=? AND r.status='pending' AND r.subscriber_id>? ORDER BY r.subscriber_id LIMIT ?`, id, last, e.cfg.ClaimBatch)
 		if err != nil {
 			return err
 		}
 		for rows.Next() {
 			var r recipient
-			if err = rows.Scan(&r.ID, &r.Email, &r.Name, &r.Fields, &r.Attempts); err != nil {
+			if err = rows.Scan(&r.ID, &r.Email, &r.Name, &r.Fields, &r.Attempts, &r.TrackingIdentity); err != nil {
 				rows.Close()
 				return err
 			}
@@ -93,11 +96,17 @@ func (e *Engine) claim(ctx context.Context, id, last int64) ([]recipient, error)
 // Immediate commits the reservation before any external dispatch. WAL NORMAL
 // protects against process crashes; host crash durability is described by store.Open.
 func (e *Engine) beginAttempt(ctx context.Context, c campaign, r recipient, attempt int) (bool, error) {
+	if c.trackingIdentity == "" || r.TrackingIdentity == "" {
+		return false, errStaleIdentity
+	}
 	started := false
 	err := e.db.Immediate(ctx, func(conn *sql.Conn) error {
-		var status string
-		if err := conn.QueryRowContext(ctx, `SELECT status FROM campaigns WHERE id=?`, c.id).Scan(&status); err != nil {
+		var status, identity string
+		if err := conn.QueryRowContext(ctx, `SELECT status,tracking_identity FROM campaigns WHERE id=? AND brand_id=?`, c.id, c.brand).Scan(&status, &identity); err != nil {
 			return err
+		}
+		if identity != c.trackingIdentity {
+			return errStaleIdentity
 		}
 		if status != "sending" || !e.enabled.Load() {
 			return errNotSending
@@ -106,10 +115,10 @@ func (e *Engine) beginAttempt(ctx context.Context, c campaign, r recipient, atte
 		var err error
 		if c.audience != "" {
 			args := append([]any{}, c.audienceArgs...)
-			args = append(args, r.ID)
-			err = conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 `+c.audience+` AND s.id=?)`, args...).Scan(&valid)
+			args = append(args, r.ID, r.TrackingIdentity)
+			err = conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 `+c.audience+` AND s.id=? AND s.tracking_identity=?)`, args...).Scan(&valid)
 		} else {
-			err = conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subscribers s WHERE s.brand_id=? AND s.id=? AND `+subscribers.MarketingEligibilitySQL+`)`, c.brand, r.ID).Scan(&valid)
+			err = conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subscribers s WHERE s.brand_id=? AND s.id=? AND s.tracking_identity=? AND `+subscribers.MarketingEligibilitySQL+`)`, c.brand, r.ID, r.TrackingIdentity).Scan(&valid)
 		}
 		if err != nil {
 			return err
@@ -143,8 +152,19 @@ func (e *Engine) beginAttempt(ctx context.Context, c campaign, r recipient, atte
 	})
 	return started, err
 }
-func (e *Engine) finishAttempt(ctx context.Context, cid, sid int64, attempt int, outcome, messageID, detail string) error {
+func (e *Engine) finishAttempt(ctx context.Context, c campaign, r recipient, attempt int, outcome, messageID, detail string) error {
+	if c.trackingIdentity == "" || r.TrackingIdentity == "" {
+		return errStaleIdentity
+	}
+	cid, sid := c.id, r.ID
 	return e.db.Immediate(ctx, func(conn *sql.Conn) error {
+		var current int
+		if err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM campaigns c JOIN subscribers s ON s.brand_id=c.brand_id WHERE c.id=? AND c.tracking_identity=? AND s.id=? AND s.tracking_identity=?)`, cid, c.trackingIdentity, sid, r.TrackingIdentity).Scan(&current); err != nil {
+			return err
+		}
+		if current == 0 {
+			return nil
+		}
 		if _, err := conn.ExecContext(ctx, `UPDATE send_attempts SET finished_at=?,outcome=?,message_id=nullif(?,''),error=nullif(?,'') WHERE campaign_id=? AND subscriber_id=? AND attempt=? AND outcome='started'`, time.Now().UnixMilli(), outcome, messageID, detail, cid, sid, attempt); err != nil {
 			return err
 		}
@@ -169,7 +189,7 @@ func waitBackoff(ctx context.Context, attempt int) error {
 	}
 }
 func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out result) {
-	out = result{id: r.ID, at: time.Now().UnixMilli()}
+	out = result{id: r.ID, at: time.Now().UnixMilli(), campaignIdentity: c.trackingIdentity, subscriberIdentity: r.TrackingIdentity}
 	if claimCtx.Err() != nil || !e.enabled.Load() {
 		out.status = "pending"
 		return out
@@ -222,7 +242,7 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out
 		start := time.Now()
 		requestCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		e.markRequest()
-		messageID, sendErr := c.delivery.sender.Send(requestCtx, Request{From: from, To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: c.id})
+		messageID, sendErr := c.delivery.sender.Send(requestCtx, Request{From: from, To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: c.id, CampaignIdentity: c.trackingIdentity, SubscriberIdentity: r.TrackingIdentity, Attempt: attempt})
 		cancel()
 		e.inflight.Add(-1)
 		e.requests.Add(1)
@@ -241,7 +261,7 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out
 		switch class {
 		case Permanent:
 			out.status = "failed"
-			if err = e.finishAttempt(context.Background(), c.id, r.ID, attempt, "failed", "", out.err); err != nil {
+			if err = e.finishAttempt(context.Background(), c, r, attempt, "failed", "", out.err); err != nil {
 				out.status = "unknown"
 				out.err = err.Error()
 			}
@@ -249,13 +269,13 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out
 		case Ambiguous:
 			// SES may have accepted the request. Never dispatch this recipient again.
 			out.status = "unknown"
-			if err = e.finishAttempt(context.Background(), c.id, r.ID, attempt, "unknown", "", out.err); err != nil {
+			if err = e.finishAttempt(context.Background(), c, r, attempt, "unknown", "", out.err); err != nil {
 				out.err = err.Error()
 			}
 			return out
 		case PauseAccount:
 			out.status = "pending"
-			if err = e.finishAttempt(context.Background(), c.id, r.ID, attempt, "failed", "", out.err); err != nil {
+			if err = e.finishAttempt(context.Background(), c, r, attempt, "failed", "", out.err); err != nil {
 				out.status = "unknown"
 				out.err = err.Error()
 			}
@@ -266,7 +286,7 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out
 			e.adjust(true)
 			c.delivery.syncCampaignRate()
 		}
-		if err = e.finishAttempt(context.Background(), c.id, r.ID, attempt, "retry", "", out.err); err != nil {
+		if err = e.finishAttempt(context.Background(), c, r, attempt, "retry", "", out.err); err != nil {
 			out.status = "unknown"
 			out.err = err.Error()
 			return out
@@ -286,23 +306,28 @@ func (e *Engine) writeResults(ctx context.Context, id int64, batch []result) err
 	start := time.Now()
 	var sent, failed, unknown, skipped int
 	err := e.db.Immediate(ctx, func(c *sql.Conn) error {
-		stmt, err := c.PrepareContext(ctx, `UPDATE campaign_recipients SET status=?,message_id=nullif(?,''),error=nullif(?,''),sent_at=CASE WHEN ?='sent' THEN ? ELSE sent_at END WHERE campaign_id=? AND subscriber_id=? AND status='claimed'`)
+		var campaignStatus, campaignIdentity string
+		if err := c.QueryRowContext(ctx, `SELECT status,tracking_identity FROM campaigns WHERE id=?`, id).Scan(&campaignStatus, &campaignIdentity); errors.Is(err, sql.ErrNoRows) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		stmt, err := c.PrepareContext(ctx, `UPDATE campaign_recipients SET status=?,message_id=nullif(?,''),error=nullif(?,''),sent_at=CASE WHEN ?='sent' THEN ? ELSE sent_at END WHERE campaign_id=? AND subscriber_id=? AND status='claimed' AND EXISTS(SELECT 1 FROM subscribers s WHERE s.id=campaign_recipients.subscriber_id AND s.tracking_identity=?)`)
 		if err != nil {
 			return err
 		}
 		defer stmt.Close()
 		for _, r := range batch {
+			if r.campaignIdentity == "" || r.subscriberIdentity == "" || r.campaignIdentity != campaignIdentity {
+				continue
+			}
 			state := r.status
-			var campaignStatus string
 			if state == "pending" {
-				if err = c.QueryRowContext(ctx, `SELECT status FROM campaigns WHERE id=?`, id).Scan(&campaignStatus); err != nil {
-					return err
-				}
 				if campaignStatus == "cancelled" {
 					state = "skipped"
 				}
 			}
-			res, err := stmt.ExecContext(ctx, state, r.messageID, r.err, state, r.at, id, r.id)
+			res, err := stmt.ExecContext(ctx, state, r.messageID, r.err, state, r.at, id, r.id, r.subscriberIdentity)
 			if err != nil {
 				return err
 			}
@@ -405,7 +430,7 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 					}
 				}
 				if claimCtx.Err() != nil {
-					results <- result{id: r.ID, status: "pending"}
+					results <- result{id: r.ID, status: "pending", campaignIdentity: c.trackingIdentity, subscriberIdentity: r.TrackingIdentity}
 					continue
 				}
 				results <- e.sendOne(claimCtx, c, r)
@@ -477,7 +502,7 @@ claimLoop:
 			case <-claimCtx.Done():
 				e.backlog.Add(-1)
 				for _, pending := range items[i:] {
-					results <- result{id: pending.ID, status: "pending"}
+					results <- result{id: pending.ID, status: "pending", campaignIdentity: c.trackingIdentity, subscriberIdentity: pending.TrackingIdentity}
 				}
 				break claimLoop
 			}

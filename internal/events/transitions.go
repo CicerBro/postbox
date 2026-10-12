@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-type recipientMatch struct{ campaign, subscriber, brand int64 }
+type recipientMatch struct {
+	campaign, subscriber, brand int64
+	attempt                     int
+}
 
 func resolveEventBrandTx(ctx context.Context, c *sql.Conn, brand int64, ev sesEvent) (int64, error) {
 	if brand > 0 {
@@ -35,17 +38,36 @@ func resolveEventBrandTx(ctx context.Context, c *sql.Conn, brand int64, ev sesEv
 
 // The explicit index keeps SQLite from scanning the campaign's primary-key
 // prefix for every receipt while holding the single writer transaction.
-const snapshotMatchSQL = `SELECT cr.campaign_id,cr.subscriber_id,ca.brand_id FROM campaign_recipients cr INDEXED BY campaign_recipients_snapshot_email JOIN campaigns ca ON ca.id=cr.campaign_id JOIN subscribers s ON s.id=cr.subscriber_id WHERE cr.campaign_id=? AND cr.snapshot_email=? AND ca.brand_id=? AND s.brand_id=ca.brand_id AND (cr.message_id IS NULL OR cr.message_id=?)`
+// Tagged early receipts must belong to the exact immutable recipient and attempt.
+// Untagged historical mail can only resolve rows that existed before migration.
+const receiptDispatchSQL = ` AND EXISTS (SELECT 1 FROM send_attempts a WHERE a.campaign_id=cr.campaign_id AND a.subscriber_id=cr.subscriber_id AND (a.message_id=? OR (a.message_id IS NULL AND a.outcome IN ('started','unknown'))) AND ((ca.tracking_identity=? AND s.tracking_identity=? AND a.attempt=?) OR (ca.tracking_legacy=1 AND s.tracking_legacy=1 AND ?='' AND ?='' AND ?='')))`
+const snapshotMatchSQL = `SELECT cr.campaign_id,cr.subscriber_id,ca.brand_id FROM campaign_recipients cr INDEXED BY campaign_recipients_snapshot_email JOIN campaigns ca ON ca.id=cr.campaign_id JOIN subscribers s ON s.id=cr.subscriber_id WHERE cr.campaign_id=? AND cr.snapshot_email=? AND ca.brand_id=? AND s.brand_id=ca.brand_id AND (cr.message_id IS NULL OR cr.message_id=?)` + receiptDispatchSQL
 
 func matchRecipientTx(ctx context.Context, c *sql.Conn, brand int64, ev sesEvent, email string) (recipientMatch, error) {
+	if purpose := firstTag(ev.Mail.Tags, "message_purpose"); purpose == "test" || purpose == "transactional" {
+		return recipientMatch{}, nil
+	}
 	var m recipientMatch
-	err := c.QueryRowContext(ctx, `SELECT cr.campaign_id,cr.subscriber_id,ca.brand_id FROM campaign_recipients cr JOIN campaigns ca ON ca.id=cr.campaign_id JOIN subscribers s ON s.id=cr.subscriber_id WHERE cr.message_id=? AND coalesce(cr.snapshot_email,s.email)=? AND ca.brand_id=? AND s.brand_id=ca.brand_id`, ev.Mail.MessageID, email, brand).Scan(&m.campaign, &m.subscriber, &m.brand)
+	err := c.QueryRowContext(ctx, `SELECT cr.campaign_id,cr.subscriber_id,ca.brand_id FROM campaign_recipients cr JOIN campaigns ca ON ca.id=cr.campaign_id JOIN subscribers s ON s.id=cr.subscriber_id WHERE cr.message_id=? AND coalesce(cr.snapshot_email,s.email)=? AND ca.brand_id=? AND s.brand_id=ca.brand_id AND (cr.status='sent' OR EXISTS (SELECT 1 FROM send_attempts a WHERE a.campaign_id=cr.campaign_id AND a.subscriber_id=cr.subscriber_id AND (a.message_id=? OR (a.message_id IS NULL AND a.outcome IN ('started','unknown')))))`, ev.Mail.MessageID, email, brand, ev.Mail.MessageID).Scan(&m.campaign, &m.subscriber, &m.brand)
 	if errors.Is(err, sql.ErrNoRows) {
 		campaignTag := firstTag(ev.Mail.Tags, "campaign_id", "campaign")
 		brandTag := firstTag(ev.Mail.Tags, "brand_id", "brand")
-		err = c.QueryRowContext(ctx, snapshotMatchSQL, campaignTag, email, brandTag, ev.Mail.MessageID).Scan(&m.campaign, &m.subscriber, &m.brand)
+		campaignIdentity := firstTag(ev.Mail.Tags, "campaign_identity")
+		subscriberIdentity := firstTag(ev.Mail.Tags, "subscriber_identity")
+		attemptTag := firstTag(ev.Mail.Tags, "send_attempt")
+		attempt, parseErr := strconv.Atoi(attemptTag)
+		if attemptTag != "" && (parseErr != nil || attempt <= 0) {
+			return recipientMatch{}, nil
+		}
+		dispatchArgs := []any{ev.Mail.MessageID, campaignIdentity, subscriberIdentity, attemptTag, campaignIdentity, subscriberIdentity, attemptTag}
+		args := append([]any{campaignTag, email, brandTag, ev.Mail.MessageID}, dispatchArgs...)
+		err = c.QueryRowContext(ctx, snapshotMatchSQL, args...).Scan(&m.campaign, &m.subscriber, &m.brand)
 		if errors.Is(err, sql.ErrNoRows) {
-			err = c.QueryRowContext(ctx, `SELECT cr.campaign_id,cr.subscriber_id,ca.brand_id FROM subscribers s JOIN campaign_recipients cr ON cr.subscriber_id=s.id JOIN campaigns ca ON ca.id=cr.campaign_id WHERE s.brand_id=? AND ca.brand_id=s.brand_id AND s.email=? AND cr.campaign_id=? AND cr.snapshot_email IS NULL AND (cr.message_id IS NULL OR cr.message_id=?)`, brandTag, email, campaignTag, ev.Mail.MessageID).Scan(&m.campaign, &m.subscriber, &m.brand)
+			args = append([]any{brandTag, email, campaignTag, ev.Mail.MessageID}, dispatchArgs...)
+			err = c.QueryRowContext(ctx, `SELECT cr.campaign_id,cr.subscriber_id,ca.brand_id FROM subscribers s JOIN campaign_recipients cr ON cr.subscriber_id=s.id JOIN campaigns ca ON ca.id=cr.campaign_id WHERE s.brand_id=? AND ca.brand_id=s.brand_id AND s.email=? AND cr.campaign_id=? AND cr.snapshot_email IS NULL AND (cr.message_id IS NULL OR cr.message_id=?)`+receiptDispatchSQL, args...).Scan(&m.campaign, &m.subscriber, &m.brand)
+		}
+		if err == nil {
+			m.attempt = attempt
 		}
 	}
 	if errors.Is(err, sql.ErrNoRows) {
@@ -64,8 +86,13 @@ func reconcileAcceptanceTx(ctx context.Context, c *sql.Conn, m recipientMatch, m
 	}
 	var attempt int
 	acceptedAt := at
-	err := c.QueryRowContext(ctx, `SELECT attempt,started_at FROM send_attempts WHERE campaign_id=? AND subscriber_id=? AND (message_id=? OR (message_id IS NULL AND outcome IN ('started','unknown'))) ORDER BY attempt DESC LIMIT 1`, m.campaign, m.subscriber, messageID).Scan(&attempt, &acceptedAt)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	err := c.QueryRowContext(ctx, `SELECT attempt,started_at FROM send_attempts WHERE campaign_id=? AND subscriber_id=? AND (message_id=? OR (message_id IS NULL AND outcome IN ('started','unknown'))) AND (?=0 OR attempt=?) ORDER BY attempt DESC LIMIT 1`, m.campaign, m.subscriber, messageID, m.attempt, m.attempt).Scan(&attempt, &acceptedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Imported recipients may already be sent without a local dispatch journal.
+		// Receipts may update engagement, but cannot invent a new acceptance.
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 	if _, err = c.ExecContext(ctx, `UPDATE campaign_recipients SET status='sent',message_id=?,error=NULL,sent_at=coalesce(sent_at,?) WHERE campaign_id=? AND subscriber_id=?`, messageID, acceptedAt, m.campaign, m.subscriber); err != nil {

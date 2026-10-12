@@ -64,8 +64,8 @@ func (a *API) brand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "DELETE" {
-		res, e := a.db.Writer.ExecContext(r.Context(), "DELETE FROM brands WHERE id=?", id)
-		result(w, map[string]bool{"deleted": true}, requireChanged(res, e))
+		e := a.db.DeleteBrand(r.Context(), id)
+		result(w, map[string]bool{"deleted": true}, e)
 		return
 	}
 	a.saveBrand(w, r, id)

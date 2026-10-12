@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
@@ -205,18 +206,23 @@ func TestConsolidatedInitialMigrationChecksumAccepted(t *testing.T) {
 	if _, err = legacy.Exec("INSERT INTO schema_migrations VALUES('001_initial.sql', ?, 1)", originalInitialMigrationChecksum); err != nil {
 		t.Fatal(err)
 	}
-	// Supply the tables used by later data migrations without replaying the baseline.
-	if _, err = legacy.Exec(`
-		CREATE TABLE campaigns(id INTEGER PRIMARY KEY, brand_id INTEGER, uuid TEXT, status TEXT, finished_at INTEGER, updated_at INTEGER);
-		CREATE TABLE migration_identities(entity TEXT, target_id INTEGER);
-		CREATE TABLE lists(id INTEGER PRIMARY KEY, brand_id INTEGER, uuid TEXT);
-		CREATE TABLE segments(id INTEGER PRIMARY KEY, brand_id INTEGER);
-		CREATE TABLE campaign_targets(campaign_id INTEGER, target_type TEXT, target_id INTEGER, mode TEXT);
-		CREATE TABLE jobs(id INTEGER PRIMARY KEY, status TEXT);
-		CREATE TABLE templates(id INTEGER PRIMARY KEY);
-		CREATE TABLE users(id INTEGER PRIMARY KEY);
-	`); err != nil {
+	// This fixture isolates checksum compatibility. Later migrations have their
+	// own real-schema tests and must not need fabricated baseline tables here.
+	files, err := migrations.ReadDir("migrations")
+	if err != nil {
 		t.Fatal(err)
+	}
+	for _, file := range files {
+		if file.Name() == "001_initial.sql" || !strings.HasSuffix(file.Name(), ".sql") {
+			continue
+		}
+		source, err := migrations.ReadFile("migrations/" + file.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = legacy.Exec("INSERT INTO schema_migrations VALUES(?,?,1)", file.Name(), fmt.Sprintf("%x", sha256.Sum256(source))); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err = legacy.Close(); err != nil {
 		t.Fatal(err)

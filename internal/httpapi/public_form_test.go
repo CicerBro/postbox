@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -63,7 +62,7 @@ func TestHostedSubscriptionPagePreservesFormContract(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `class="card"`) || !strings.Contains(w.Body.String(), "Thank you for subscribing.") || strings.Contains(w.Body.String(), "<script>alert(") {
 		t.Fatalf("hosted completion: %d %s", w.Code, w.Body.String())
 	}
-	if err = db.SetSetting(context.Background(), fmt.Sprintf("brand.%d.thankyou_html", brand.ID), "<h1>Custom thank you</h1>"); err != nil {
+	if err = db.SetBrandSetting(context.Background(), brand.ID, "thankyou_html", "<h1>Custom thank you</h1>"); err != nil {
 		t.Fatal(err)
 	}
 	w = post(url.Values{"email": {"custom@example.org"}, "consent": {"on"}})

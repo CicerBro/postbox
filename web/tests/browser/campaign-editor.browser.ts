@@ -25,6 +25,8 @@ async function fixture(context: BrowserContext) {
     testSendError: "global sending is disabled",
     testSends: [] as unknown[],
     testSendWait: Promise.resolve(),
+    campaignWriteWait: Promise.resolve(),
+    targetWriteWait: Promise.resolve(),
   };
   await context.route("**/api/v1/**", async (route) => {
     const request = route.request(),
@@ -80,6 +82,7 @@ async function fixture(context: BrowserContext) {
     } else if (path === "/campaigns/7/targets") {
       if (request.method() === "PUT") {
         state.targetWrites.push(request.postDataJSON());
+        await state.targetWriteWait;
         if (state.targetFailure) {
           status = 422;
           body = { error: "Audience save failed" };
@@ -94,6 +97,7 @@ async function fixture(context: BrowserContext) {
     ) {
       const value = request.postDataJSON();
       state.campaignWrites.push(value);
+      await state.campaignWriteWait;
       state.campaign = { ...state.campaign, ...value };
       body = { id: 7 };
     } else if (path === "/campaigns/7") body = [state.campaign];
@@ -299,6 +303,55 @@ test("template, text and mutually exclusive audiences survive draft saving", asy
     }),
   ).toBeChecked();
 });
+
+for (const pendingRequest of ["campaign", "audience"] as const) {
+  test(`first save preserves edits made while the ${pendingRequest} request is pending`, async ({ page, context }) => {
+    const state = await fixture(context);
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    if (pendingRequest === "campaign") state.campaignWriteWait = wait;
+    else state.targetWriteWait = wait;
+
+    await page.goto("/campaigns/new");
+    const subject = page.getByLabel("Subject", { exact: true });
+    const html = page.locator('.cm-content[aria-label="Full HTML source"]');
+    await subject.fill("Submitted subject");
+    await html.fill("<p>Submitted HTML</p>");
+    await page.getByText("Plain-text override (optional)", { exact: true }).click();
+    await page.getByLabel("Plain text", { exact: true }).fill("Submitted text");
+    await page.getByRole("checkbox", { name: "Include Newsletter", exact: true }).check();
+    await page.getByRole("button", { name: "Save draft", exact: true }).click();
+    await expect.poll(() => pendingRequest === "campaign" ? state.campaignWrites.length : state.targetWrites.length).toBe(1);
+
+    await subject.fill("Newer subject");
+    await html.fill("<p>Newer HTML</p>");
+    await page.getByLabel("Plain text", { exact: true }).fill("Newer text");
+    await page.getByRole("checkbox", { name: "Inline CSS during rendering", exact: true }).uncheck();
+    await page.getByRole("checkbox", { name: "Include Newsletter", exact: true }).uncheck();
+    await page.getByRole("checkbox", { name: "Include Engaged subscribers", exact: true }).check();
+    release();
+
+    await expect(page).toHaveURL(/\/campaigns\/7$/);
+    await expect(subject).toHaveValue("Newer subject");
+    await expect(html).toHaveText("<p>Newer HTML</p>");
+    await page.getByText("Plain-text override (optional)", { exact: true }).click();
+    await expect(page.getByLabel("Plain text", { exact: true })).toHaveValue("Newer text");
+    await expect(page.getByRole("checkbox", { name: "Inline CSS during rendering", exact: true })).not.toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "Include Newsletter", exact: true })).not.toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "Include Engaged subscribers", exact: true })).toBeChecked();
+    await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
+    await expect(page.getByText("Draft saved. Your newer edits are still unsaved.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Run preflight", exact: true })).toBeDisabled();
+    expect(state.campaignWrites).toEqual([{ subject: "Submitted subject", html: "<p>Submitted HTML</p>", text: "Submitted text", inline_css: true }]);
+    expect(state.targetWrites).toEqual([[{ target_type: "list", target_id: 11, mode: "include" }]]);
+
+    await page.getByRole("button", { name: "Save draft", exact: true }).click();
+    await expect(page.getByText("Saved campaign", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Run preflight", exact: true })).toBeEnabled();
+    expect(state.campaignWrites[1]).toEqual({ subject: "Newer subject", html: "<p>Newer HTML</p>", text: "Newer text", inline_css: false });
+    expect(state.targetWrites[1]).toEqual([{ target_type: "segment", target_id: 21, mode: "include" }]);
+  });
+}
 
 test("saved audiences stay visible when their list or segment is unavailable", async ({ page, context }) => {
   const state = await fixture(context);

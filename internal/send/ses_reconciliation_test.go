@@ -19,7 +19,12 @@ func TestSESReceiptBeforeSenderResultPreservesAcceptance(t *testing.T) {
 			var eventErr error
 			sender := &policySender{errors: []error{context.DeadlineExceeded}}
 			sender.afterSend = func() {
-				payload := []byte(fmt.Sprintf(`{%s,"mail":{"messageId":"accepted-before-response","tags":{"brand_id":["1"],"campaign_id":["1"]}}}`, receipt.body))
+				request := sender.requests[len(sender.requests)-1]
+				if request.CampaignIdentity == "" || request.SubscriberIdentity == "" || request.Attempt != 1 {
+					eventErr = fmt.Errorf("dispatch correlation missing: %+v", request)
+					return
+				}
+				payload := []byte(fmt.Sprintf(`{%s,"mail":{"messageId":"accepted-before-response","tags":{"brand_id":["1"],"campaign_id":["1"],"campaign_identity":[%q],"subscriber_identity":[%q],"send_attempt":["%d"]}}}`, receipt.body, request.CampaignIdentity, request.SubscriberIdentity, request.Attempt))
 				eventErr = ingestion.Process(context.Background(), "receipt-during-send", payload)
 			}
 			engine.sender = sender

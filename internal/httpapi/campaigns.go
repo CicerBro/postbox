@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"net/http"
+	"postbox/internal/send"
 	"time"
 )
 
@@ -86,18 +87,7 @@ func (a *API) campaigns(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusConflict, errors.New("cancel this campaign before deleting it"))
 			return
 		}
-		err = a.db.Immediate(r.Context(), func(c *sql.Conn) error {
-			res, e := c.ExecContext(r.Context(), "DELETE FROM campaigns WHERE brand_id=? AND id=? AND status=?", brand, id, status)
-			if e = requireChanged(res, e); e != nil {
-				return e
-			}
-			for _, table := range []string{"opens", "clicks"} {
-				if _, e = c.ExecContext(r.Context(), "DELETE FROM "+table+" WHERE campaign_id=?", id); e != nil {
-					return e
-				}
-			}
-			return nil
-		})
+		err = a.db.DeleteCampaign(r.Context(), brand, id, status)
 		result(w, map[string]bool{"deleted": true}, err)
 		return
 	}
@@ -145,11 +135,7 @@ func (a *API) targets(w http.ResponseWriter, r *http.Request) {
 		result(w, v, e)
 		return
 	}
-	var in []struct {
-		Type string `json:"target_type"`
-		ID   int64  `json:"target_id"`
-		Mode string `json:"mode"`
-	}
+	var in []send.AudienceTarget
 	if !decode(w, r, &in) {
 		return
 	}
@@ -161,23 +147,13 @@ func (a *API) targets(w http.ResponseWriter, r *http.Request) {
 		if status != "draft" {
 			return errors.New("only draft campaign targets can be changed")
 		}
+		if e := send.ValidateAudienceTargets(r.Context(), c, brand, in); e != nil {
+			return e
+		}
 		if _, e := c.ExecContext(r.Context(), "DELETE FROM campaign_targets WHERE campaign_id=?", id); e != nil {
 			return e
 		}
 		for _, t := range in {
-			table := "lists"
-			if t.Type == "segment" {
-				table = "segments"
-			} else if t.Type != "list" {
-				return errors.New("target_type must be list or segment")
-			}
-			if t.Mode != "include" && t.Mode != "exclude" {
-				return errors.New("mode must be include or exclude")
-			}
-			var n int
-			if e := c.QueryRowContext(r.Context(), "SELECT 1 FROM "+table+" WHERE id=? AND brand_id=?", t.ID, brand).Scan(&n); e != nil {
-				return errors.New("target belongs to another brand or does not exist")
-			}
 			if _, e := c.ExecContext(r.Context(), "INSERT INTO campaign_targets(campaign_id,target_type,target_id,mode) VALUES(?,?,?,?)", id, t.Type, t.ID, t.Mode); e != nil {
 				return e
 			}
