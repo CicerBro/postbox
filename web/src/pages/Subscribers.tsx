@@ -985,13 +985,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                   <thead>
                     <tr>
                       {sortableHead("Name", "name")}
-                      <SortableTableHead
-                        label="Email"
-                        active={sort === "email"}
-                        direction={direction}
-                        onSort={() => sortBy("email")}
-                        className="border-r border-border"
-                      />
+                      {sortableHead("Email", "email")}
                       {sortableHead("Last activity", "last_activity")}
                       {sortableHead("Created at", "created_at")}
                       <th className="w-32">Action</th>
@@ -1028,11 +1022,10 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                             {s.name || "Unnamed subscriber"}
                           </span>
                         </td>
-                        <td
-                          className="max-w-[24rem] truncate border-r border-border text-muted-foreground"
-                          title={s.email}
-                        >
-                          {s.email}
+                        <td className="text-muted-foreground">
+                          <span className="block max-w-[24rem] truncate" title={s.email}>
+                            {s.email}
+                          </span>
                         </td>
                         <td>
                           <p className="text-sm capitalize">{s.last_activity_kind || (s.updated_at > s.created_at ? "Updated" : "Created")}</p>
