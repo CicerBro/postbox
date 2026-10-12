@@ -149,7 +149,7 @@ export function Checks({
               )
             }
           />
-          {v.replaceAll("_", " ")}
+          {v.charAt(0).toUpperCase() + v.slice(1).replaceAll("_", " ")}
         </label>
       ))}
     </div>

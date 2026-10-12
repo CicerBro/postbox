@@ -169,9 +169,11 @@ export function ApiKeysPage({ brandId }: { brandId: number }) {
                     <td className="p-3"><span className="row-title">{k.name}</span></td>
                     <td className="p-3"><code className="row-subtitle">{k.prefix}</code></td>
                     <td className="p-3">
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap gap-1 capitalize">
                         {strings(k.scopes).map((scope) => (
-                          <Badge key={scope}>{scope}</Badge>
+                          <Badge key={scope}>
+                            {scope.charAt(0).toUpperCase() + scope.slice(1)}
+                          </Badge>
                         ))}
                       </div>
                     </td>
