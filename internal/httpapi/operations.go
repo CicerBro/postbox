@@ -121,6 +121,7 @@ func (a *API) templates(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name string `json:"name"`
 		HTML string `json:"html"`
+		Text string `json:"text"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -130,13 +131,13 @@ func (a *API) templates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if id == 0 {
-		res, e := a.db.Writer.ExecContext(r.Context(), "INSERT INTO templates(brand_id,name,html,created_at,updated_at) VALUES(?,?,?,?,?)", brand, in.Name, in.HTML, time.Now().UnixMilli(), time.Now().UnixMilli())
+		res, e := a.db.Writer.ExecContext(r.Context(), "INSERT INTO templates(brand_id,name,html,text,created_at,updated_at) VALUES(?,?,?,?,?,?)", brand, in.Name, in.HTML, in.Text, time.Now().UnixMilli(), time.Now().UnixMilli())
 		if e == nil {
 			id, e = res.LastInsertId()
 		}
 		result(w, map[string]int64{"id": id}, e)
 	} else {
-		res, e := a.db.Writer.ExecContext(r.Context(), "UPDATE templates SET name=?,html=?,updated_at=? WHERE id=? AND brand_id=?", in.Name, in.HTML, time.Now().UnixMilli(), id, brand)
+		res, e := a.db.Writer.ExecContext(r.Context(), "UPDATE templates SET name=?,html=?,text=?,updated_at=? WHERE id=? AND brand_id=?", in.Name, in.HTML, in.Text, time.Now().UnixMilli(), id, brand)
 		result(w, map[string]int64{"id": id}, requireChanged(res, e))
 	}
 }

@@ -456,7 +456,7 @@ func (i *importer) row(r Row) error {
 		if e != nil {
 			return e
 		}
-		target, e = i.insert("INSERT INTO templates(brand_id,name,html,created_at,updated_at) VALUES(?,?,?,?,?)", brand, r.get("name", "title"), r.get("html", "html_text"), i.date(r, "created_at", "timestamp"), i.now)
+		target, e = i.insert("INSERT INTO templates(brand_id,name,html,text,created_at,updated_at) VALUES(?,?,?,?,?,?)", brand, r.get("name", "title"), r.get("html", "html_text"), r.get("plain_text", "text"), i.date(r, "created_at", "timestamp"), i.now)
 		if e != nil {
 			return e
 		}
@@ -846,7 +846,7 @@ var knownColumns = func() map[string]map[string]bool {
 		"lists":             "id app app_id brand_id name opt_in double_opt_in custom_fields created_at timestamp",
 		"custom_fields":     "id app app_id brand_id list list_id key name label type", "customfields": "id app app_id brand_id list list_id key name label type",
 		"subscribers": "id list list_id email name custom_fields fields status confirmed unconfirmed unsubscribed bounced complaint complained blocklisted suppressed join_date timestamp created_at",
-		"templates":   "id app app_id brand_id name title html html_text created_at timestamp",
+		"templates":   "id app app_id brand_id name title html html_text plain_text text created_at timestamp",
 		"campaigns":   "id app app_id brand_id subject title html_text html plain_text text sent status recipients sent_count sent_to to_send opens opens_total unique_opens opens_unique clicks clicks_total unique_clicks clicks_unique unsubscribes bounces complaints timestamp created_at",
 		"links":       "id campaign_id ares_emails_id link url clicks",
 	} {

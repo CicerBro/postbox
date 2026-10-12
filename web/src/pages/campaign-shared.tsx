@@ -15,6 +15,7 @@ export type Template = {
   id: number;
   name: string;
   html: string;
+  text: string;
   updated_at: number;
 };
 export type Named = { id: number; name: string };

@@ -73,7 +73,10 @@ export function CampaignContent({
               value=""
               onValueChange={(value) => {
                 const t = templates.find((t) => t.id === Number(value));
-                if (t) setHtml(t.html);
+                if (t) {
+                  setHtml(t.html);
+                  setText(t.text ?? "");
+                }
               }}
               options={[
                 {

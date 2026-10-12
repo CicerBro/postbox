@@ -205,6 +205,7 @@ func requestSchema(path string) map[string]any {
 	case strings.Contains(path, "templates"):
 		add("name", "string")
 		add("html", "string")
+		add("text", "string")
 	case strings.Contains(path, "custom-fields"):
 		for _, s := range []string{"key", "label", "type"} {
 			add(s, "string")
@@ -244,7 +245,7 @@ func apiTags() []map[string]string {
 		},
 		{
 			"name":        "Templates",
-			"description": "Templates are reusable, named HTML emails stored in the selected brand's library. List, create, update or delete them, then use their HTML as the starting point for a campaign. Creating or updating a template requires both name and html; saving a template does not send an email.",
+			"description": "Templates are reusable, named emails stored in the selected brand's library. List, create, update or delete them, then use their HTML and optional plain-text override as the starting point for a campaign. Creating or updating a template requires both name and html; saving a template does not send an email.",
 		},
 		{
 			"name":        "API access",

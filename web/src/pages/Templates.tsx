@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +43,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
     [editing, setEditing] = useState<Template | null | undefined>(undefined),
     [name, setName] = useState(""),
     [html, setHtml] = useState(initialHTML),
+    [text, setText] = useState(""),
     [deleting, setDeleting] = useState<Template | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(null),
@@ -66,6 +68,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
     if (editing !== undefined) {
       setName(editing?.name ?? "");
       setHtml(editing?.html ?? initialHTML);
+      setText(editing?.text ?? "");
     }
   }, [editing]);
   const visibleTemplates = sorting.sort(
@@ -93,7 +96,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
       await api(editing ? `/templates/${editing.id}` : "/templates", {
         method: editing ? "PATCH" : "POST",
         brandId,
-        body: { name, html },
+        body: { name, html, text },
       });
       setEditing(undefined);
       setNotice("Template saved.");
@@ -147,6 +150,21 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
               <Input value={name} onChange={(e) => setName(e.target.value)} />
             </label>
             <EmailEditor brandId={brandId} value={html} onChange={setHtml} />
+            <details>
+              <summary className="cursor-pointer text-sm">
+                Plain-text override (optional)
+              </summary>
+              <Textarea
+                aria-label="Template plain text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                className="mt-2"
+              />
+              <p className="text-sm text-muted-foreground">
+                Leave blank to generate text from HTML when a campaign uses
+                this template.
+              </p>
+            </details>
             <div className="flex gap-2">
               <Button disabled={busy} onClick={save}>
                 {busy ? "Saving…" : "Save template"}
