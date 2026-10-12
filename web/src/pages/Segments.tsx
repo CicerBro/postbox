@@ -529,7 +529,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
         open={!!editing}
         onOpenChange={(open) => !open && setEditing(null)}
       >
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editing?.id ? "Edit segment" : "New segment"}
