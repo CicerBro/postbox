@@ -105,7 +105,13 @@ export function SettingsPage({ brandId }: { brandId: number }) {
           })}
         </nav>
         <div
-          className={`min-w-0 flex-1 space-y-6 p-1 ${selected === "messages" ? "" : selected === "webhooks" ? "[&_form]:max-w-3xl" : "[&_form]:max-w-xl"} ${
+          className={`min-w-0 flex-1 space-y-6 p-1 ${
+            selected === "messages" || selected === "jobs"
+              ? ""
+              : selected === "webhooks"
+                ? "[&_form]:max-w-3xl"
+                : "[&_form]:max-w-xl"
+          } ${
             selected === "security" || selected === "brand"
               ? "[&>section]:max-w-xl"
               : ""
