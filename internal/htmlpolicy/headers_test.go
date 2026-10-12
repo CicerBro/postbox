@@ -13,7 +13,7 @@ func TestPolicyPermissions(t *testing.T) {
 		policy                               Policy
 		scripts, connections, sandbox, forms string
 	}{
-		{"app", App, "'self' https://static.cloudflareinsights.com", "'self' https://cloudflareinsights.com", "", "'self'"},
+		{"app", App, "'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com", "'self' https://challenges.cloudflare.com https://cloudflareinsights.com", "", "'self'"},
 		{"signup", Signup, "https://challenges.cloudflare.com https://static.cloudflareinsights.com", "https://challenges.cloudflare.com https://cloudflareinsights.com", "", "'self'"},
 		{"email", Email, "'none'", "'none'", "sandbox allow-popups allow-popups-to-escape-sandbox", "'none'"},
 		{"unsubscribe preview", UnsubscribePreview, "'none'", "'none'", "sandbox allow-popups allow-popups-to-escape-sandbox allow-forms", "'self'"},
@@ -47,6 +47,9 @@ func TestPolicyPermissions(t *testing.T) {
 			}
 			if tc.policy == Signup && directives["frame-src"] != "https://challenges.cloudflare.com" {
 				t.Fatal("Turnstile frame permission changed")
+			}
+			if tc.policy == App && directives["frame-src"] != "'self' about: https://challenges.cloudflare.com" {
+				t.Fatal("app Turnstile frame permission missing")
 			}
 			if tc.policy == App && (directives["object-src"] != "'none'" || directives["frame-ancestors"] != "'none'" || directives["base-uri"] != "'self'") {
 				t.Fatal("app security restrictions changed", directives)

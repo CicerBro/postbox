@@ -3,12 +3,10 @@ package httpapi
 import (
 	"crypto/sha256"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"html/template"
 	"io"
 	"net/http"
-	"net/url"
 	"postbox/internal/emailpreferences"
 	"postbox/internal/htmlpolicy"
 	"postbox/internal/subscribers"
@@ -23,7 +21,7 @@ var subscriptionForm = template.Must(template.New("subscribe").Parse(`<h1>{{.Nam
 <label class="field">Name <span class="muted">(optional)</span><input name="name" placeholder="Your name" autocomplete="name"></label>
 <div hidden><input name="website" tabindex="-1" autocomplete="off"></div>
 <label class="consent"><input type="checkbox" name="consent" required><span>I consent to receive this newsletter.</span></label>
-{{if .SiteKey}}<div class="cf-turnstile" data-sitekey="{{.SiteKey}}" data-size="compact"></div><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{{end}}
+{{if .SiteKey}}<div class="cf-turnstile" data-sitekey="{{.SiteKey}}" data-size="flexible"></div><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{{end}}
 <button class="primary" type="submit">Subscribe <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
 </form>`))
 
@@ -109,28 +107,6 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, 200, map[string]string{"status": status})
-}
-func (a *API) verifyTurnstile(r *http.Request, host string) error {
-	form := url.Values{"secret": {a.cfg.TurnstileSecret}, "response": {r.FormValue("cf-turnstile-response")}, "remoteip": {host}}
-	req, e := http.NewRequestWithContext(r.Context(), "POST", "https://challenges.cloudflare.com/turnstile/v0/siteverify", strings.NewReader(form.Encode()))
-	if e != nil {
-		return e
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	client := &http.Client{Timeout: 10 * time.Second}
-	res, e := client.Do(req)
-	if e != nil {
-		return e
-	}
-	defer res.Body.Close()
-	var v struct{ Success bool }
-	if e = json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&v); e != nil {
-		return e
-	}
-	if res.StatusCode != 200 || !v.Success {
-		return errors.New("Turnstile verification failed")
-	}
-	return nil
 }
 func (a *API) confirm(w http.ResponseWriter, r *http.Request) {
 	if !a.allow(a.rateKey(r, "confirm", false), 30) {

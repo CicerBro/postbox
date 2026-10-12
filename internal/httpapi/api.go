@@ -36,6 +36,7 @@ type Config struct {
 	RecoveryPolicy                                         string
 }
 type API struct {
+	turnstileClient  *http.Client
 	passkeys         *webauthn.WebAuthn
 	db               *store.DB
 	engine           *send.Engine
@@ -62,13 +63,15 @@ func New(db *store.DB, engine *send.Engine, cfg Config) *API {
 		cfg.SessionTTL = 24 * time.Hour
 	}
 	rp, _ := passkeyRP(cfg.BaseURL)
-	return &API{passkeys: rp, db: db, engine: engine, cfg: cfg, limits: map[string]*bucket{}, paths: map[string]any{}}
+	return &API{turnstileClient: &http.Client{Timeout: 10 * time.Second}, passkeys: rp, db: db, engine: engine, cfg: cfg, limits: map[string]*bucket{}, paths: map[string]any{}}
 }
 func (a *API) route(mux *http.ServeMux, pattern string, h http.HandlerFunc) {
 	a.documentRoute(pattern)
 	mux.Handle(pattern, a.authenticate(h))
 }
 func (a *API) Register(m *http.ServeMux) {
+	a.documentRoute("GET /api/v1/auth/config")
+	m.HandleFunc("GET /api/v1/auth/config", a.authConfig)
 	a.documentRoute("POST /api/v1/auth/login")
 	m.HandleFunc("POST /api/v1/auth/login", a.login)
 	a.route(m, "GET /api/v1/auth/session", a.session)

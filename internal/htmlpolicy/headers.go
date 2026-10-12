@@ -11,12 +11,12 @@ const (
 	sandboxLinks  = "sandbox allow-popups allow-popups-to-escape-sandbox"
 	emailSources  = "default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline' https: http:; base-uri 'none'"
 
-	App                Policy = "default-src 'self'; script-src 'self' " + beaconScript + "; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' " + beaconConnect + "; frame-src 'self' about:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
-	Signup             Policy = "default-src 'none'; script-src https://challenges.cloudflare.com " + beaconScript + "; frame-src https://challenges.cloudflare.com; connect-src https://challenges.cloudflare.com " + beaconConnect + "; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'"
+	App                Policy = "default-src 'self'; script-src 'self' https://challenges.cloudflare.com " + beaconScript + "; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://challenges.cloudflare.com " + beaconConnect + "; frame-src 'self' about: https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+	Signup             Policy = "default-src 'none'; img-src 'self'; script-src https://challenges.cloudflare.com " + beaconScript + "; frame-src https://challenges.cloudflare.com; connect-src https://challenges.cloudflare.com " + beaconConnect + "; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'"
 	Email              Policy = sandboxLinks + "; " + emailSources + "; form-action 'none'"
 	UnsubscribePreview Policy = sandboxLinks + " allow-forms; " + emailSources + "; form-action 'self'"
-	Preferences        Policy = "default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; form-action 'self'; base-uri 'none'"
-	Custom             Policy = "sandbox; default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; base-uri 'none'; form-action 'none'"
+	Preferences        Policy = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' https: data:; form-action 'self'; base-uri 'none'"
+	Custom             Policy = "sandbox; default-src 'none'; img-src 'self' https: data:; style-src 'unsafe-inline' https:; base-uri 'none'; form-action 'none'"
 )
 
 // Set serves HTML under a named policy with shared proxy protection.

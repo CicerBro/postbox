@@ -28,7 +28,7 @@ export function rememberDraft(key: string, value: unknown) { drafts.set(key, val
 export function readDraft<T>(key: string): T | undefined { return drafts.get(key) as T | undefined; }
 export function forgetDraft(key: string) { drafts.delete(key); }
 export function sessionRequest(path: string, signal?: AbortSignal) {
-  const publicAuth = path === "/auth/login" || path.startsWith("/auth/passkeys/login/") || path === "/auth/session";
+  const publicAuth = path === "/auth/config" || path === "/auth/login" || path.startsWith("/auth/passkeys/login/") || path === "/auth/session";
   if (expired && !publicAuth) throw new Error("Your session expired. Sign in to continue.");
   const controller = new AbortController();
   const version = generation;

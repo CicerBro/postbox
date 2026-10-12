@@ -365,6 +365,14 @@ func (a *API) beginPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 	if !a.passkeyAvailable(w, r) {
 		return
 	}
+	if a.authTurnstileRequired() {
+		var in struct {
+			TurnstileToken string `json:"turnstile_token"`
+		}
+		if !decode(w, r, &in) || !a.requireAuthTurnstile(w, r, in.TurnstileToken, "login") {
+			return
+		}
+	}
 	options, state, err := a.passkeys.BeginDiscoverableLogin(webauthn.WithUserVerification(protocol.VerificationRequired))
 	if err == nil {
 		err = a.savePasskeyCeremony(w, r, "login", 0, nil, "", state)

@@ -7,7 +7,8 @@ async function fixture(context: BrowserContext) {
     const path = new URL(request.url()).pathname.replace('/api/v1', '');
     let status = 200;
     let body: unknown = [];
-    if (path === '/auth/login') {
+    if (path === '/auth/config') body = { turnstile_required: false, turnstile_site_key: '' };
+    else if (path === '/auth/login') {
       if (state.loginFailure) { status = 401; body = { error: 'Invalid credentials' }; }
       else if (state.totpRequired && !request.postDataJSON().totp) { status = 202; body = { totp_required: true }; }
       else if (state.totpRequired && request.postDataJSON().totp !== '123456') { status = 401; body = { error: 'invalid authenticator code' }; }

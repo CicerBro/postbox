@@ -18,6 +18,9 @@ func (a *API) documentPasskeys() {
 				op["description"] = "Passwordless WebAuthn sign-in requires authenticator PIN or biometric verification. Begin returns publicKey options. Finish accepts PublicKeyCredential JSON and issues a session only after signature, challenge, RP, exact origin, UV, and ownership validation. The HttpOnly ceremony cookie binds the single-use five-minute challenge to this browser."
 			}
 			switch {
+			case strings.HasSuffix(path, "login/begin"):
+				props["turnstile_token"] = map[string]any{"type": "string", "maxLength": 2048, "description": "Fresh login Turnstile token required when Turnstile is configured"}
+				op["description"] = op["description"].(string) + " When Turnstile is configured, begin requires a verified turnstile_token before issuing a ceremony."
 			case strings.HasSuffix(path, "register/begin"):
 				props["password"] = map[string]any{"type": "string"}
 				props["code"] = map[string]any{"type": "string", "description": "Current TOTP code required if TOTP is enabled"}
@@ -37,7 +40,7 @@ func (a *API) documentPasskeys() {
 				required = []string{"id", "rawId", "type", "response"}
 			}
 			if len(props) > 0 {
-				op["requestBody"] = map[string]any{"required": true, "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": props, "required": required}}}}
+				op["requestBody"] = map[string]any{"required": !strings.HasSuffix(path, "login/begin"), "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": props, "required": required}}}}
 			} else if strings.HasSuffix(path, "login/begin") {
 				delete(op, "requestBody")
 			}

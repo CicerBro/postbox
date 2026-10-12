@@ -94,8 +94,14 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, 429, errors.New("too many login attempts"))
 		return
 	}
-	var in struct{ Email, Password, TOTP string }
+	var in struct {
+		Email, Password, TOTP string
+		TurnstileToken        string `json:"turnstile_token"`
+	}
 	if !decode(w, r, &in) {
+		return
+	}
+	if !a.requireAuthTurnstile(w, r, in.TurnstileToken, "login") {
 		return
 	}
 	var id int64

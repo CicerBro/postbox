@@ -41,12 +41,17 @@ func (a *API) documentRoute(pattern string) {
 		op["description"] = "Permanently delete a draft campaign with brand write permission. An administrator session can also delete sent or cancelled campaigns. Scheduled, preparing, sending and paused campaigns must be cancelled first. Deletes campaign delivery history and reports while retaining subscribers and lists."
 		op["responses"].(map[string]any)["409"] = map[string]any{"description": "Cancel this campaign before deleting it"}
 	}
-	if path == "/api/v1/auth/login" || strings.HasPrefix(path, "/subscribe/") || strings.HasPrefix(path, "/confirm/") {
+	if path == "/api/v1/auth/config" || path == "/api/v1/auth/login" || strings.HasPrefix(path, "/subscribe/") || strings.HasPrefix(path, "/confirm/") {
 		op["security"] = []any{}
 	}
 	if path == "/api/v1/auth/login" {
-		op["description"] = "Verify email and password. When TOTP is enabled and no code is supplied, returns 202 with totp_required=true without creating a session. Resubmit the credentials with the authenticator code to complete sign-in."
+		op["description"] = "Verify email and password. When Turnstile is configured, every attempt requires a fresh turnstile_token from the login widget, verified before credentials. When TOTP is enabled and no code is supplied, returns 202 with totp_required=true without creating a session. Resubmit the credentials with the authenticator code to complete sign-in."
 		op["responses"].(map[string]any)["202"] = map[string]any{"description": "Authenticator code required; no session has been created", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"totp_required"}, "properties": map[string]any{"totp_required": map[string]any{"type": "boolean", "enum": []bool{true}}}}}}}
+	}
+	if path == "/api/v1/auth/config" {
+		op["parameters"] = []map[string]any{}
+		op["description"] = "Public sign-in configuration. Returns turnstile_required and the public turnstile_site_key; never returns the secret."
+		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Sign-in verification configuration", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"turnstile_required", "turnstile_site_key"}, "properties": map[string]any{"turnstile_required": map[string]any{"type": "boolean"}, "turnstile_site_key": map[string]any{"type": "string"}}}}}}
 	}
 	if path == "/api/v1/openapi.json" {
 		op["security"] = []map[string]any{{"cookieAuth": []string{}}}
@@ -178,7 +183,7 @@ func requestSchema(path string) map[string]any {
 			required = []string{"kind", "value"}
 		}
 	case strings.HasSuffix(path, "/login"):
-		for _, s := range []string{"email", "password", "totp"} {
+		for _, s := range []string{"email", "password", "totp", "turnstile_token"} {
 			add(s, "string")
 		}
 		required = []string{"email", "password"}

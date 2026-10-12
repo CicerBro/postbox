@@ -41,6 +41,9 @@ func TestHostedSubscriptionPagePreservesFormContract(t *testing.T) {
 			t.Fatal("signup page included unescaped brand/list HTML")
 		}
 		hasTurnstile := strings.Contains(body, `src="https://challenges.cloudflare.com/turnstile/v0/api.js"`) && strings.Contains(body, `data-sitekey="public-turnstile-key"`)
+		if hasTurnstile && (!strings.Contains(body, `data-size="flexible"`) || strings.Contains(body, `data-size="compact"`)) {
+			t.Fatal("signup Turnstile must use the horizontal flexible layout")
+		}
 		if hasTurnstile != (siteKey != "") {
 			t.Fatalf("Turnstile mismatch for site key %q", siteKey)
 		}

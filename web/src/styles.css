@@ -1759,6 +1759,15 @@
     background: var(--background);
     gap: 24px;
   }
+  .auth-turnstile { width: 100%; min-height: 65px; }
+  @media (max-width: 420px) {
+    .login { padding: 20px 16px; }
+    .login .login-card { padding: 24px 20px; }
+  }
+  @media (max-width: 375px) {
+    .login { padding: 20px 8px; }
+    .login .login-card { padding: 24px clamp(0px, calc((100vw - 318px) / 2), 20px); }
+  }
   .login-brand {
     display: flex;
     align-items: center;

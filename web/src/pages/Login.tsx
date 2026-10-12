@@ -1,17 +1,42 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Mail, KeyRound, ShieldCheck, ArrowRight } from "lucide-react";
 import { api } from "../lib/api";
 import type { LoginResponse, TOTPChallengeResponse } from "../lib/generated-contracts";
 import { requestOptions, credentialJSON } from "../lib/webauthn";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
+import { Turnstile } from "../components/Turnstile";
 export function Login({ onLogin, expired = false }: { onLogin: () => Promise<void>; expired?: boolean }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [totp, setTotp] = useState(false);
   const [totpRequired, setTotpRequired] = useState(false);
+  const [authConfig, setAuthConfig] = useState<{ turnstile_required: boolean; turnstile_site_key: string } | null>(null);
+  const [configError, setConfigError] = useState("");
+  const [configRetry, setConfigRetry] = useState(0);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [challenge, setChallenge] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setConfigError("");
+    api<{ turnstile_required: boolean; turnstile_site_key: string }>("/auth/config", { signal: controller.signal }).then(config => {
+      if (typeof config.turnstile_required !== "boolean" || typeof config.turnstile_site_key !== "string" || (config.turnstile_required && !config.turnstile_site_key)) {
+        throw new Error("Sign-in verification is not configured correctly.");
+      }
+      setAuthConfig(config);
+    }).catch(error => {
+      if (!controller.signal.aborted) setConfigError((error as Error).message);
+    });
+    return () => controller.abort();
+  }, [configRetry]);
+  const verificationReady = authConfig !== null && (!authConfig.turnstile_required || turnstileToken !== "");
+  function resetChallenge() {
+    setTurnstileToken("");
+    setChallenge(value => value + 1);
+  }
   async function login(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (busy || !verificationReady) return;
     const f = new FormData(e.currentTarget);
     setBusy(true);
     setError("");
@@ -22,6 +47,7 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
           email: f.get("email"),
           password: f.get("password"),
           totp: f.get("totp") || "",
+          ...(authConfig?.turnstile_required ? { turnstile_token: turnstileToken } : {}),
         },
       });
       if ("totp_required" in response && response.totp_required) {
@@ -33,16 +59,18 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      resetChallenge();
       setBusy(false);
     }
   }
   async function passkey() {
+    if (busy || !verificationReady) return;
     setBusy(true);
     setError("");
     try {
       const options = await api<{ publicKey: any }>(
         "/auth/passkeys/login/begin",
-        { method: "POST" },
+        { method: "POST", body: authConfig?.turnstile_required ? { turnstile_token: turnstileToken } : undefined },
       );
       const credential = (await navigator.credentials.get({
         publicKey: requestOptions(options.publicKey),
@@ -56,6 +84,7 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      resetChallenge();
       setBusy(false);
     }
   }
@@ -121,12 +150,14 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
               Enter the six-digit code from your authenticator app to finish signing in.
             </p>
           )}
+          {authConfig?.turnstile_required && <Turnstile key={challenge} siteKey={authConfig.turnstile_site_key} onToken={setTurnstileToken} />}
+          {configError && <p role="alert" className="error">{configError} <button type="button" className="text-link" onClick={() => setConfigRetry(value => value + 1)}>Retry verification</button></p>}
           {error && (
             <p role="alert" className="error">
               {error}
             </p>
           )}
-          <Button className="w-full" disabled={busy}>
+          <Button className="w-full" disabled={busy || !verificationReady}>
             {busy ? (
               "Signing in…"
             ) : (
@@ -143,7 +174,7 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
               <Button
                 variant="outline"
                 className="w-full login-passkey-button"
-                disabled={busy}
+                disabled={busy || !verificationReady}
                 onClick={passkey}
               >
                 <KeyRound size={16} /> Sign in with a passkey

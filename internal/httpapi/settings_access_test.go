@@ -82,6 +82,7 @@ func TestSettingsBrandPermissionsMatchCaller(t *testing.T) {
 
 func TestDeploymentSettingsRequiresAdminSessionAndOmitsSecrets(t *testing.T) {
 	a, m, _, admin, csrf := setup(t)
+	_, member := settingsMember(t, m, &admin, csrf)
 	a.cfg.BaseURL = "https://postbox.example.org"
 	a.cfg.SecureCookies = true
 	a.cfg.SessionTTL = 2 * time.Hour
@@ -106,7 +107,6 @@ func TestDeploymentSettingsRequiresAdminSessionAndOmitsSecrets(t *testing.T) {
 	if w = request(m, "GET", "/api/v1/deployment-settings", "", nil, ""); w.Code != http.StatusUnauthorized {
 		t.Fatal("anonymous deployment access", w.Code)
 	}
-	_, member := settingsMember(t, m, &admin, csrf)
 	if w = request(m, "GET", "/api/v1/deployment-settings", "", member, ""); w.Code != http.StatusForbidden {
 		t.Fatal("member deployment access", w.Code)
 	}
