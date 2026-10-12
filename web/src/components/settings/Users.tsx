@@ -14,6 +14,7 @@ import { Section, Field, Message, useAction, Checks, strings } from "./Common";
 type User = {
   id: number;
   email: string;
+  display_name: string;
   role: string;
   totp_enabled: boolean | number;
 };
@@ -148,6 +149,7 @@ function UserEditor({
   const { session, logout } = useApp();
   const qc = useQueryClient();
   const a = useAction();
+  const [displayName, setDisplayName] = useState(user?.display_name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState(user?.role ?? "brand_user");
@@ -163,7 +165,7 @@ function UserEditor({
             async () => {
               await api(user ? `/users/${user.id}` : "/users", {
                 method: user ? "PATCH" : "POST",
-                body: { email, password: password || undefined, role },
+                body: { email, display_name: displayName, password: password || undefined, role },
               });
               setPassword("");
               await qc.invalidateQueries({ queryKey: ["users"] });
@@ -174,6 +176,13 @@ function UserEditor({
           );
         }}
       >
+        <Field
+          label="Display name"
+          value={displayName}
+          maxLength={100}
+          placeholder="Defaults to email"
+          onChange={(e) => setDisplayName(e.target.value)}
+        />
         <Field
           label="Email"
           type="email"

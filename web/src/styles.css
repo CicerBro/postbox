@@ -969,6 +969,8 @@
     line-height: 1.25;
   }
   .account-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
     display: block;
     font-size: 14px;
     font-weight: 600;

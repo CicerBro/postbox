@@ -4,7 +4,6 @@ import { Check, ChevronsUpDown } from "lucide-react";
 import { useApp, type Session } from "../../lib/app-context";
 import { useDateTime } from "../../lib/date-time";
 import { api } from "../../lib/api";
-import { useThemePreference, type ThemePreference } from "../../lib/theme";
 import { Input } from "../ui/input";
 
 function availableTimezones(current: string) {
@@ -27,7 +26,6 @@ export function TimezonePreferences() {
   const { session } = useApp();
   const { timeZone, formatDateTime } = useDateTime();
   const client = useQueryClient();
-  const [theme, setTheme] = useThemePreference();
   const id = useId();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -61,21 +59,6 @@ export function TimezonePreferences() {
   }
   return (
     <section className="space-y-4 max-w-xl">
-      <div className="space-y-2">
-        <label htmlFor={`${id}-appearance`}>Appearance</label>
-        <select
-          id={`${id}-appearance`}
-          value={theme}
-          onChange={(event) => setTheme(event.target.value as ThemePreference)}
-        >
-          <option value="system">Use system setting</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-        <p className="text-sm muted">
-          Appearance is saved in this browser and applies immediately.
-        </p>
-      </div>
       <p className="muted">
         Your timezone is saved to your account and used for dates, times, and
         graph labels.

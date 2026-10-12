@@ -39,7 +39,7 @@ func (a *API) users(w http.ResponseWriter, r *http.Request) {
 	id := number(r.PathValue("id"))
 	if r.Method == "GET" {
 		if id > 0 {
-			rows, err := queryRows(r.Context(), a.db.Reader, `SELECT id,email,role,created_at,totp_secret IS NOT NULL AS totp_enabled FROM users WHERE id=?`, id)
+			rows, err := queryRows(r.Context(), a.db.Reader, `SELECT id,email,display_name,role,created_at,totp_secret IS NOT NULL AS totp_enabled FROM users WHERE id=?`, id)
 			if err == nil && len(rows) == 0 {
 				err = sql.ErrNoRows
 			}
@@ -51,7 +51,7 @@ func (a *API) users(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		after, limit := page(r)
-		rows, err := queryRows(r.Context(), a.db.Reader, `SELECT id,email,role,created_at,totp_secret IS NOT NULL AS totp_enabled FROM users WHERE id>? ORDER BY id LIMIT ?`, after, limit)
+		rows, err := queryRows(r.Context(), a.db.Reader, `SELECT id,email,display_name,role,created_at,totp_secret IS NOT NULL AS totp_enabled FROM users WHERE id>? ORDER BY id LIMIT ?`, after, limit)
 		result(w, rows, err)
 		return
 	}
@@ -70,12 +70,21 @@ func (a *API) users(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		Email       string  `json:"email"`
+		DisplayName *string `json:"display_name"`
+		Password    string  `json:"password"`
+		Role        string  `json:"role"`
 	}
 	if !decode(w, r, &in) {
 		return
+	}
+	if in.DisplayName != nil {
+		name, err := normalizeDisplayName(*in.DisplayName)
+		if err != nil {
+			fail(w, 400, err)
+			return
+		}
+		in.DisplayName = &name
 	}
 	if r.Method == "POST" && in.Role == "" {
 		in.Role = "brand_user"
@@ -107,7 +116,7 @@ func (a *API) users(w http.ResponseWriter, r *http.Request) {
 	}
 	err := a.db.Immediate(r.Context(), func(c *sql.Conn) error {
 		if r.Method == "POST" {
-			res, err := c.ExecContext(r.Context(), `INSERT INTO users(email,password_hash,role,created_at) VALUES(?,?,?,?)`, in.Email, hash, in.Role, time.Now().UnixMilli())
+			res, err := c.ExecContext(r.Context(), `INSERT INTO users(email,password_hash,role,created_at,display_name) VALUES(?,?,?,?,COALESCE(?,''))`, in.Email, hash, in.Role, time.Now().UnixMilli(), in.DisplayName)
 			if err != nil {
 				return err
 			}
@@ -119,7 +128,7 @@ func (a *API) users(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		res, err := c.ExecContext(r.Context(), `UPDATE users SET email=CASE WHEN ?='' THEN email ELSE ? END,password_hash=CASE WHEN ?='' THEN password_hash ELSE ? END,role=CASE WHEN ?='' THEN role ELSE ? END WHERE id=?`, in.Email, in.Email, hash, hash, in.Role, in.Role, id)
+		res, err := c.ExecContext(r.Context(), `UPDATE users SET display_name=COALESCE(?,display_name),email=CASE WHEN ?='' THEN email ELSE ? END,password_hash=CASE WHEN ?='' THEN password_hash ELSE ? END,role=CASE WHEN ?='' THEN role ELSE ? END WHERE id=?`, in.DisplayName, in.Email, in.Email, hash, hash, in.Role, in.Role, id)
 		if err = requireChanged(res, err); err != nil {
 			return err
 		}
@@ -355,6 +364,7 @@ func (a *API) documentUsers() {
 					required = append(required, "code")
 				}
 			case path == "/api/v1/users" || path == "/api/v1/users/{id}":
+				props["display_name"] = displayNameSchema()
 				props["email"] = map[string]any{"type": "string", "format": "email"}
 				props["password"] = map[string]any{"type": "string", "minLength": 8}
 				props["role"] = map[string]any{"type": "string", "enum": []string{"admin", "brand_user"}}

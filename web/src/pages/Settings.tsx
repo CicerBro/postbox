@@ -9,6 +9,7 @@ import { Users } from "../components/settings/Users";
 import { Jobs, JobRetention } from "../components/settings/Jobs";
 import { AmazonSES } from "../components/settings/AmazonSES";
 import { PublicSubscriptions } from "../components/settings/PublicSubscriptions";
+import { ProfilePreferences } from "../components/settings/ProfilePreferences";
 import { TimezonePreferences } from "../components/settings/TimezonePreferences";
 import {
   DeploymentSettings,
@@ -121,7 +122,10 @@ export function SettingsPage({
           </h2>
           {area === "account" && section === "security" && <Security />}
           {area === "account" && section === "preferences" && (
-            <TimezonePreferences />
+            <>
+              <ProfilePreferences />
+              <TimezonePreferences />
+            </>
           )}
           {area === "brand" && section === "general" && (
             <BrandIdentity brandId={brandId} />

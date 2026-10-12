@@ -81,10 +81,11 @@ test("settings sections survive refresh, browser history, and switching brands",
   await expect(page.getByRole("combobox", { name: "Timezone", exact: true })).toHaveValue("UTC");
 });
 
-test("appearance preference updates the header in the same tab", async ({ page, context }) => {
+test("navbar theme control works without duplicate appearance preferences", async ({ page, context }) => {
   await fixture(context);
   await page.goto("/account/preferences");
-  await page.getByLabel("Appearance", { exact: true }).selectOption("dark");
+  await expect(page.getByLabel("Appearance", { exact: true })).toHaveCount(0);
+  await page.getByRole("group", { name: "Theme", exact: true }).getByRole("button", { name: /Dark/ }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.getByRole("group", { name: "Theme", exact: true }).getByRole("button", { name: /Dark/ })).toHaveAttribute("aria-pressed", "true");
 });

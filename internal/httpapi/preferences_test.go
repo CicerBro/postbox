@@ -99,3 +99,62 @@ func TestTimezonePreferencesSessionAndUserIsolation(t *testing.T) {
 		t.Fatal(out.Code, out.Body.String())
 	}
 }
+
+func TestDisplayNamePreferences(t *testing.T) {
+	_, mux, db, cookie, csrf := setup(t)
+	read := func(want string) {
+		t.Helper()
+		w := request(mux, "GET", "/api/v1/auth/session", "", &cookie, "")
+		var session SessionResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &session); err != nil || w.Code != 200 || session.DisplayName != want || session.Email != "admin@example.org" || !session.Admin {
+			t.Fatalf("session identity: %d %s (%v)", w.Code, w.Body.String(), err)
+		}
+	}
+	read("")
+	for _, name := range []string{"  Ada Lovelace  ", "李明", ""} {
+		body, _ := json.Marshal(map[string]string{"display_name": name})
+		w := request(mux, "PATCH", "/api/v1/auth/preferences", string(body), &cookie, csrf)
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		read(strings.TrimSpace(name))
+	}
+	request(mux, "PATCH", "/api/v1/auth/preferences", `{"timezone":"Europe/Amsterdam","display_name":"Ada"}`, &cookie, csrf)
+	request(mux, "PATCH", "/api/v1/auth/preferences", `{"timezone":"UTC"}`, &cookie, csrf)
+	read("Ada")
+	for _, body := range []string{`{"display_name":null}`, `{"display_name":42}`, `{"display_name":"Ada","user_id":2}`, `{"display_name":"` + strings.Repeat("界", 101) + `"}`} {
+		if w := request(mux, "PATCH", "/api/v1/auth/preferences", body, &cookie, csrf); w.Code != 400 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		read("Ada")
+	}
+	if w := request(mux, "PATCH", "/api/v1/auth/preferences", `{"display_name":"Other"}`, &cookie, ""); w.Code != 403 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := request(mux, "POST", "/api/v1/users", `{"email":"viewer@example.org","password":"viewer-long-password","display_name":" Viewer "}`, &cookie, csrf); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w := request(mux, "POST", "/api/v1/auth/login", `{"email":"viewer@example.org","password":"viewer-long-password"}`, nil, "")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	viewer := w.Result().Cookies()[0]
+	var login LoginResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &login); err != nil {
+		t.Fatal(err)
+	}
+	if w = request(mux, "PATCH", "/api/v1/auth/preferences", `{"display_name":"Member"}`, viewer, login.CSRFToken); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	read("Ada")
+	var name, zone string
+	if err := db.Reader.QueryRow("SELECT display_name,timezone FROM users WHERE email='viewer@example.org'").Scan(&name, &zone); err != nil || name != "Member" || zone != "" {
+		t.Fatalf("member preferences: %q %q %v", name, zone, err)
+	}
+	if w = request(mux, "PATCH", "/api/v1/users/2", `{"display_name":""}`, &cookie, csrf); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if err := db.Reader.QueryRow("SELECT display_name FROM users WHERE id=2").Scan(&name); err != nil || name != "" {
+		t.Fatalf("admin clear: %q %v", name, err)
+	}
+}

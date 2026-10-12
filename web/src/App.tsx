@@ -589,11 +589,14 @@ export default function App() {
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
             <button className="account-trigger" aria-label="Account menu">
-              <span className="avatar">{session.data.admin ? "AD" : "US"}</span>
+              <span className="avatar" aria-hidden="true">
+                {Array.from(session.data.display_name || session.data.email || "").slice(0, 2).join("").toUpperCase()}
+              </span>
               <span className="sidebar-label account-copy">
                 <strong>
-                  {session.data.admin ? "Administrator" : "Team member"}
+                  {session.data.display_name || session.data.email}
                 </strong>
+                {session.data.admin && <small>Administrator</small>}
               </span>
               <ChevronsUpDown size={15} className="sidebar-label" />
             </button>
