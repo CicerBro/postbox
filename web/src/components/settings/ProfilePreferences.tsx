@@ -16,7 +16,6 @@ export function ProfilePreferences() {
       title="Profile"
       description="Choose how your name appears in the sidebar."
     >
-      <p className="text-sm muted">{session.email}</p>
       <form
         className="space-y-4"
         onSubmit={(event) => {
