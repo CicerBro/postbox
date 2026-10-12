@@ -2,9 +2,9 @@ import { useState } from "react";
 
 type SortValue = string | number | null | undefined;
 
-export function useTableSort<K extends string>(initialColumn: K) {
+export function useTableSort<K extends string>(initialColumn: K, initialDirection: "asc" | "desc" = "asc") {
   const [column, setColumn] = useState<K>(initialColumn);
-  const [direction, setDirection] = useState<"asc" | "desc">("asc");
+  const [direction, setDirection] = useState<"asc" | "desc">(initialDirection);
   function header(key: K) {
     return {
       active: column === key,

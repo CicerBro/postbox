@@ -5,6 +5,8 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, download } from "../lib/api";
 import { SelectField } from "../components/ui/select";
+import { SortableTableHead } from "../components/SortableTableHead";
+import { useTableSort } from "../lib/use-table-sort";
 import { Button } from "../components/ui/button";
 import {
   ChartInstructions,
@@ -42,6 +44,12 @@ import {
 } from "./campaign-shared";
 
 type Stats = Record<string, number>;
+const countryNames = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
+function countryName(country: string) {
+  const code = country.trim().toUpperCase();
+  if (!code || code === "ZZ") return "Unknown";
+  return /^[A-Z]{2}$/.test(code) ? countryNames.of(code) ?? country : country;
+}
 type LinkStats = {
   id: number;
   url: string;
@@ -77,6 +85,7 @@ export function CampaignReportPage({ brandId }: { brandId: number }) {
 }
 function ReportView({ brandId, id }: { brandId: number; id: number }) {
   const { formatDateTime } = useDateTime();
+  const countrySort = useTableSort<"country" | "opens" | "clicks">("opens", "desc");
   const client = useQueryClient(),
     [status, setStatus] = useState(""),
     [after, setAfter] = useState(0),
@@ -370,15 +379,15 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
             <table className={tableClass}>
               <thead>
                 <tr>
-                  <th>Country</th>
-                  <th>Opens</th>
-                  <th>Clicks</th>
+                  <SortableTableHead label="Country" {...countrySort.header("country")} />
+                  <SortableTableHead label="Opens" {...countrySort.header("opens")} />
+                  <SortableTableHead label="Clicks" {...countrySort.header("clicks")} />
                 </tr>
               </thead>
               <tbody>
-                {report.data?.countries?.map((c) => (
+                {countrySort.sort(report.data?.countries ?? [], (c, key) => key === "country" ? countryName(c.country) : c[key]).map((c) => (
                   <tr key={c.country}>
-                    <td>{c.country || "Unknown"}</td>
+                    <td>{countryName(c.country)}</td>
                     <td>{number(c.opens)}</td>
                     <td>{number(c.clicks)}</td>
                   </tr>

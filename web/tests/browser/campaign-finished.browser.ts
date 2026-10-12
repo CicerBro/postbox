@@ -14,7 +14,12 @@ for (const status of ['sent', 'cancelled']) {
       else if (path === '/sending') body = { enabled: true };
       else if (path === '/campaigns') body = [{ ...campaign, excerpt: 'Historical email body' }];
       else if (path === '/campaigns/7') body = [campaign];
-      else if (path === '/campaigns/7/report') body = { stats: [{ recipients: 42, sent: 42, opens_unique: 8, opens_total: 10, clicks_unique: 4, clicks_total: 5 }], links: [], hourly: [], countries: [] };
+      else if (path === '/campaigns/7/report') body = { stats: [{ recipients: 42, sent: 42, opens_unique: 8, opens_total: 10, clicks_unique: 4, clicks_total: 5 }], links: [], hourly: [], countries: [
+        { country: 'US', opens: 2, clicks: 30 },
+        { country: 'nl', opens: 12, clicks: 1 },
+        { country: 'DE', opens: 5, clicks: 7 },
+        { country: '', opens: 0, clicks: 0 },
+      ] };
       else if (path === '/campaigns/7/preview') body = { subject: campaign.subject, html: campaign.html, text: '' };
       else if (path === '/campaigns/7/events') {
         await route.fulfill({ contentType: 'text/event-stream', body: 'event: stats\ndata: [{"recipients":42,"sent":42,"opens_unique":8,"opens_total":10,"clicks_unique":4,"clicks_total":5}]\n\n' });
@@ -31,6 +36,22 @@ for (const status of ['sent', 'cancelled']) {
     await expect(page.frameLocator('iframe[title="Sent newsletter preview"]').getByText('Historical email body')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Manage campaign', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toHaveCount(0);
+    const countries = page.getByRole('table').filter({ has: page.getByRole('columnheader', { name: 'Country' }) });
+    const names = countries.locator('tbody tr td:first-child');
+    await expect(names).toHaveText(['Netherlands', 'Germany', 'United States', 'Unknown']);
+    await expect(countries.getByRole('columnheader', { name: /Opens/ })).toHaveAttribute('aria-sort', 'descending');
+    await countries.getByRole('button', { name: /Sort by Opens/ }).click();
+    await expect(names).toHaveText(['Unknown', 'United States', 'Germany', 'Netherlands']);
+    await countries.getByRole('button', { name: /Sort by Opens/ }).click();
+    await expect(names).toHaveText(['Netherlands', 'Germany', 'United States', 'Unknown']);
+    await countries.getByRole('button', { name: /Sort by Country/ }).click();
+    await expect(names).toHaveText(['Germany', 'Netherlands', 'United States', 'Unknown']);
+    await countries.getByRole('button', { name: /Sort by Country/ }).click();
+    await expect(names).toHaveText(['Unknown', 'United States', 'Netherlands', 'Germany']);
+    await countries.getByRole('button', { name: /Sort by Clicks/ }).click();
+    await expect(names).toHaveText(['Unknown', 'Netherlands', 'Germany', 'United States']);
+    await countries.getByRole('button', { name: /Sort by Clicks/ }).click();
+    await expect(names).toHaveText(['United States', 'Germany', 'Netherlands', 'Unknown']);
     await page.goto('/campaigns/7');
     await expect(page).toHaveURL(/\/campaigns\/7\/report$/);
     await expect(page.frameLocator('iframe[title="Sent newsletter preview"]').getByText('Historical email body')).toBeVisible();
