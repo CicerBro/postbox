@@ -92,6 +92,13 @@ func (a *API) documentRoute(pattern string) {
 		}
 		op["parameters"] = append(op["parameters"].([]map[string]any), map[string]any{"name": "scope", "in": "query", "schema": map[string]any{"type": "string", "enum": scopes, "default": defaultScope}})
 		op["description"] = "Brand scope returns or modifies only the selected brand's suppressions. Global scope requires an administrator session. GET defaults to effective: selected-brand rules plus global rules. For brand users and API keys, global rules are returned only when their email or domain matches a subscriber already in that brand. Administrator sessions see all global rules. Sending always applies all global rules, including to future subscribers."
+		if method == "GET" && path == "/api/v1/suppressions" {
+			op["parameters"] = append(op["parameters"].([]map[string]any),
+				map[string]any{"name": "q", "in": "query", "description": "Case-insensitive literal substring search in the email/domain value or reason. Applied before pagination.", "schema": map[string]any{"type": "string"}},
+				map[string]any{"name": "kind", "in": "query", "schema": map[string]any{"type": "string", "enum": []string{"email", "domain"}}},
+				map[string]any{"name": "reason", "in": "query", "description": "Exact reason filter. Manual entries may include Sendy imports.", "schema": map[string]any{"type": "string", "enum": []string{"manual", "ses_sync", "hard_bounce", "soft_bounce_limit", "complaint"}}},
+			)
+		}
 		if method == "PATCH" {
 			op["description"] = op["description"].(string) + " PATCH preserves omitted kind, value, and reason fields; the rule stays in its existing scope and retains its creation time. Email rules require a plain address with a full domain; domain rules require only a domain. Editing applies the new rule to pending recipients without reactivating subscriber or delivery status."
 			op["responses"].(map[string]any)["409"] = map[string]any{"description": "Another suppression already has this normalized kind and value in the selected scope"}

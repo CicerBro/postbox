@@ -1,6 +1,6 @@
 import { SortableTableHead } from "../SortableTableHead";
 import { useTableSort } from "../../lib/use-table-sort";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,19 +29,32 @@ export function Suppressions({ brandId }: { brandId: number }) {
   const { session } = useApp();
   const qc = useQueryClient();
   const [scope, setScope] = useState("effective");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [filterKind, setFilterKind] = useState("");
+  const [filterReason, setFilterReason] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [target, setTarget] = useState("brand");
   const [kind, setKind] = useState("email");
   const [value, setValue] = useState("");
   const [editing, setEditing] = useState<Suppression | null>(null);
   const a = useAction();
   const q = useInfiniteQuery({
-    queryKey: ["suppressions", brandId, scope],
+    queryKey: ["suppressions", brandId, scope, debouncedSearch, filterKind, filterReason],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) =>
-      api<Suppression[]>(
-        `/suppressions?scope=${scope}&after=${pageParam}&limit=100`,
-        scope === "global" ? {} : { brandId },
-      ),
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams({ scope, after: String(pageParam), limit: "100" });
+      if (debouncedSearch) params.set("q", debouncedSearch);
+      if (filterKind) params.set("kind", filterKind);
+      if (filterReason) params.set("reason", filterReason);
+      return api<Suppression[]>(`/suppressions?${params}`, {
+        ...(scope === "global" ? {} : { brandId }),
+        signal,
+      });
+    },
     getNextPageParam: (rows) =>
       rows.length === 100 ? rows.at(-1)?.id : undefined,
   });
@@ -57,19 +70,6 @@ export function Suppressions({ brandId }: { brandId: number }) {
         entry does not reactivate bounced or complained subscribers. Sorting applies
         to loaded rows.
       </p>
-      <label htmlFor="suppression-scope" className="block text-sm space-y-2">
-        Show
-        <SelectField
-          id="suppression-scope"
-          value={scope}
-          onValueChange={setScope}
-          options={[
-            { value: "effective", label: "Effective: brand and global" },
-            { value: "brand", label: "Brand only" },
-            ...(session.admin ? [{ value: "global", label: "Global only" }] : []),
-          ]}
-        />
-      </label>
       <form
         className="space-y-3"
         onSubmit={(e) => {
@@ -129,6 +129,78 @@ export function Suppressions({ brandId }: { brandId: number }) {
         <Button disabled={a.busy}>Add suppression</Button>
       </form>
       <Message {...a} />
+      <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+        <Field
+          label="Search suppressions"
+          type="search"
+          placeholder="Search email, domain or reason"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label htmlFor="suppression-scope" className="block text-sm space-y-2">
+            Show
+            <SelectField
+              id="suppression-scope"
+              value={scope}
+              onValueChange={setScope}
+              options={[
+                { value: "effective", label: "Effective: brand and global" },
+                { value: "brand", label: "Brand only" },
+                ...(session.admin ? [{ value: "global", label: "Global only" }] : []),
+              ]}
+            />
+          </label>
+          <label htmlFor="suppression-filter-kind" className="block text-sm space-y-2">
+            Filter by kind
+            <SelectField
+              id="suppression-filter-kind"
+              value={filterKind || "all"}
+              onValueChange={(v) => setFilterKind(v === "all" ? "" : v)}
+              options={[
+                { value: "all", label: "All kinds" },
+                { value: "email", label: "Email" },
+                { value: "domain", label: "Domain" },
+              ]}
+            />
+          </label>
+          <label htmlFor="suppression-filter-reason" className="block text-sm space-y-2">
+            Filter by reason
+            <SelectField
+              id="suppression-filter-reason"
+              value={filterReason || "all"}
+              onValueChange={(v) => setFilterReason(v === "all" ? "" : v)}
+              options={[
+                { value: "all", label: "All reasons" },
+                { value: "manual", label: "Manual additions" },
+                { value: "ses_sync", label: "SES sync" },
+                { value: "hard_bounce", label: "Hard bounce" },
+                { value: "soft_bounce_limit", label: "Soft bounce limit" },
+                { value: "complaint", label: "Complaint" },
+              ]}
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant={filterReason === "manual" ? "default" : "outline"} onClick={() => setFilterReason("manual")}>
+            Manual additions
+          </Button>
+          {(search || filterKind || filterReason) && (
+            <Button variant="ghost" onClick={() => {
+              setSearch("");
+              setDebouncedSearch("");
+              setFilterKind("");
+              setFilterReason("");
+            }}>
+              Clear filters
+            </Button>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Search and filters apply to all entries in this scope. Manual additions
+          can also include entries imported from Sendy.
+        </p>
+      </div>
       <Message error={q.error} />
       {q.isPending ? (
         <p role="status">Loading suppressions…</p>
@@ -138,9 +210,11 @@ export function Suppressions({ brandId }: { brandId: number }) {
         </Button>
       ) : !q.data?.pages.flat().length ? (
         <div className="empty-panel">
-          <h3>No suppressions in this scope</h3>
+          <h3>{debouncedSearch || filterKind || filterReason ? "No matching suppressions" : "No suppressions in this scope"}</h3>
           <p className="page-subtitle">
-            Suppressed addresses and domains will appear here.
+            {debouncedSearch || filterKind || filterReason
+              ? "Try another search or clear the filters."
+              : "Suppressed addresses and domains will appear here."}
           </p>
         </div>
       ) : (

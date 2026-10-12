@@ -57,11 +57,23 @@ func TestSuppressionScopes(t *testing.T) {
 			}{
 				{"", []int64{1, 2, 4, 5}}, {"&scope=effective", []int64{1, 2, 4, 5}},
 				{"&scope=brand", []int64{1}}, {"&after=2&limit=1", []int64{4}}, {"&after=5&limit=1", []int64{}},
+				{"&q=%20BOUNCE%20&limit=1", []int64{2}},
+				{"&reason=manual&kind=email", []int64{1}},
+				{"&reason=ses_sync&kind=domain&limit=1", []int64{5}},
+				{"&q=complaint&after=2&limit=1", []int64{4}},
+				{"&q=private", []int64{}}, {"&q=foreign&reason=complaint", []int64{}},
+				{"&q=%25", []int64{}}, {"&q=%27%20OR%201%3D1", []int64{}},
 			} {
 				if actor == "admin" && (tc.query == "" || tc.query == "&scope=effective") {
 					tc.ids = []int64{1, 2, 4, 5, 6, 7, 8}
 				}
 				if actor == "admin" && tc.query == "&after=5&limit=1" {
+					tc.ids = []int64{6}
+				}
+				if actor == "admin" && tc.query == "&reason=manual&kind=email" {
+					tc.ids = []int64{1, 8}
+				}
+				if actor == "admin" && tc.query == "&q=foreign&reason=complaint" {
 					tc.ids = []int64{6}
 				}
 				w := do(actor, "GET", "/api/v1/suppressions?brand_id=1"+tc.query, "")
@@ -85,6 +97,11 @@ func TestSuppressionScopes(t *testing.T) {
 				}
 			}
 		})
+		for _, query := range []string{"&kind=invalid", "&reason=invalid"} {
+			if w := do(actor, "GET", "/api/v1/suppressions?brand_id=1"+query, ""); w.Code != 400 {
+				t.Fatalf("%s invalid filter %s: %d %s", actor, query, w.Code, w.Body.String())
+			}
+		}
 	}
 	for _, actor := range []string{"user", "key"} {
 		for _, method := range []string{"GET", "POST", "PATCH", "DELETE"} {
@@ -161,6 +178,47 @@ func TestSuppressionScopes(t *testing.T) {
 	}
 }
 
+func TestSuppressionFiltersBeforePagination(t *testing.T) {
+	_, mux, db, cookie, csrf := setup(t)
+	if _, err := db.Writer.Exec(`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'one','One','one@example.org',0)`); err != nil {
+		t.Fatal(err)
+	}
+	for id := 1; id <= 150; id++ {
+		if _, err := db.Writer.Exec(`INSERT INTO suppressions(id,brand_id,kind,value,reason,created_at) VALUES(?,1,'email',?,'ses_sync',0)`, id, fmt.Sprintf("import-%d@example.org", id)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Writer.Exec(`INSERT INTO suppressions(id,brand_id,kind,value,reason,created_at) VALUES(151,1,'email','my-addition@example.org','manual',0),(152,NULL,'email','global-addition@example.org','manual',0),(153,1,'email','under_score@example.org','manual',0)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		query string
+		ids   []int
+	}{
+		{"scope=effective&reason=manual&limit=1", []int{151}},
+		{"scope=effective&reason=manual&limit=1&after=151", []int{152}},
+		{"scope=brand&reason=manual&limit=1&after=151", []int{153}},
+		{"scope=global&q=GLOBAL&reason=manual&kind=email", []int{152}},
+		{"scope=brand&q=MY-ADDITION", []int{151}},
+		{"scope=brand&q=under_score", []int{153}},
+		{"scope=brand&q=underXscore", []int{}},
+		{"scope=effective&q=missing", []int{}},
+	} {
+		w := request(mux, "GET", "/api/v1/suppressions?brand_id=1&"+tc.query, "", &cookie, csrf)
+		var rows []struct {
+			ID int `json:"id"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &rows) != nil || len(rows) != len(tc.ids) {
+			t.Fatalf("%s: %d %s", tc.query, w.Code, w.Body.String())
+		}
+		for j, id := range tc.ids {
+			if rows[j].ID != id {
+				t.Fatalf("%s: %s", tc.query, w.Body.String())
+			}
+		}
+	}
+}
+
 func TestSuppressionScopeQueryUsesIndexes(t *testing.T) {
 	_, _, db, _, _ := setup(t)
 	for _, tc := range []struct {
@@ -171,6 +229,8 @@ func TestSuppressionScopeQueryUsesIndexes(t *testing.T) {
 	}{
 		{"admin", effectiveSuppressionQuery, []any{1, 0, 0, 100}, false},
 		{"scoped", scopedEffectiveSuppressionQuery, []any{1, 0, 0, 1, 1, 100}, true},
+		{"filtered admin", "SELECT * FROM (" + strings.TrimSuffix(effectiveSuppressionQuery, " ORDER BY id LIMIT ?") + ") WHERE reason=? AND kind=? AND instr(lower(value),lower(?))>0 ORDER BY id LIMIT ?", []any{1, 0, 0, "manual", "email", "example", 100}, false},
+		{"filtered scoped", "SELECT * FROM (" + strings.TrimSuffix(scopedEffectiveSuppressionQuery, " ORDER BY id LIMIT ?") + ") WHERE reason=? AND kind=? AND instr(lower(value),lower(?))>0 ORDER BY id LIMIT ?", []any{1, 0, 0, 1, 1, "manual", "email", "example", 100}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rows, err := db.Reader.Query("EXPLAIN QUERY PLAN "+tc.query, tc.args...)

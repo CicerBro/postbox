@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"postbox/internal/subscribers"
+	"strings"
 )
 
 func (a *API) settings(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +118,30 @@ func (a *API) suppressions(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "GET" {
 		after, limit := page(r)
+		filters := []string{}
+		filterArgs := []any{}
+		if search := strings.TrimSpace(r.URL.Query().Get("q")); search != "" {
+			filters = append(filters, "(instr(lower(value),lower(?))>0 OR instr(lower(reason),lower(?))>0)")
+			filterArgs = append(filterArgs, search, search)
+		}
+		if kind := r.URL.Query().Get("kind"); kind != "" {
+			if kind != "email" && kind != "domain" {
+				fail(w, http.StatusBadRequest, errors.New("kind must be email or domain"))
+				return
+			}
+			filters = append(filters, "kind=?")
+			filterArgs = append(filterArgs, kind)
+		}
+		if reason := r.URL.Query().Get("reason"); reason != "" {
+			switch reason {
+			case "manual", "ses_sync", "hard_bounce", "soft_bounce_limit", "complaint":
+			default:
+				fail(w, http.StatusBadRequest, errors.New("reason must be manual, ses_sync, hard_bounce, soft_bounce_limit, or complaint"))
+				return
+			}
+			filters = append(filters, "reason=?")
+			filterArgs = append(filterArgs, reason)
+		}
 		query := "SELECT * FROM suppressions WHERE brand_id=? AND id>? ORDER BY id LIMIT ?"
 		args := []any{brand, after, limit}
 		if scope == "global" {
@@ -131,6 +156,13 @@ func (a *API) suppressions(w http.ResponseWriter, r *http.Request) {
 				query = scopedEffectiveSuppressionQuery
 				args = []any{brand, after, after, brand, brand, limit}
 			}
+		}
+		if len(filters) > 0 {
+			// Filter every permitted scope before limiting the page, so matches
+			// beyond the first page are searchable without loading all rows.
+			query = "SELECT * FROM (" + strings.TrimSuffix(query, " ORDER BY id LIMIT ?") + ") WHERE " + strings.Join(filters, " AND ") + " ORDER BY id LIMIT ?"
+			args = append(args[:len(args)-1], filterArgs...)
+			args = append(args, limit)
 		}
 		v, e := queryRows(r.Context(), a.db.Reader, query, args...)
 		result(w, v, e)
