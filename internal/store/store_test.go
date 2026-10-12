@@ -213,6 +213,8 @@ func TestConsolidatedInitialMigrationChecksumAccepted(t *testing.T) {
 		CREATE TABLE segments(id INTEGER PRIMARY KEY, brand_id INTEGER);
 		CREATE TABLE campaign_targets(campaign_id INTEGER, target_type TEXT, target_id INTEGER, mode TEXT);
 		CREATE TABLE jobs(id INTEGER PRIMARY KEY, status TEXT);
+		CREATE TABLE templates(id INTEGER PRIMARY KEY);
+		CREATE TABLE users(id INTEGER PRIMARY KEY);
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +261,11 @@ func TestMigrationsReopenAndStrict(t *testing.T) {
 	if err := db.Reader.QueryRow("SELECT count(*),min(name) FROM schema_migrations").Scan(&migrationCount, &migrationName); err != nil {
 		t.Fatal(err)
 	}
-	if migrationCount != 4 || migrationName != "001_initial.sql" {
+	entries, err := migrations.ReadDir("migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migrationCount != len(entries) || migrationName != "001_initial.sql" {
 		t.Fatalf("fresh database migrations: %d %q", migrationCount, migrationName)
 	}
 	v, err := db.Setting(context.Background(), "persist")

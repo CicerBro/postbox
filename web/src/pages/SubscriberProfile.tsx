@@ -1,3 +1,4 @@
+import { useDateTime } from "../lib/date-time";
 import { SelectField } from "../components/ui/select";
 import { Checkbox } from "../components/ui/checkbox";
 import { useEffect, useState } from "react";
@@ -52,6 +53,7 @@ export function SubscriberProfile({
   onClose: () => void;
   initialAction?: "edit" | "delete" | "unsubscribe";
 }) {
+  const { formatDateTime } = useDateTime();
   const [email, setEmail] = useState(subscriber?.email || "");
   const [name, setName] = useState(subscriber?.name || "");
   const [status, setStatus] = useState(subscriber?.status || "active");
@@ -212,9 +214,9 @@ export function SubscriberProfile({
             </Field>
             {subscriber && (
               <div className="text-sm text-muted-foreground self-center">
-                Created {new Date(subscriber.created_at).toLocaleString()}
+                Created {formatDateTime(subscriber.created_at)}
                 <br />
-                Updated {new Date(subscriber.updated_at).toLocaleString()}
+                Updated {formatDateTime(subscriber.updated_at)}
               </div>
             )}
           </div>
@@ -272,14 +274,14 @@ export function SubscriberProfile({
             {subscriber?.marketing_unsubscribed_at && (
               <p className="text-sm text-destructive" role="status">
                 Unsubscribed from all marketing for this brand since{" "}
-                {new Date(subscriber.marketing_unsubscribed_at).toLocaleString()}.
+                {formatDateTime(subscriber.marketing_unsubscribed_at)}.
                 List additions and profile edits will not restore eligibility.
               </p>
             )}
             <p className="text-sm">
               Existing consent:{" "}
               {subscriber?.gdpr_consent_at
-                ? new Date(subscriber.gdpr_consent_at).toLocaleString()
+                ? formatDateTime(subscriber.gdpr_consent_at)
                 : "Not recorded"}
               {subscriber?.gdpr_consent_ip
                 ? `, IP ${subscriber.gdpr_consent_ip}`
@@ -491,7 +493,7 @@ export function SubscriberProfile({
                       <div className="text-sm font-medium">
                         {a.kind}{" "}
                         <span className="text-muted-foreground font-normal">
-                          {new Date(a.at).toLocaleString()}
+                          {formatDateTime(a.at)}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground break-all">

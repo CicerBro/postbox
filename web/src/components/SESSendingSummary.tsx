@@ -1,3 +1,4 @@
+import { useDateTime } from "../lib/date-time";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -13,6 +14,7 @@ type Connection = {
 };
 
 export function SESSendingSummary({ brandId }: { brandId: number }) {
+  const { formatDateTime } = useDateTime();
   const connection = useQuery({
     queryKey: ["aws-settings", brandId],
     queryFn: ({ signal }) => api<Connection>("/aws-settings", { brandId, signal }),
@@ -67,7 +69,7 @@ export function SESSendingSummary({ brandId }: { brandId: number }) {
       <div className="ses-summary-footer">
         {data && <span className="muted">{shortRegion} · {data.production_access_enabled ? "Production" : "Sandbox"}</span>}
         <div className="ses-refresh">
-          {data && <span className="muted">Checked {data.checked_at ? <time dateTime={new Date(data.checked_at).toISOString()}>{new Date(data.checked_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</time> : "Unavailable"}</span>}
+          {data && <span className="muted">Checked {data.checked_at ? <time dateTime={new Date(data.checked_at).toISOString()}>{formatDateTime(data.checked_at)}</time> : "Unavailable"}</span>}
           <Button type="button" variant="ghost" size="icon"
             aria-label="Refresh Amazon SES status from AWS"
             title="Refresh status and quota from AWS"
@@ -87,7 +89,7 @@ export function SESSendingSummary({ brandId }: { brandId: number }) {
             <div><dt className="muted">24-hour quota</dt><dd>{data.quota.max_24_hour_send.toLocaleString()}</dd></div>
           </dl>
           <p className="muted">Account quotas are shared by all senders in this AWS account and region.</p>
-          <p className="muted">Last checked: {data.checked_at ? new Date(data.checked_at).toLocaleString() : "Unavailable"}</p>
+          <p className="muted">Last checked: {data.checked_at ? formatDateTime(data.checked_at) : "Unavailable"}</p>
         </div>
       </details>}
     </Card>

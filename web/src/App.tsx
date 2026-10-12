@@ -38,6 +38,7 @@ import { api, ApiError, setCsrfToken } from "./lib/api";
 import { beginSession, expireSession, onSessionExpired, discardSessionDrafts } from "./lib/session-lifecycle";
 import { AppContext, type Brand, type Session } from "./lib/app-context";
 import { useThemePreference } from "./lib/theme";
+import { TimeZoneProvider } from "./lib/date-time";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import {
@@ -464,6 +465,7 @@ export default function App() {
     </>
   );
   return (
+    <TimeZoneProvider timeZone={session.data.timezone ?? ""}>
     <AppContext.Provider
       value={{
         brandId,
@@ -794,5 +796,6 @@ export default function App() {
         </DialogContent>
       </Dialog>
     </AppContext.Provider>
+    </TimeZoneProvider>
   );
 }

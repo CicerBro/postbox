@@ -1,3 +1,4 @@
+import { useDateTime, zonedDateTimeToTimestamp } from "../lib/date-time";
 import { Send } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -66,6 +67,7 @@ export function CampaignDelivery({
   sendingConfirmation,
   action,
 }: DeliveryProps) {
+  const { timeZone } = useDateTime();
   return (
     <Card>
       <CardHeader>
@@ -96,7 +98,7 @@ export function CampaignDelivery({
             </div>
             <div className="flex flex-wrap items-end gap-2">
               <label className="text-sm">
-                Schedule in {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                Schedule in {timeZone}
                 <Input
                   type="datetime-local"
                   value={schedule}
@@ -218,6 +220,7 @@ export function CampaignConfirmationDialog({
   setConfirm,
   confirmed,
 }: ConfirmationProps) {
+  const { timeZone, formatDateTime } = useDateTime();
   return (
     <Dialog
       open={confirm !== null}
@@ -242,7 +245,7 @@ export function CampaignConfirmationDialog({
             ? "This permanently deletes this draft and its audience selection."
             : confirm === "cancel"
               ? "Stop sending this campaign. Messages already accepted by SES cannot be recalled."
-              : `Send the saved campaign to ${number(checklist?.recipients ?? 0)} recipients${confirm === "schedule" ? ` at ${new Date(schedule).toLocaleString()}` : " now"}.`}
+              : `Send the saved campaign to ${number(checklist?.recipients ?? 0)} recipients${confirm === "schedule" ? ` at ${formatDateTime(zonedDateTimeToTimestamp(schedule, timeZone))}` : " now"}.`}
         </p>
         {(confirm === "start" || confirm === "schedule") &&
           checklist?.checks.warnings?.map((w, i) => (

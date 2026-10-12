@@ -1,3 +1,4 @@
+import { useDateTime } from "../lib/date-time";
 import { StatusMessage } from "../components/StatusMessage";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { useTableSort } from "../lib/use-table-sort";
@@ -35,6 +36,7 @@ export function TemplatesPage({ brandId }: { brandId: number }) {
   return <TemplateLibrary key={brandId} brandId={brandId} />;
 }
 function TemplateLibrary({ brandId }: { brandId: number }) {
+  const { formatDateTime } = useDateTime();
   const sorting = useTableSort<"name" | "size" | "updated">("name");
   const [params, setParams] = useSearchParams();
   const client = useQueryClient(),
@@ -237,7 +239,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                       <td className="text-muted-foreground">
                         {bytes(new TextEncoder().encode(t.html).length)}
                       </td>
-                      <td>{new Date(t.updated_at).toLocaleString()}</td>
+                      <td>{formatDateTime(t.updated_at)}</td>
                       <td>
                         <div className="flex gap-2">
                           <Button

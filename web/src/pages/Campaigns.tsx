@@ -1,3 +1,4 @@
+import { useDateTime } from "../lib/date-time";
 import { StatusMessage } from "../components/StatusMessage";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -30,6 +31,7 @@ type CampaignSummary = Pick<
 > & { excerpt: string };
 
 export function CampaignsPage({ brandId }: { brandId: number }) {
+  const { formatDateTime } = useDateTime();
   const { session } = useApp();
   const client = useQueryClient();
   const [deleting, setDeleting] = useState<CampaignSummary | null>(null);
@@ -183,10 +185,10 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                     <td>
                       <StatusBadge status={c.status} />
                     </td>
-                    <td>{new Date(c.created_at).toLocaleString()}</td>
+                    <td>{formatDateTime(c.created_at)}</td>
                     <td>
                       {c.scheduled_at
-                        ? new Date(c.scheduled_at).toLocaleString()
+                        ? formatDateTime(c.scheduled_at)
                         : "Unscheduled"}
                     </td>
                     <td className="campaign-actions-cell">

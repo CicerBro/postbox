@@ -69,6 +69,7 @@ func (a *API) Register(m *http.ServeMux) {
 	a.documentRoute("POST /api/v1/auth/login")
 	m.HandleFunc("POST /api/v1/auth/login", a.login)
 	a.route(m, "GET /api/v1/auth/session", a.session)
+	a.route(m, "PATCH /api/v1/auth/preferences", a.preferences)
 	a.route(m, "POST /api/v1/auth/logout", a.logout)
 	a.documentRoute("GET /api/v1/openapi.json")
 	m.Handle("GET /api/v1/openapi.json", a.docsSession(http.HandlerFunc(a.openapi), false))

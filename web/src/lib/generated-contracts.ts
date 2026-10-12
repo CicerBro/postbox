@@ -8,6 +8,11 @@ export interface SessionResponse {
   passkeys_enabled: boolean;
   passkeys_available: boolean;
   passkey_count: number;
+  timezone: string;
+}
+
+export interface PreferencesResponse {
+  timezone: string;
 }
 
 export interface LoginResponse {

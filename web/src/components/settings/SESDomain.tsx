@@ -1,3 +1,4 @@
+import { useDateTime } from "../../lib/date-time";
 import { useEffect, useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, RefreshCw } from "lucide-react";
@@ -73,6 +74,7 @@ export function SESDomain({ brandId }: { brandId: number }) {
 }
 
 function DomainIdentity({ brandId, domain, connectionVersion, region }: { brandId: number; domain: string; connectionVersion: number; region: string }) {
+  const { formatDateTime } = useDateTime();
   const { session } = useApp();
   const qc = useQueryClient();
   const action = useAction();
@@ -133,7 +135,7 @@ function DomainIdentity({ brandId, domain, connectionVersion, region }: { brandI
             ["DKIM", statusLabel(identity.dkim_status)],
             ["DKIM signing", identity.dkim_signing_enabled ? "Enabled" : "Disabled"],
             ["MAIL FROM", identity.mail_from_domain ? statusLabel(identity.mail_from_status) : "Default SES domain"],
-            ["Last checked", new Date(identity.checked_at).toLocaleString()],
+            ["Last checked", formatDateTime(identity.checked_at)],
           ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-medium">{value}</dd></div>)}
         </dl>
         <div className="space-y-3">

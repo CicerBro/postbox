@@ -1,3 +1,4 @@
+import { useDateTime } from "../../lib/date-time";
 import { StatusMessage } from "../StatusMessage";
 import { SelectField } from "../ui/select";
 import { Checkbox } from "../ui/checkbox";
@@ -664,6 +665,7 @@ export function ListForm({
 }
 
 export function Housekeeping({ brandId }: { brandId: number }) {
+  const { formatDateTime } = useDateTime();
   const [days, setDays] = useState(30);
   const [campaigns, setCampaigns] = useState(4);
   const [confirm, setConfirm] = useState(false);
@@ -748,7 +750,7 @@ export function Housekeeping({ brandId }: { brandId: number }) {
           </DialogHeader>
           <p className="text-sm">
             Remove unconfirmed memberships created before{" "}
-            {new Date(cutoff).toLocaleDateString()} in this brand. This cannot
+            {formatDateTime(cutoff)} in this brand. This cannot
             be undone.
           </p>
           <ErrorMessage error={action.error} />

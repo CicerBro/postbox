@@ -1,3 +1,4 @@
+import { useDateTime, zonedDateTimeToTimestamp } from "../lib/date-time";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +26,7 @@ export function CampaignDetailPage({ brandId }: { brandId: number }) {
   );
 }
 function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
+  const { timeZone } = useDateTime();
   const routeID = id && id !== "new" ? Number(id) : 0;
   const navigate = useNavigate(),
     client = useQueryClient();
@@ -120,9 +122,9 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
     }
     if (
       mode === "schedule" &&
-      (!schedule || new Date(schedule).getTime() <= Date.now())
+      (!schedule || !Number.isFinite(zonedDateTimeToTimestamp(schedule, timeZone)) || zonedDateTimeToTimestamp(schedule, timeZone) <= Date.now())
     ) {
-      setError(new Error("Choose a future date and time."));
+      setError(new Error("Choose a valid future date and time in your selected timezone."));
       return;
     }
     const result = await checklist.refetch();
@@ -150,8 +152,8 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
       }
     } else if (confirm === "schedule")
       await action("schedule", {
-        scheduled_at: new Date(schedule).getTime(),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        scheduled_at: zonedDateTimeToTimestamp(schedule, timeZone),
+        timezone: timeZone,
       });
     else if (confirm) await action(confirm);
   }

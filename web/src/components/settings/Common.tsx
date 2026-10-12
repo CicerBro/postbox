@@ -1,3 +1,4 @@
+import { DateTime } from "../../lib/date-time";
 import { useId, useState, type ReactNode } from "react";
 import { CircleAlert, Copy, KeyRound } from "lucide-react";
 import { Button } from "../ui/button";
@@ -110,7 +111,7 @@ export function Secret({
   );
 }
 export function date(value: number | null | undefined) {
-  return value ? new Date(value).toLocaleString() : "Never";
+  return <DateTime value={value} fallback="Never" />;
 }
 export function strings(value: string | string[]) {
   if (Array.isArray(value)) return value;

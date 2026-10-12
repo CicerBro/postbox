@@ -26,6 +26,7 @@ type SessionResponse struct {
 	PasskeysEnabled   bool   `json:"passkeys_enabled"`
 	PasskeysAvailable bool   `json:"passkeys_available"`
 	PasskeyCount      int    `json:"passkey_count"`
+	Timezone          string `json:"timezone"`
 }
 
 type LoginResponse struct {
@@ -138,12 +139,13 @@ func (a *API) session(w http.ResponseWriter, r *http.Request) {
 	csrf := sessionCSRF(cookie.Value)
 	var otp bool
 	var count int
-	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT totp_secret IS NOT NULL,(SELECT count(*) FROM passkeys WHERE user_id=users.id) FROM users WHERE id=?`, i.UserID).Scan(&otp, &count); err != nil {
+	var timezone string
+	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT totp_secret IS NOT NULL,(SELECT count(*) FROM passkeys WHERE user_id=users.id),timezone FROM users WHERE id=?`, i.UserID).Scan(&otp, &count, &timezone); err != nil {
 		fail(w, 500, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	respond(w, 200, SessionResponse{UserID: i.UserID, Admin: i.Admin, CSRFToken: csrf, TOTPEnabled: otp, PasskeysEnabled: count > 0, PasskeysAvailable: a.passkeys != nil, PasskeyCount: count})
+	respond(w, 200, SessionResponse{UserID: i.UserID, Admin: i.Admin, CSRFToken: csrf, TOTPEnabled: otp, PasskeysEnabled: count > 0, PasskeysAvailable: a.passkeys != nil, PasskeyCount: count, Timezone: timezone})
 }
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie("postbox_session")

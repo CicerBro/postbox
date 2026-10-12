@@ -9,6 +9,7 @@ import {
   ListRestart,
   Cloud,
   UserPlus,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 import { useApp } from "../lib/app-context";
@@ -22,11 +23,13 @@ import { Users } from "../components/settings/Users";
 import { Jobs } from "../components/settings/Jobs";
 import { AmazonSES } from "../components/settings/AmazonSES";
 import { PublicSubscriptions } from "../components/settings/PublicSubscriptions";
+import { TimezonePreferences } from "../components/settings/TimezonePreferences";
 export function SettingsPage({ brandId }: { brandId: number }) {
   const { session } = useApp();
   const [tab, setTab] = useState("security");
   const icons: Record<string, LucideIcon> = {
     security: ShieldCheck,
+    preferences: Globe,
     brand: Building2,
     messages: Mail,
     webhooks: Webhook,
@@ -38,6 +41,7 @@ export function SettingsPage({ brandId }: { brandId: number }) {
   };
   const descriptions: Record<string, string> = {
     security: "Protect your account and manage your sign-in methods.",
+    preferences: "Choose how dates and times appear across your workspace.",
     brand: "Set the identity your subscribers see in their inbox.",
     messages: "Customize subscription pages and automated emails.",
     webhooks: "Connect brand events to your integrations.",
@@ -49,6 +53,7 @@ export function SettingsPage({ brandId }: { brandId: number }) {
   };
   const tabs = [
     ["security", "Account security"],
+    ["preferences", "Preferences"],
     ...(brandId || session.admin ? [["subscriptions", "Public subscriptions"]] : []),
     ...(brandId
       ? [
@@ -124,6 +129,7 @@ export function SettingsPage({ brandId }: { brandId: number }) {
             <p className="page-subtitle">{descriptions[selected]}</p>
           </div>
           {selected === "security" && <Security />}
+          {selected === "preferences" && <TimezonePreferences />}
           {selected === "subscriptions" && <PublicSubscriptions key={brandId} brandId={brandId} />}
           {selected === "brand" && (
             <BrandIdentity key={brandId} brandId={brandId} />

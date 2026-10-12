@@ -121,6 +121,7 @@ func (a *API) documentRoute(pattern string) {
 	documentAWSIdentity(method, path, op)
 	documentSubscriptionSettings(method, path, op)
 	documentJobSettings(method, path, op)
+	documentPreferences(method, path, op)
 	methods[strings.ToLower(method)] = op
 }
 func requestSchema(path string) map[string]any {

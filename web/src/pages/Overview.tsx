@@ -13,6 +13,7 @@ import {
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useDateTime } from "../lib/date-time";
 import {
   Card,
   CardHeader,
@@ -196,6 +197,7 @@ function Chart({
   );
 }
 export function OverviewPage({ brandId }: { brandId: number }) {
+  const { timeZone, formatDateTime, formatTime } = useDateTime();
   const [days, setDays] = useState(savedOverviewPeriod);
   const selectPeriod = (value: string) => {
     setDays(value);
@@ -270,13 +272,24 @@ export function OverviewPage({ brandId }: { brandId: number }) {
     ["Complaints", "complaints_percent", "complaints_points", ShieldAlert],
   ] as const;
   const growth = data.growth ?? [];
-  const utcDate = (timestamp: number) => new Date(timestamp).toLocaleDateString(
-    undefined, { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" },
-  );
+  const dayIntervalLabel = (timestamp: number) => {
+    const options: Intl.DateTimeFormatOptions = {
+      month: "short", day: "numeric", year: "numeric",
+      hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+    };
+    return `${formatDateTime(timestamp, options)} to ${formatDateTime(timestamp + 86400000, options)}`;
+  };
   const today = new Date(data.period.end);
   const todayStart = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  // The API compares UTC calendar days. Convert their actual hour timestamps
+  // for display, while retaining those aggregation windows.
+  const hourTimestamp = (hour: number, previous = false) =>
+    todayStart + hour * 3600000 - (previous ? 86400000 : 0);
   const hourLabel = (hour: number, previous = false) =>
-    `${utcDate(todayStart - (previous ? 86400000 : 0))}, ${String(hour).padStart(2, "0")}:00 UTC`;
+    formatDateTime(hourTimestamp(hour, previous), {
+      year: "numeric", month: "short", day: "numeric",
+      hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+    });
   return (
     <>
       {heading}
@@ -330,7 +343,7 @@ export function OverviewPage({ brandId }: { brandId: number }) {
               <Users size={16} className="muted" />
             </div>
             <p className="muted">
-              Active list memberships · daily UTC snapshots
+              Active list memberships · UTC-day intervals displayed in {timeZone}
             </p>
             <div className="chart-legend">
               <span>Last 30 days</span>
@@ -343,8 +356,8 @@ export function OverviewPage({ brandId }: { brandId: number }) {
               a={growth.slice(30).map((x) => x.active)}
               b={growth.slice(0, 30).map((x) => x.active)}
               labels={["Day 1", "Day 15", "Day 30"]}
-              bucketLabels={growth.slice(30).map((x) => `${utcDate(x.day)} UTC`)}
-              comparisonLabels={growth.slice(0, 30).map((x) => `${utcDate(x.day)} UTC`)}
+              bucketLabels={growth.slice(30).map((x) => dayIntervalLabel(x.day))}
+              comparisonLabels={growth.slice(0, 30).map((x) => dayIntervalLabel(x.day))}
               seriesNames={["Last 30 days", "Previous 30 days"]}
             />
           </CardContent>
@@ -355,21 +368,21 @@ export function OverviewPage({ brandId }: { brandId: number }) {
               <CardTitle>Sending activity</CardTitle>
               <Activity size={16} className="muted" />
             </div>
-            <p className="muted">UTC · today compared with yesterday</p>
+            <p className="muted">Times shown in {timeZone} · current and previous UTC day</p>
             <div className="chart-legend">
-              <span>Today</span>
-              <span>Yesterday</span>
+              <span>Current UTC day</span>
+              <span>Previous UTC day</span>
             </div>
           </CardHeader>
           <CardContent>
             <Chart
-              name="Hourly sent emails today and yesterday in UTC"
+              name={`Hourly sent emails for the current and previous UTC day, displayed in ${timeZone}`}
               a={data.hourly_comparison.map((x) => x.today)}
               b={data.hourly_comparison.map((x) => x.yesterday)}
-              labels={["00:00", "06:00", "12:00", "18:00", "23:00"]}
+              labels={[0, 6, 12, 18, 23].map((hour) => formatTime(hourTimestamp(hour)))}
               bucketLabels={data.hourly_comparison.map((x) => hourLabel(x.hour))}
               comparisonLabels={data.hourly_comparison.map((x) => hourLabel(x.hour, true))}
-              seriesNames={["Today", "Yesterday"]}
+              seriesNames={["Current UTC day", "Previous UTC day"]}
             />
           </CardContent>
         </Card>

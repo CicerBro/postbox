@@ -1,3 +1,4 @@
+import { useDateTime } from "../lib/date-time";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { SelectField } from "../components/ui/select";
 import { Checkbox } from "../components/ui/checkbox";
@@ -760,6 +761,7 @@ function Lists({
 }
 
 function SubscribersWorkspace({ brandId }: { brandId: number }) {
+  const { formatDateTime } = useDateTime();
   const [searchParams, setSearchParams] = useSearchParams();
   const [createList, setCreateList] = useState(false);
   const [tab, setTab] = useState("subscribers");
@@ -1030,12 +1032,12 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                         <td>
                           <p className="text-sm capitalize">{s.last_activity_kind || (s.updated_at > s.created_at ? "Updated" : "Created")}</p>
                           <time className="text-xs text-muted-foreground" dateTime={new Date(s.last_activity_at || s.updated_at || s.created_at).toISOString()}>
-                            {new Date(s.last_activity_at || s.updated_at || s.created_at).toLocaleString()}
+                            {formatDateTime(s.last_activity_at || s.updated_at || s.created_at)}
                           </time>
                         </td>
                         <td>
                           <time className="text-xs text-muted-foreground" dateTime={new Date(s.created_at).toISOString()}>
-                            {new Date(s.created_at).toLocaleString()}
+                            {formatDateTime(s.created_at)}
                           </time>
                         </td>
                         <td>

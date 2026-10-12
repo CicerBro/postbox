@@ -1,3 +1,4 @@
+import { useDateTime } from "../../lib/date-time";
 import { sesRegions, type SESSendingStatus } from "../../lib/aws-ses";
 import { useEffect, useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,12 +30,10 @@ type EventStatus = {
 };
 
 
-function timestamp(value?: number | string) {
-  if (!value) return "Not checked yet";
-  return new Date(value).toLocaleString();
-}
 
 export function AmazonSES({ brandId }: { brandId: number }) {
+  const { formatDateTime } = useDateTime();
+  const timestamp = (value?: number | string) => value ? formatDateTime(value) : "Not checked yet";
   const { session } = useApp();
   const id = useId();
   const action = useAction();

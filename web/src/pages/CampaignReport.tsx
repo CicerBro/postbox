@@ -1,3 +1,4 @@
+import { useDateTime } from "../lib/date-time";
 import { onSessionExpired } from "../lib/session-lifecycle";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -75,6 +76,7 @@ export function CampaignReportPage({ brandId }: { brandId: number }) {
   );
 }
 function ReportView({ brandId, id }: { brandId: number; id: number }) {
+  const { formatDateTime } = useDateTime();
   const client = useQueryClient(),
     [status, setStatus] = useState(""),
     [after, setAfter] = useState(0),
@@ -227,7 +229,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
       {report.data?.delivery && (
         <Card><CardContent className="pt-5">
           <dl className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-            <div><dt className="row-subtitle">Sent</dt><dd className="mt-1 text-sm font-medium">{report.data.delivery.first_sent_at ? new Date(report.data.delivery.first_sent_at).toLocaleString() : "No send recorded"}</dd></div>
+            <div><dt className="row-subtitle">Sent</dt><dd className="mt-1 text-sm font-medium">{report.data.delivery.first_sent_at ? formatDateTime(report.data.delivery.first_sent_at) : "No send recorded"}</dd></div>
             <div><dt className="row-subtitle">{report.data.delivery.sender_snapshotted ? "From" : "Current brand sender"}</dt><dd className="mt-1 break-words text-sm font-medium">{report.data.delivery.from_name}<span className="block text-muted-foreground">{report.data.delivery.from_email}</span></dd></div>
             <div><dt className="row-subtitle">Audience</dt><dd className="mt-1 text-sm font-medium">{report.data.targets?.length ? report.data.targets.map(target => `${target.mode === "exclude" ? "Exclude: " : ""}${target.name ?? `${target.target_type} #${target.target_id}`}`).join(", ") : "No audience targets"}</dd></div>
             <div><dt className="row-subtitle">Recipients</dt><dd className="mt-1 text-sm font-medium">{stats?.recipients === undefined ? "Unavailable" : number(stats.recipients)}<span className="block text-muted-foreground">{number(sent)} sent · {number(stats?.delivered ?? 0)} {report.data.delivery.delivered_estimated ? "estimated delivered" : "delivered"}</span></dd></div>
@@ -449,7 +451,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
                       <td className="break-all">{r.message_id ?? "None"}</td>
                       <td>
                         {r.sent_at
-                          ? new Date(r.sent_at).toLocaleString()
+                          ? formatDateTime(r.sent_at)
                           : "Not recorded"}
                       </td>
                       <td className="max-w-md break-words">{r.error ?? ""}</td>
@@ -509,11 +511,13 @@ function inertPreview(html: string) {
   return `<!doctype html>${document.documentElement.outerHTML}`;
 }
 function RecentActivity({ title, description, rows, loading }: { title: string; description: string; rows: RecentRecipient[]; loading: boolean }) {
+  const { formatDateTime } = useDateTime();
   return <Card className="min-w-0"><CardHeader><CardTitle>{title}</CardTitle><p className="row-subtitle">{description}</p></CardHeader><CardContent>
-    {loading ? <p role="status" className="text-sm text-muted-foreground">Loading activity…</p> : rows.length ? <div className="overflow-auto"><table className={tableClass}><thead><tr><th>Recipient</th><th>When</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td className="break-all"><span className="row-title">{row.email || "Email unavailable"}</span>{row.name && <span className="row-subtitle block">{row.name}</span>}</td><td className="whitespace-nowrap text-muted-foreground">{new Date(row.at).toLocaleString()}</td></tr>)}</tbody></table></div> : <p className="py-4 text-sm text-muted-foreground">No activity recorded yet.</p>}
+    {loading ? <p role="status" className="text-sm text-muted-foreground">Loading activity…</p> : rows.length ? <div className="overflow-auto"><table className={tableClass}><thead><tr><th>Recipient</th><th>When</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td className="break-all"><span className="row-title">{row.email || "Email unavailable"}</span>{row.name && <span className="row-subtitle block">{row.name}</span>}</td><td className="whitespace-nowrap text-muted-foreground">{formatDateTime(row.at)}</td></tr>)}</tbody></table></div> : <p className="py-4 text-sm text-muted-foreground">No activity recorded yet.</p>}
   </CardContent></Card>;
 }
 function ActivityChart({ rows }: { rows: Hour[] }) {
+  const { timeZone, formatDateTime } = useDateTime();
   const interaction = useChartInteraction(rows.length, 50, 750);
   const selected = interaction.index;
   if (!rows.length)
@@ -612,7 +616,7 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
               </g>
             )}
             <text x="50" y="265" fill="currentColor" fontSize="12">
-              {new Date(rows[0].hour).toLocaleString()}
+              {formatDateTime(rows[0].hour)}
             </text>
             <text
               x="800"
@@ -621,14 +625,14 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
               fill="currentColor"
               fontSize="12"
             >
-              {new Date(rows.at(-1)!.hour).toLocaleString()}
+              {formatDateTime(rows.at(-1)!.hour)}
             </text>
           </svg>
           {selected !== null && (
             <ChartTooltip
               id={interaction.id}
               position={interaction.x / 850 * 100}
-              title={new Date(rows[selected].hour).toLocaleString(undefined, {
+              title={formatDateTime(rows[selected].hour, {
                 year: "numeric", month: "short", day: "numeric",
                 hour: "2-digit", minute: "2-digit", timeZoneName: "short",
               })}
@@ -657,7 +661,7 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
             {label}
           </span>
         ))}
-        <span className="ml-auto">Times use your browser timezone.</span>
+        <span className="ml-auto">Times shown in {timeZone}.</span>
       </div>
       <details>
         <summary className="cursor-pointer text-sm">View hourly data</summary>
@@ -674,7 +678,7 @@ function ActivityChart({ rows }: { rows: Hour[] }) {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.hour}>
-                  <td>{new Date(r.hour).toLocaleString()}</td>
+                  <td>{formatDateTime(r.hour)}</td>
                   <td>{number(r.deliveries)}</td>
                   <td>{number(r.opens)}</td>
                   <td>{number(r.clicks)}</td>
