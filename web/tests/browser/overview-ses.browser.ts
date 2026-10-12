@@ -101,9 +101,10 @@ test("switching brands shows that brand's region and sending status", async ({ p
   await page.getByRole("button", { name: "Switch brand", exact: true }).click();
   await page.getByRole("menuitem", { name: /Other/ }).click();
   await expect(card.getByText("Sending disabled", { exact: true })).toBeVisible();
-  await expect(card.locator(".ses-summary-footer")).toContainText("Sandbox");
+  await expect(card.locator(".ses-region")).toHaveText("N. Virginia");
   await card.getByText("Account details", { exact: true }).click();
   await expect(card.getByText("Disabled", { exact: true })).toBeVisible();
+  await expect(card.getByText("Sandbox", { exact: true })).toBeVisible();
   await expect(card.getByText("US East (N. Virginia) (us-east-1)", { exact: true })).toBeVisible();
   await expect(card.getByText("Healthy", { exact: true })).toHaveCount(0);
   expect(state.checks).toEqual([1, 2]);

@@ -1404,17 +1404,45 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    flex-wrap: wrap;
     gap: 8px;
     padding: 8px 12px 8px 16px;
     border-top: 1px solid var(--border);
     font-size: 12px;
+  }
+  .ses-region {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .ses-refresh {
     display: flex;
     align-items: center;
     gap: 4px;
     margin-left: auto;
+    flex-shrink: 0;
+  }
+  .ses-checked {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .ses-refresh-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 150ms ease;
+  }
+  .ses-refresh-action:hover:not(:disabled) {
+    color: var(--foreground);
   }
   .ses-account-details {
     border-top: 1px solid var(--border);

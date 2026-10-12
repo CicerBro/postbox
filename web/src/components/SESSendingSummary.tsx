@@ -1,11 +1,10 @@
 import { useDateTime } from "../lib/date-time";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, RefreshCw } from "lucide-react";
+import { ChevronDown, Clock, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { sesRegions, type SESSendingStatus } from "../lib/aws-ses";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
 type Connection = {
@@ -67,16 +66,20 @@ export function SESSendingSummary({ brandId }: { brandId: number }) {
         </>}
       </CardContent>
       <div className="ses-summary-footer">
-        {data && <span className="muted">{shortRegion} · {data.production_access_enabled ? "Production" : "Sandbox"}</span>}
+        {data && <span className="ses-region muted" title={region}>{shortRegion}</span>}
         <div className="ses-refresh">
-          {data && <span className="muted">Checked {data.checked_at ? <time dateTime={new Date(data.checked_at).toISOString()}>{formatDateTime(data.checked_at)}</time> : "Unavailable"}</span>}
-          <Button type="button" variant="ghost" size="icon"
+          {data && <span className="ses-checked muted" title="Last checked">
+            <Clock size={14} aria-hidden="true" />
+            <span className="sr-only">Last checked: </span>
+            {data.checked_at ? <time dateTime={new Date(data.checked_at).toISOString()}>{formatDateTime(data.checked_at)}</time> : "Unavailable"}
+          </span>}
+          <button type="button" className="ses-refresh-action"
             aria-label="Refresh Amazon SES status from AWS"
             title="Refresh status and quota from AWS"
             disabled={refreshing || (connection.isSuccess && !connection.data.has_credentials)}
             onClick={() => { void (connection.isError ? connection.refetch() : status.refetch()); }}>
             <RefreshCw size={16} aria-hidden="true" className={refreshing ? "animate-spin" : undefined} />
-          </Button>
+          </button>
         </div>
       </div>
       {data && <details className="ses-account-details">
