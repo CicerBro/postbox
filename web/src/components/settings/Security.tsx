@@ -78,7 +78,8 @@ export function Security() {
         <Field
           label="Current password"
           type="password"
-          autoComplete="current-password"
+          autoComplete="new-password"
+          data-bwignore="true"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
