@@ -501,6 +501,9 @@
     font-weight: 500;
     white-space: nowrap;
   }
+  .status-badge {
+    font-size: 12px;
+  }
   .status-success,
   .status-subscribed,
   .status-active,

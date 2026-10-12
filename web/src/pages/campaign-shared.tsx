@@ -54,7 +54,7 @@ export function StatusBadge({ status }: { status: string }) {
   return (
     <Badge variant="outline" className={`status-badge status-${tone}`}>
       <span className="status-dot" aria-hidden="true" />
-      {status}
+      {status.charAt(0).toUpperCase() + status.slice(1)}
     </Badge>
   );
 }

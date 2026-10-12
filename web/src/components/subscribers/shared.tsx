@@ -34,7 +34,7 @@ export function SubscriberStatusBadge({ status }: { status: string }) {
   return (
     <Badge variant="outline" className={`status-badge status-${status}`}>
       <span className="status-dot" />
-      {status}
+      {status.charAt(0).toUpperCase() + status.slice(1)}
     </Badge>
   );
 }

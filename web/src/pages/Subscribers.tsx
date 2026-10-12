@@ -985,7 +985,13 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                   <thead>
                     <tr>
                       {sortableHead("Name", "name")}
-                      {sortableHead("Email", "email")}
+                      <SortableTableHead
+                        label="Email"
+                        active={sort === "email"}
+                        direction={direction}
+                        onSort={() => sortBy("email")}
+                        className="border-r border-border"
+                      />
                       {sortableHead("Last activity", "last_activity")}
                       {sortableHead("Created at", "created_at")}
                       <th className="w-32">Action</th>
@@ -1023,7 +1029,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                           </span>
                         </td>
                         <td
-                          className="max-w-[24rem] truncate text-muted-foreground"
+                          className="max-w-[24rem] truncate border-r border-border text-muted-foreground"
                           title={s.email}
                         >
                           {s.email}
