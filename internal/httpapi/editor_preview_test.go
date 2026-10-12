@@ -20,19 +20,22 @@ func TestEditorPreviewRendersUnsavedMergeTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := fmt.Sprintf("/api/v1/email-preview?brand_id=%d", brand.ID)
-	source := `<style>p{color:red}</style><p>Hello {{ name }} ({{ email }}), {{ city | "Amsterdam" }} {{ currentyear }}</p><a href="{{ unsubscribe }}">Unsubscribe</a><a href="{{ webversion }}">Browser</a><a href="[unsubscribe_url]">Legacy</a><a href="https://example.net/article">Article</a>`
+	source := `<style>p{color:red}</style><p>Hello {{ name }} ({{ email }}), {{ city | "Amsterdam" }} {{ currentyear }}</p><p>Hi {{ name | "Subscriber" }}! [Name,fallback=Reader]</p><a href="{{ unsubscribe }}">Unsubscribe</a><a href="{{ webversion }}">Browser</a><a href="[unsubscribe_url]">Legacy</a><a href="https://example.net/article">Article</a>`
 	for _, domain := range []string{"", "mail.example.org/"} {
 		if _, err = db.Writer.Exec(`UPDATE brands SET tracking_domain=? WHERE id=?`, domain, brand.ID); err != nil {
 			t.Fatal(err)
 		}
-		payload, _ := json.Marshal(map[string]any{"html": source, "inline_css": true})
+		payload, _ := json.Marshal(map[string]any{"html": source, "inline_css": true, "subject": `Hello {{ name | "Subscriber" }}`, "text": `Hi [Name,fallback=Reader]`})
 		w := request(mux, "POST", path, string(payload), &cookie, csrf)
 		if w.Code != 200 {
 			t.Fatalf("preview: %d %s", w.Code, w.Body)
 		}
-		var out struct{ HTML string }
+		var out struct{ HTML, Subject, Text string }
 		if err = json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 			t.Fatal(err)
+		}
+		if out.Subject != "Hello Subscriber" || out.Text != "Hi Reader" || !strings.Contains(out.HTML, "Hi Subscriber! Reader") {
+			t.Fatalf("sample name fallbacks: %+v", out)
 		}
 		base := "https://example.org"
 		if domain != "" {

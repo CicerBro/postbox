@@ -42,10 +42,11 @@ func (e *Engine) EditorPreview(ctx context.Context, brandID, subscriberID int64,
 		return "", "", "", err
 	}
 	r := render.Recipient{
-		Name: "there", Email: "preview@example.org", Token: "preview",
+		NamePlaceholder: "there", Email: "preview@example.org", Token: "preview",
 		UnsubscribeURL: base + "/u/preview", WebVersionURL: base + "/w/0/preview",
 	}
 	if subscriberID > 0 {
+		r.NamePlaceholder = ""
 		var rawFields string
 		if err := e.db.Reader.QueryRowContext(ctx, `SELECT name,email,fields FROM subscribers WHERE id=? AND brand_id=?`, subscriberID, brandID).Scan(&r.Name, &r.Email, &rawFields); err != nil {
 			return "", "", "", err

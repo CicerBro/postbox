@@ -395,14 +395,11 @@ export function EmailEditor({
                     <DropdownMenu.Label className="dropdown-label">Click a variable to copy</DropdownMenu.Label>
                     {[
                       ...(mergeTags ?? [
-                        "name",
-                        "email",
-                        "unsubscribe",
-                        "webversion",
-                        "currentdaydate",
-                        "currentmonth",
-                        "currentyear",
-                      ]).map((value) => ({ value, label: value })),
+                        { value: "name", label: "name" },
+                        { value: 'name | "there"', label: "name (fallback: there)" },
+                        ...["email", "unsubscribe", "webversion", "currentdaydate", "currentmonth", "currentyear"]
+                          .map((value) => ({ value, label: value })),
+                      ]).map((tag) => typeof tag === "string" ? { value: tag, label: tag } : tag),
                       ...(mergeTags === undefined ? fields.data?.map((f) => ({
                         value: f.key,
                         label: `${f.label} (${f.key})`,

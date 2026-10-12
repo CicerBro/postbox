@@ -16,8 +16,10 @@ import (
 )
 
 type Recipient struct {
-	ID                                   int64
-	Email, Name                          string
+	ID          int64
+	Email, Name string
+	// NamePlaceholder supplies a sample name only when no name or tag fallback is available.
+	NamePlaceholder                      string
 	Fields                               map[string]string
 	Token, UnsubscribeURL, WebVersionURL string
 }
@@ -257,6 +259,9 @@ func value(c chunk, r Recipient) string {
 	switch c.key {
 	case "name":
 		v = r.Name
+		if v == "" && c.fallback == "" {
+			v = r.NamePlaceholder
+		}
 	case "email":
 		v = r.Email
 	case "token":
