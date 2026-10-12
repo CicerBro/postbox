@@ -170,29 +170,6 @@ function Chart({
           />
         )}
       </div>
-      <details className="chart-data">
-        <summary>View chart data</summary>
-        <table>
-          <thead>
-            <tr>
-              <th>Bucket</th>
-              <th>{seriesNames[0]}</th>
-              <th>Comparison bucket</th>
-              <th>{seriesNames[1]}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {a.map((v, i) => (
-              <tr key={i}>
-                <td>{bucketLabels[i] ?? i + 1}</td>
-                <td>{v}</td>
-                <td>{comparisonLabels[i]}</td>
-                <td>{b[i] ?? 0}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </details>
     </div>
   );
 }
