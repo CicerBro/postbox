@@ -40,13 +40,24 @@ async function fixture(context: BrowserContext, configured = true) {
 
 test("overview shows AWS quota, refreshes it and keeps failures local", async ({ page, context }, testInfo) => {
   const state = await fixture(context);
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/?brand_id=1");
   const card = page.getByLabel("Amazon SES sending status", { exact: true });
   await expect(card.getByText("Healthy", { exact: true })).toBeVisible();
+  const details = card.locator("details");
+  await expect(details).not.toHaveAttribute("open");
+  await expect(card.getByText("Enabled", { exact: true })).not.toBeVisible();
+  await card.getByText("Account details", { exact: true }).click();
   await expect(card.getByText("Enabled", { exact: true })).toBeVisible();
   await expect(card.getByText("Europe (Frankfurt) (eu-central-1)", { exact: true })).toBeVisible();
   await expect(card.getByText("348,750", { exact: true })).toBeVisible();
   expect(state.checks).toEqual([1]);
+  await card.getByText("Account details", { exact: true }).click();
+  const cardBounds = await card.boundingBox();
+  const metricsBounds = await page.locator(".kpi-strip").boundingBox();
+  expect(cardBounds!.width).toBe(320);
+  expect(cardBounds!.x).toBeGreaterThan(metricsBounds!.x + metricsBounds!.width);
+  expect(Math.abs(cardBounds!.y - metricsBounds!.y)).toBeLessThan(1);
   state.sent = 2000;
   const refresh = card.getByRole("button", { name: "Refresh Amazon SES status from AWS" });
   await refresh.click();
@@ -62,8 +73,16 @@ test("overview shows AWS quota, refreshes it and keeps failures local", async ({
   await expect(card.getByRole("alert")).toHaveCount(0);
   await expect(card.locator("dl > div").filter({ hasText: "Sends left" })).toContainText("0");
   await page.setViewportSize({ width: 390, height: 844 });
+  const mobileCard = await card.boundingBox();
+  const mobileMetrics = await page.locator(".kpi-strip").boundingBox();
+  expect(mobileCard!.y).toBeGreaterThan(mobileMetrics!.y + mobileMetrics!.height);
+  await card.getByText("Account details", { exact: true }).click();
+  await expect(card.getByText("Enabled", { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("overview-ses-mobile.png"), fullPage: true });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  for (const width of [390, 320, 768, 1200, 1920]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `overflow at ${width}px`).toBe(true);
+  }
 });
 
 test("overview skips AWS calls when access keys are missing", async ({ page, context }) => {
@@ -81,8 +100,10 @@ test("switching brands shows that brand's region and sending status", async ({ p
   await expect(card.getByText("Healthy", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Switch brand", exact: true }).click();
   await page.getByRole("menuitem", { name: /Other/ }).click();
+  await expect(card.getByText("Sending disabled", { exact: true })).toBeVisible();
+  await expect(card.locator(".ses-summary-footer")).toContainText("Sandbox");
+  await card.getByText("Account details", { exact: true }).click();
   await expect(card.getByText("Disabled", { exact: true })).toBeVisible();
-  await expect(card.getByText("Sandbox", { exact: true })).toBeVisible();
   await expect(card.getByText("US East (N. Virginia) (us-east-1)", { exact: true })).toBeVisible();
   await expect(card.getByText("Healthy", { exact: true })).toHaveCount(0);
   expect(state.checks).toEqual([1, 2]);

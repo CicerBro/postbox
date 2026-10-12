@@ -219,7 +219,7 @@ export function OverviewPage({ brandId }: { brandId: number }) {
           Monitor your audience and campaign performance.
         </p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <SelectField
           aria-label="Campaign performance period"
           value={days}
@@ -239,20 +239,24 @@ export function OverviewPage({ brandId }: { brandId: number }) {
     return (
       <>
         {heading}
-      <SESSendingSummary brandId={brandId} />
-        <p role="status">Loading overview…</p>
+        <div className="overview-summary mb-8">
+          <p role="status">Loading overview…</p>
+          <SESSendingSummary brandId={brandId} />
+        </div>
       </>
     );
   if (query.isError)
     return (
       <>
         {heading}
-      <SESSendingSummary brandId={brandId} />
-        <div role="alert">
-          {query.error.message}{" "}
-          <Button variant="outline" onClick={() => query.refetch()}>
-            Retry
-          </Button>
+        <div className="overview-summary mb-8">
+          <div role="alert">
+            {query.error.message}{" "}
+            <Button variant="outline" onClick={() => query.refetch()}>
+              Retry
+            </Button>
+          </div>
+          <SESSendingSummary brandId={brandId} />
         </div>
       </>
     );
@@ -276,39 +280,41 @@ export function OverviewPage({ brandId }: { brandId: number }) {
   return (
     <>
       {heading}
-      <SESSendingSummary brandId={brandId} />
-      <div className="kpi-strip">
-        {kpis.map(([label, key, delta, Icon]) => (
-          <div className="kpi" key={key}>
-            <p>
-              {label}
-              <Icon aria-hidden="true" />
-            </p>
-            <strong>
-              {data.current[key] == null
-                ? "N/A"
-                : key === "sent"
-                  ? data.current[key]!.toLocaleString()
-                  : data.current[key]!.toFixed(1) + "%"}
-            </strong>
-            <small>
-              {data.change[delta] == null ? (
-                data.period.days === null ? "Entire campaign history" : "No previous-period comparison"
-              ) : (
-                <>
-                  <span
-                    className={`kpi-delta ${data.change[delta] === 0 || key === "sent" ? "" : data.change[delta]! > 0 !== (key === "bounced_percent" || key === "complaints_percent") ? "positive" : "negative"}`}
-                  >
-                    {data.change[delta]! >= 0 ? "+" : ""}
-                    {data.change[delta]!.toFixed(1)}
-                    {key === "sent" ? "%" : " pp"}
-                  </span>{" "}
-                  vs previous {data.period.days} days
-                </>
-              )}
-            </small>
-          </div>
-        ))}
+      <div className="overview-summary">
+        <div className="kpi-strip">
+          {kpis.map(([label, key, delta, Icon]) => (
+            <div className="kpi" key={key}>
+              <p>
+                {label}
+                <Icon aria-hidden="true" />
+              </p>
+              <strong>
+                {data.current[key] == null
+                  ? "N/A"
+                  : key === "sent"
+                    ? data.current[key]!.toLocaleString()
+                    : data.current[key]!.toFixed(1) + "%"}
+              </strong>
+              <small>
+                {data.change[delta] == null ? (
+                  data.period.days === null ? "Entire campaign history" : "No previous-period comparison"
+                ) : (
+                  <>
+                    <span
+                      className={`kpi-delta ${data.change[delta] === 0 || key === "sent" ? "" : data.change[delta]! > 0 !== (key === "bounced_percent" || key === "complaints_percent") ? "positive" : "negative"}`}
+                    >
+                      {data.change[delta]! >= 0 ? "+" : ""}
+                      {data.change[delta]!.toFixed(1)}
+                      {key === "sent" ? "%" : " pp"}
+                    </span>{" "}
+                    vs previous {data.period.days} days
+                  </>
+                )}
+              </small>
+            </div>
+          ))}
+        </div>
+        <SESSendingSummary brandId={brandId} />
       </div>
       <p className="muted text-sm mb-8">
         {data.period.days === null

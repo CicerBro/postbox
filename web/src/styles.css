@@ -1335,6 +1335,129 @@
     gap: 16px;
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
   }
+  .overview-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .overview-summary .kpi-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-bottom: 0;
+  }
+  .overview-summary .kpi {
+    padding: 16px;
+    min-height: 120px;
+  }
+  .overview-summary .kpi p {
+    margin-bottom: 8px;
+  }
+  .ses-summary {
+    min-width: 0;
+  }
+  .ses-summary .card-header {
+    padding: 16px 16px 0;
+  }
+  .ses-summary .card-title {
+    font-size: 14px;
+  }
+  .ses-summary .card-content {
+    padding: 16px;
+  }
+  .ses-health {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .ses-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0;
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .ses-metrics dt {
+    min-height: 32px;
+  }
+  .ses-metric-value {
+    margin: 8px 0 0;
+    font-size: 18px;
+    line-height: 24px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .ses-quota {
+    display: block;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 400;
+    margin-top: 4px;
+  }
+  .ses-summary-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px 8px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .ses-refresh {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .ses-account-details {
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .ses-account-details summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    color: var(--muted);
+    cursor: pointer;
+    list-style: none;
+  }
+  .ses-account-details summary::-webkit-details-marker {
+    display: none;
+  }
+  .ses-account-details[open] summary svg {
+    transform: rotate(180deg);
+  }
+  .ses-account-content {
+    padding: 0 16px 16px;
+  }
+  .ses-account-content dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0;
+  }
+  .ses-account-content dd {
+    margin: 4px 0 0;
+    overflow-wrap: anywhere;
+  }
+  .ses-account-content p {
+    margin: 12px 0 0;
+  }
+  @media (min-width: 1200px) {
+    .overview-summary {
+      grid-template-columns: minmax(0, 1fr) 320px;
+    }
+  }
+  @media (max-width: 760px) {
+    .overview-summary .kpi-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
   .chart-current {
     stroke: var(--chart-1);
     stroke-width: 2.5;

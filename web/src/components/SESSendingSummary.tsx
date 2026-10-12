@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { sesRegions, type SESSendingStatus } from "../lib/aws-ses";
@@ -34,23 +34,20 @@ export function SESSendingSummary({ brandId }: { brandId: number }) {
   const error = connection.error || status.error;
   const refreshing = connection.isFetching || status.isFetching;
   const region = data && (sesRegions.find((option) => option.value === data.region)?.label || data.region);
+  const shortRegion = region?.match(/\(([^()]+)\) \([^()]+\)$/)?.[1] || region;
   const health = data?.enforcement_status;
   const healthLabel = health ? health.charAt(0) + health.slice(1).toLowerCase() : "Unavailable";
 
   return (
-    <Card className="mb-8" aria-label="Amazon SES sending status" aria-busy={refreshing}>
+    <Card className="ses-summary" aria-label="Amazon SES sending status" aria-busy={refreshing}>
       <CardHeader>
         <div className="section-heading">
           <CardTitle>Amazon SES</CardTitle>
-          <Button type="button" variant="ghost" size="icon"
-            aria-label="Refresh Amazon SES status from AWS"
-            title="Refresh status and quota from AWS"
-            disabled={refreshing || (connection.isSuccess && !connection.data.has_credentials)}
-            onClick={() => { void (connection.isError ? connection.refetch() : status.refetch()); }}>
-            <RefreshCw size={16} aria-hidden="true" className={refreshing ? "animate-spin" : undefined} />
-          </Button>
+          {data && <div className="ses-health">
+            <Badge variant={health === "HEALTHY" ? "success" : health ? "warning" : "secondary"}>{healthLabel}</Badge>
+            {!data.sending_enabled && <Badge variant="destructive">Sending disabled</Badge>}
+          </div>}
         </div>
-        <p className="muted text-sm">Account quotas are shared by all senders in this AWS account and region.</p>
       </CardHeader>
       <CardContent>
         {error && <p role="alert" className="mb-3 text-sm">{error.message}{data ? " Showing the last successful check." : ""}</p>}
@@ -60,21 +57,39 @@ export function SESSendingSummary({ brandId }: { brandId: number }) {
         </p>}
         {data && <>
           {data.custom_endpoint && <p className="muted text-sm mb-3">A custom AWS endpoint is active. These figures are reported by that endpoint.</p>}
-          <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <div><dt className="muted">Status</dt><dd className="mt-1"><Badge variant={health === "HEALTHY" ? "success" : health ? "warning" : "secondary"}>{healthLabel}</Badge></dd></div>
-            <div><dt className="muted">Sending</dt><dd className="mt-1"><Badge variant={data.sending_enabled ? "success" : "destructive"}>{data.sending_enabled ? "Enabled" : "Disabled"}</Badge></dd></div>
-            <div><dt className="muted">SES region</dt><dd className="mt-1 font-medium">{region}</dd></div>
-            <div><dt className="muted">Account access</dt><dd className="mt-1 font-medium">{data.production_access_enabled ? "Production" : "Sandbox"}</dd></div>
-            {[
-              ["24-hour quota", data.quota.max_24_hour_send.toLocaleString()],
-              ["Sends left", Math.max(0, data.quota.max_24_hour_send - data.quota.sent_last_24_hours).toLocaleString()],
-              ["Sent in last 24 hours", data.quota.sent_last_24_hours.toLocaleString()],
-              ["Sends per second", data.quota.max_send_rate.toLocaleString()],
-            ].map(([label, value]) => <div key={label}><dt className="muted">{label}</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{value}</dd></div>)}
+          <dl className="ses-metrics">
+            <div><dt className="muted">Sent in last 24 hours</dt><dd className="ses-metric-value">{data.quota.sent_last_24_hours.toLocaleString()}<span className="ses-quota muted">/ {data.quota.max_24_hour_send.toLocaleString()}</span></dd></div>
+            <div><dt className="muted">Sends left</dt><dd className="ses-metric-value">{Math.max(0, data.quota.max_24_hour_send - data.quota.sent_last_24_hours).toLocaleString()}</dd></div>
+            <div><dt className="muted">Sends per second</dt><dd className="ses-metric-value">{data.quota.max_send_rate.toLocaleString()}</dd></div>
           </dl>
-          <p className="muted text-xs mt-4">Last checked: {data.checked_at ? new Date(data.checked_at).toLocaleString() : "Unavailable"}</p>
         </>}
       </CardContent>
+      <div className="ses-summary-footer">
+        {data && <span className="muted">{shortRegion} · {data.production_access_enabled ? "Production" : "Sandbox"}</span>}
+        <div className="ses-refresh">
+          {data && <span className="muted">Checked {data.checked_at ? <time dateTime={new Date(data.checked_at).toISOString()}>{new Date(data.checked_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</time> : "Unavailable"}</span>}
+          <Button type="button" variant="ghost" size="icon"
+            aria-label="Refresh Amazon SES status from AWS"
+            title="Refresh status and quota from AWS"
+            disabled={refreshing || (connection.isSuccess && !connection.data.has_credentials)}
+            onClick={() => { void (connection.isError ? connection.refetch() : status.refetch()); }}>
+            <RefreshCw size={16} aria-hidden="true" className={refreshing ? "animate-spin" : undefined} />
+          </Button>
+        </div>
+      </div>
+      {data && <details className="ses-account-details">
+        <summary>Account details <ChevronDown size={14} aria-hidden="true" /></summary>
+        <div className="ses-account-content">
+          <dl>
+            <div><dt className="muted">Sending</dt><dd><Badge variant={data.sending_enabled ? "success" : "destructive"}>{data.sending_enabled ? "Enabled" : "Disabled"}</Badge></dd></div>
+            <div><dt className="muted">Account access</dt><dd>{data.production_access_enabled ? "Production" : "Sandbox"}</dd></div>
+            <div><dt className="muted">SES region</dt><dd>{region}</dd></div>
+            <div><dt className="muted">24-hour quota</dt><dd>{data.quota.max_24_hour_send.toLocaleString()}</dd></div>
+          </dl>
+          <p className="muted">Account quotas are shared by all senders in this AWS account and region.</p>
+          <p className="muted">Last checked: {data.checked_at ? new Date(data.checked_at).toLocaleString() : "Unavailable"}</p>
+        </div>
+      </details>}
     </Card>
   );
 }
