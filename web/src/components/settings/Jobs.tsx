@@ -60,6 +60,7 @@ export function Jobs() {
       >
         <Field
           label="Failed job retention (days)"
+          className="w-full"
           type="number"
           min={1}
           max={3650}
