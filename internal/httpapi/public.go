@@ -9,13 +9,23 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"postbox/internal/emailpreferences"
 	"postbox/internal/htmlpolicy"
 	"postbox/internal/subscribers"
 	"strings"
 	"time"
 )
 
-var subscriptionForm = template.Must(template.New("subscribe").Parse(`<!doctype html><html><head><meta charset="utf-8"><title>Subscribe</title></head><body><main><h1>{{.Name}}</h1><form method="post"><label>Email <input type="email" name="email" required></label><label>Name <input name="name"></label><div hidden><input name="website" tabindex="-1" autocomplete="off"></div><label><input type="checkbox" name="consent" required> I consent to receive this newsletter.</label>{{if .SiteKey}}<div class="cf-turnstile" data-sitekey="{{.SiteKey}}"></div><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{{end}}<button>Subscribe</button></form></main></body></html>`))
+var subscriptionForm = template.Must(template.New("subscribe").Parse(`<h1>{{.Name}}</h1>
+<p class="muted">Subscribe to receive the latest updates in your inbox.</p>
+<form method="post" class="subscription-form">
+<label class="field">Email<input type="email" name="email" placeholder="you@example.com" autocomplete="email" required></label>
+<label class="field">Name <span class="muted">(optional)</span><input name="name" placeholder="Your name" autocomplete="name"></label>
+<div hidden><input name="website" tabindex="-1" autocomplete="off"></div>
+<label class="consent"><input type="checkbox" name="consent" required><span>I consent to receive this newsletter.</span></label>
+{{if .SiteKey}}<div class="cf-turnstile" data-sitekey="{{.SiteKey}}" data-size="compact"></div><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{{end}}
+<button class="primary" type="submit">Subscribe <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+</form>`))
 
 func (a *API) registerPublic(m *http.ServeMux) {
 	a.registerSubscriptionSettings(m)
@@ -50,7 +60,8 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var list subscribers.List
-	e := a.db.Reader.QueryRowContext(r.Context(), "SELECT id,brand_id,name,opt_in FROM lists WHERE uuid=?", r.PathValue("uuid")).Scan(&list.ID, &list.BrandID, &list.Name, &list.OptIn)
+	var brandName string
+	e := a.db.Reader.QueryRowContext(r.Context(), "SELECT l.id,l.brand_id,l.name,l.opt_in,b.name FROM lists l JOIN brands b ON b.id=l.brand_id WHERE l.uuid=?", r.PathValue("uuid")).Scan(&list.ID, &list.BrandID, &list.Name, &list.OptIn, &brandName)
 	if e != nil {
 		result(w, nil, e)
 		return
@@ -60,7 +71,9 @@ func (a *API) publicSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "GET" {
 		htmlpolicy.Set(w, htmlpolicy.Signup, "no-store")
+		emailpreferences.Start(w, "Subscribe to "+list.Name, brandName)
 		_ = subscriptionForm.Execute(w, map[string]string{"Name": list.Name, "SiteKey": a.cfg.TurnstileSiteKey})
+		emailpreferences.End(w)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
@@ -168,7 +181,14 @@ func (a *API) thankyou(w http.ResponseWriter, r *http.Request, brand, listID int
 		if status == "confirmed" {
 			message = "Your subscription is confirmed."
 		}
-		body = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Thank you</title></head><body><p>" + message + "</p></body></html>"
+		var brandName string
+		if e := a.db.Reader.QueryRowContext(r.Context(), "SELECT name FROM brands WHERE id=?", brand).Scan(&brandName); e != nil {
+			result(w, nil, e)
+			return
+		}
+		htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
+		emailpreferences.Confirmation(w, "Thank you", message, brandName)
+		return
 	}
 	htmlpolicy.Set(w, htmlpolicy.Custom, "no-store")
 	_, _ = io.WriteString(w, body)

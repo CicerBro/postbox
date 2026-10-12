@@ -1,7 +1,8 @@
 import { StatusMessage } from "../StatusMessage";
 import { SelectField } from "../ui/select";
 import { Checkbox } from "../ui/checkbox";
-import { useEffect, useState } from "react";
+import { Switch } from "../ui/switch";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
@@ -46,6 +47,9 @@ export function CSVImport({
   fields: CustomField[];
 }) {
   const [file, setFile] = useState<File>();
+  const [directImport, setDirectImport] = useState(false);
+  const [csvText, setCSVText] = useState("");
+  const inputVersion = useRef(0);
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [listIds, setListIds] = useState<number[]>([]);
@@ -61,6 +65,42 @@ export function CSVImport({
     action.reset();
   };
   const options = { mapping, list_ids: listIds };
+  const loadCSV = (source: File, text: string) => {
+    if (source.size > 1024 ** 3) throw new Error("The CSV limit is 1 GiB.");
+    const first = parseCSV(text, 1)[0];
+    if (!first?.length || !first.some((header) => header.trim()))
+      throw new Error("CSV must have a header.");
+    if (new Set(first).size !== first.length)
+      throw new Error("CSV headers must be unique.");
+    setHeaders(first);
+    setMapping((previous) => Object.fromEntries(
+      first.map((header) => {
+        const normalized = header.replace(/^\uFEFF/, "").trim().toLowerCase();
+        const destination = [
+          "email", "name", "status", "fields", "gdpr_consent_at",
+        ].includes(normalized) ? normalized : "";
+        return [header, previous[header] ?? destination];
+      }),
+    ));
+    setFile(source);
+  };
+  const resetInput = () => {
+    inputVersion.current++;
+    resetPreview();
+    setFile(undefined);
+    setHeaders([]);
+    setMapping({});
+  };
+  const loadDirectCSV = (text: string) => {
+    setFile(undefined);
+    setHeaders([]);
+    if (!text.trim()) return;
+    try {
+      loadCSV(new File([text], "pasted.csv", { type: "text/csv" }), text);
+    } catch (err) {
+      setError(err);
+    }
+  };
   const run = async (dry: boolean) => {
     if (!file) return;
     try {
@@ -95,55 +135,63 @@ export function CSVImport({
           and suppressed statuses are preserved.
         </p>
       </div>
-      <Field label="CSV file">
-        <Input
-          type="file"
-          accept=".csv,text/csv"
-          onChange={async (e) => {
-            resetPreview();
-            setFile(undefined);
-            setHeaders([]);
-            const f = e.target.files?.[0];
-            if (!f) return;
-            try {
-              if (f.size > 1024 ** 3)
-                throw new Error("The CSV limit is 1 GiB.");
-              const first = parseCSV(await f.slice(0, 256 * 1024).text(), 1)[0];
-              if (!first?.length) throw new Error("CSV must have a header.");
-              if (new Set(first).size !== first.length)
-                throw new Error("CSV headers must be unique.");
-              setHeaders(first);
-              setMapping(
-                Object.fromEntries(
-                  first.map((h) => [
-                    h,
-                    [
-                      "email",
-                      "name",
-                      "status",
-                      "fields",
-                      "gdpr_consent_at",
-                    ].includes(
-                      h
-                        .replace(/^\uFEFF/, "")
-                        .trim()
-                        .toLowerCase(),
-                    )
-                      ? h
-                          .replace(/^\uFEFF/, "")
-                          .trim()
-                          .toLowerCase()
-                      : "",
-                  ]),
-                ),
-              );
-              setFile(f);
-            } catch (err) {
-              setError(err);
-            }
+      <label className="flex items-center gap-3 text-sm font-medium">
+        <Switch
+          checked={directImport}
+          disabled={action.isPending}
+          onCheckedChange={(checked) => {
+            resetInput();
+            setDirectImport(checked);
+            if (checked) loadDirectCSV(csvText);
           }}
         />
-      </Field>
+        Paste CSV directly
+      </label>
+      {directImport ? (
+        <div className="space-y-2">
+          <Field label="CSV text">
+            <Textarea
+              aria-label="CSV text"
+              rows={8}
+              className="font-mono text-sm"
+              placeholder={"email,name\nada@example.org,Ada"}
+              value={csvText}
+              disabled={action.isPending}
+              onChange={(event) => {
+                resetPreview();
+                const text = event.target.value;
+                setCSVText(text);
+                loadDirectCSV(text);
+              }}
+            />
+          </Field>
+          <p className="text-xs text-muted-foreground">
+            Include a header row. Column mapping and preview work the same as a CSV file.
+          </p>
+        </div>
+      ) : (
+        <Field label="CSV file">
+          <Input
+            type="file"
+            accept=".csv,text/csv"
+            disabled={action.isPending}
+            onChange={async (e) => {
+              resetInput();
+              const version = inputVersion.current;
+              const f = e.target.files?.[0];
+              if (!f) return;
+              try {
+                if (f.size > 1024 ** 3)
+                  throw new Error("The CSV limit is 1 GiB.");
+                const text = await f.slice(0, 256 * 1024).text();
+                if (version === inputVersion.current) loadCSV(f, text);
+              } catch (err) {
+                if (version === inputVersion.current) setError(err);
+              }
+            }}
+          />
+        </Field>
+      )}
       {!!headers.length && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {headers.map((h) => (
@@ -560,7 +608,8 @@ export function ListForm({
     `form-${list.id}`,
     `/lists/${list.id}/form`,
   );
-  const [copyStatus, setCopyStatus] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<unknown>();
   return (
     <div className="space-y-3">
       <ErrorMessage error={form.error} />
@@ -570,7 +619,7 @@ export function ListForm({
         form.data && (
           <>
             <a
-              className="text-sm underline break-all"
+              className="block text-sm underline break-all"
               href={form.data.hosted_url}
               target="_blank"
               rel="noreferrer"
@@ -578,25 +627,35 @@ export function ListForm({
               Open hosted subscribe form
             </a>
             <Field label="Embed HTML">
-              <Textarea readOnly rows={4} value={form.data.html} />
+              <Textarea
+                aria-label="Embed HTML"
+                className="font-mono text-xs"
+                readOnly
+                rows={4}
+                value={form.data.html}
+              />
             </Field>
             <Button
-              variant="outline"
               size="sm"
               onClick={async () => {
+                setCopied(false);
+                setCopyError(undefined);
                 try {
                   await navigator.clipboard.writeText(form.data!.html);
-                  setCopyStatus("Copied");
+                  setCopied(true);
                 } catch {
-                  setCopyStatus("Copy failed. Select and copy the HTML above.");
+                  setCopyError(new Error(
+                    "Copy failed. Select and copy the HTML above.",
+                  ));
                 }
               }}
             >
               Copy embed HTML
             </Button>
-            <p role="status" className="text-sm">
-              {copyStatus}
-            </p>
+            {copied && (
+              <StatusMessage>Embed HTML copied to clipboard.</StatusMessage>
+            )}
+            <ErrorMessage error={copyError} />
           </>
         )
       )}

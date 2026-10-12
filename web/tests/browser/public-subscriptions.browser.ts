@@ -39,8 +39,9 @@ test("public subscription controls persist each switch and show the effective ap
   const state = await settingsFixture(context);
   await page.goto("/settings");
   await page.getByRole("button", { name: "Public subscriptions", exact: true }).click();
-  const app = page.getByRole("checkbox", { name: "Allow public subscriptions across the application" });
-  const brand = page.getByRole("checkbox", { name: "Allow public subscriptions for this brand" });
+  const app = page.getByRole("switch", { name: "Allow public subscriptions across the application" });
+  const brand = page.getByRole("switch", { name: "Allow public subscriptions for this brand" });
+  await expect(page.getByText("Subscription form URLs", { exact: true })).toHaveCount(0);
   await expect(app).toBeChecked();
   await expect(brand).toBeChecked();
   await expect(page.getByText("Public signup is enabled for this brand.", { exact: true })).toBeVisible();
@@ -63,8 +64,8 @@ test("brand members can change brand signup without application controls", async
   const state = await settingsFixture(context, false);
   await page.goto("/settings");
   await page.getByRole("button", { name: "Public subscriptions", exact: true }).click();
-  await expect(page.getByRole("checkbox", { name: "Allow public subscriptions across the application" })).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "Allow public subscriptions for this brand" }).click();
+  await expect(page.getByRole("switch", { name: "Allow public subscriptions across the application" })).toHaveCount(0);
+  await page.getByRole("switch", { name: "Allow public subscriptions for this brand" }).click();
   await expect(page.getByText("Public signup is disabled for this brand.", { exact: true })).toBeVisible();
   expect(state.applicationWrites).toBe(0);
   expect(state.brandWrites).toBe(1);

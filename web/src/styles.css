@@ -88,6 +88,7 @@
   --color-foreground: var(--foreground);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
+  --color-input: var(--input);
   --color-card: var(--card);
   --color-muted: var(--muted-background);
   --color-primary: var(--primary);
@@ -243,36 +244,67 @@
   .dialog-overlay {
     position: fixed;
     inset: 0;
-    background: #0007;
+    background: rgb(0 0 0 / 50%);
     z-index: 80;
   }
   .dialog-header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     margin-bottom: 0;
   }
   .dialog-header h2 {
-    margin: 0 30px 8px 0;
-    font-size: 20px;
+    margin: 0 32px 0 0;
+    font-size: 18px;
     font-weight: 600;
+    line-height: 1.4;
   }
   .dialog-header p {
-    font-size: 13px;
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
     color: var(--muted);
   }
   .dialog-footer {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    margin-top: 0;
+    margin: 8px -24px -24px;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 12px 12px;
+    background: var(--soft);
+    padding: 16px 24px;
   }
   .dialog-close {
     position: absolute;
-    right: 17px;
-    top: 17px;
+    right: 16px;
+    top: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
     color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--secondary);
-    padding: 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    transition: background-color 150ms, color 150ms;
+  }
+  .dialog-close:hover {
+    color: var(--foreground);
+    background: var(--soft);
+  }
+  .dialog-close:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  @media (max-width: 639px) {
+    .dialog-footer {
+      flex-direction: column-reverse;
+    }
+    .dialog-footer > .button {
+      width: 100%;
+    }
   }
   .eyebrow {
     font-size: 11px;
@@ -1532,20 +1564,21 @@
   .dialog-content {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 20px;
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     background: var(--background);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 24px;
-    width: min(540px, calc(100vw - 32px));
-    max-height: 90vh;
+    width: min(512px, calc(100vw - 32px));
+    max-height: min(90vh, calc(100dvh - 32px));
     overflow: auto;
     z-index: 81;
-    box-shadow: 0 20px 70px #0003;
+    box-shadow: 0 20px 60px rgb(0 0 0 / 18%), 0 4px 16px rgb(0 0 0 / 8%);
+    outline: none;
   }
   .dialog-content.navigation-sheet {
     left: 0;

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
+import { Switch } from "../ui/switch";
 import { Message, Section, useAction } from "./Common";
 
 type Settings = {
@@ -54,7 +54,7 @@ export function PublicSubscriptions({ brandId }: { brandId: number }) {
             <Button variant="outline" onClick={() => app.refetch()}>Retry application settings</Button>
           ) : app.data && (
             <label htmlFor={`${id}-application`} className="flex items-center gap-3 text-sm">
-              <Checkbox id={`${id}-application`} checked={app.data.public_subscriptions_enabled}
+              <Switch id={`${id}-application`} checked={app.data.public_subscriptions_enabled}
                 disabled={action.busy} onCheckedChange={(value) => void save(true, value === true)} />
               Allow public subscriptions across the application
             </label>
@@ -67,7 +67,7 @@ export function PublicSubscriptions({ brandId }: { brandId: number }) {
             <Button variant="outline" onClick={() => brand.refetch()}>Retry brand settings</Button>
           ) : brand.data && <>
             <label htmlFor={`${id}-brand`} className="flex items-center gap-3 text-sm">
-              <Checkbox id={`${id}-brand`} checked={brand.data.public_subscriptions_enabled}
+              <Switch id={`${id}-brand`} checked={brand.data.public_subscriptions_enabled}
                 disabled={action.busy} onCheckedChange={(value) => void save(false, value === true)} />
               Allow public subscriptions for this brand
             </label>

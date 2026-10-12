@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
 
 async function fixture(context: BrowserContext, admin = true) {
-  const state = { setup: 0, reads: 0, confirmed: false, denied: false, updated: 1 };
+  const state = { setup: 0, reads: 0, confirmed: false, denied: false, updated: 1, hasToken: false, patches: [] as Record<string, unknown>[] };
   await context.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace("/api/v1", "");
@@ -11,8 +11,14 @@ async function fixture(context: BrowserContext, admin = true) {
     else if (path === "/brands") body = [{ id: 1, name: "Acme", from_email: "sender@example.org" }];
     else if (path === "/auth/security") body = {};
     else if (path === "/aws-settings") {
-      if (request.method() === "PATCH") state.updated++;
-      body = { mode: "static", region: "eu-west-1", has_credentials: true, configured: true, has_session_token: false, sns_topic_arn: state.setup ? "arn:aws:sns:eu-west-1:123456789012:postbox-test-events" : "", updated_at: state.updated };
+      if (request.method() === "PATCH") {
+        state.updated++;
+        const patch = request.postDataJSON();
+        state.patches.push(patch);
+        if (patch.clear_session_token) state.hasToken = false;
+        else if (patch.session_token) state.hasToken = true;
+      }
+      body = { mode: "static", region: "eu-west-1", has_credentials: true, configured: true, has_session_token: state.hasToken, sns_topic_arn: state.setup ? "arn:aws:sns:eu-west-1:123456789012:postbox-test-events" : "", updated_at: state.updated };
     } else if (path === "/aws-settings/setup-events" || path === "/aws-settings/event-status") {
       if (path.endsWith("setup-events")) {
         expect(request.method()).toBe("POST");
@@ -51,6 +57,44 @@ test("admin provisions SES and SNS and refreshes confirmation", async ({ page, c
   await page.getByLabel("SNS topic ARN", { exact: true }).fill("arn:aws:sns:eu-west-1:123456789012:other");
   await expect(setup).toBeDisabled();
   await expect(page.getByRole("button", { name: "Refresh event status" })).toBeDisabled();
+});
+
+test("saved credentials show masked placeholders without submitting them and keep the topic visible", async ({ page, context }) => {
+  const state = await fixture(context);
+  state.hasToken = true;
+  state.setup = 1;
+  await page.goto("/settings?brand_id=1");
+  await page.getByRole("button", { name: "Amazon SES", exact: true }).click();
+  const access = page.getByLabel("Access key ID", { exact: true });
+  const secret = page.getByLabel("Secret access key", { exact: true });
+  const token = page.getByLabel("Session token (optional)", { exact: true });
+  const topic = "arn:aws:sns:eu-west-1:123456789012:postbox-test-events";
+  for (const input of [access, secret, token]) {
+    await expect(input).toHaveValue("");
+    await expect(input).toHaveAttribute("placeholder", "••••••••");
+  }
+  await expect(page.getByLabel("SNS topic ARN", { exact: true })).toHaveValue(topic);
+  const save = page.getByRole("button", { name: "Save Amazon SES settings", exact: true });
+  await save.click();
+  await expect(save).toBeEnabled();
+  expect(state.patches).toEqual([{ mode: "static", region: "eu-west-1", sns_topic_arn: topic }]);
+
+  await access.fill("replacement-access-key");
+  await secret.fill("replacement-secret-key");
+  await save.click();
+  await expect(access).toHaveValue("");
+  await expect(secret).toHaveValue("");
+  await expect(secret).toHaveAttribute("placeholder", "••••••••");
+  expect(state.patches[1]).toEqual({ mode: "static", region: "eu-west-1", sns_topic_arn: topic,
+    access_key_id: "replacement-access-key", secret_access_key: "replacement-secret-key" });
+
+  await page.getByLabel("Remove saved session token", { exact: true }).check();
+  await expect(token).not.toHaveAttribute("placeholder", "••••••••");
+  await save.click();
+  await expect(save).toBeEnabled();
+  await expect(page.getByLabel("Remove saved session token", { exact: true })).toHaveCount(0);
+  await expect(token).not.toHaveAttribute("placeholder", "••••••••");
+  expect(state.patches[2]).toEqual({ mode: "static", region: "eu-west-1", sns_topic_arn: topic, clear_session_token: true });
 });
 
 test("brand readers refresh status without provisioning controls", async ({ page, context }) => {

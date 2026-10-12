@@ -120,6 +120,7 @@ func (a *API) documentRoute(pattern string) {
 	documentAWSSettings(method, path, op)
 	documentAWSIdentity(method, path, op)
 	documentSubscriptionSettings(method, path, op)
+	documentJobSettings(method, path, op)
 	methods[strings.ToLower(method)] = op
 }
 func requestSchema(path string) map[string]any {
@@ -272,7 +273,7 @@ func apiTag(path string) string {
 	switch resource {
 	case "auth", "users":
 		return "Authentication and users"
-	case "brands", "aws-settings", "aws-identity", "subscription-settings", "application-settings":
+	case "brands", "aws-settings", "aws-identity", "subscription-settings", "application-settings", "job-settings":
 		return "Brands and settings"
 	case "campaigns", "email-preview":
 		return "Campaigns"

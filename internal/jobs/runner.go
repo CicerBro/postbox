@@ -128,7 +128,8 @@ func (r *Runner) Recover(ctx context.Context) error {
 	return r.db.Immediate(ctx, func(c *sql.Conn) error {
 		// An expired mail lease may already have been accepted by SES. Recovery
 		// must not dispatch it again, even when the process lost its completion write.
-		res, err := c.ExecContext(ctx, `UPDATE jobs SET status=CASE WHEN queue IN ('transactional_email','email_notification') THEN 'failed' ELSE 'pending' END,locked_until=NULL,last_error=CASE WHEN queue IN ('transactional_email','email_notification') THEN 'delivery outcome unknown after worker interruption; automatic resend prohibited' ELSE last_error END WHERE status='running' AND (locked_until IS NULL OR locked_until<=?)`, time.Now().UnixMilli())
+		now := time.Now().UnixMilli()
+		res, err := c.ExecContext(ctx, `UPDATE jobs SET status=CASE WHEN queue IN ('transactional_email','email_notification') THEN 'failed' ELSE 'pending' END,failed_at=CASE WHEN queue IN ('transactional_email','email_notification') THEN ? ELSE NULL END,locked_until=NULL,last_error=CASE WHEN queue IN ('transactional_email','email_notification') THEN 'delivery outcome unknown after worker interruption; automatic resend prohibited' ELSE last_error END WHERE status='running' AND (locked_until IS NULL OR locked_until<=?)`, now, now)
 		if err == nil {
 			n, _ := res.RowsAffected()
 			r.recovered.Add(n)
@@ -290,7 +291,7 @@ func (r *Runner) execute(parent context.Context, j Job, h Handler) {
 		r.cfg.Logger.Log(parent, level, "job handler failed", "job_id", j.ID, "queue", j.Queue, "attempt", j.Attempts, "status", status, "error", last)
 	}
 	finishErr := r.db.Immediate(finishCtx, func(c *sql.Conn) error {
-		res, e := c.ExecContext(finishCtx, "UPDATE jobs SET status=?,run_at=?,locked_until=NULL,last_error=? WHERE id=? AND status='running' AND locked_until=?", status, runAt, last, j.ID, lease.Load())
+		res, e := c.ExecContext(finishCtx, "UPDATE jobs SET status=?,run_at=?,failed_at=CASE WHEN ?='failed' THEN ? ELSE NULL END,locked_until=NULL,last_error=? WHERE id=? AND status='running' AND locked_until=?", status, runAt, status, time.Now().UnixMilli(), last, j.ID, lease.Load())
 		if e != nil {
 			return e
 		}

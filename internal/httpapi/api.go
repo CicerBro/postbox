@@ -87,6 +87,7 @@ func (a *API) Register(m *http.ServeMux) {
 	a.registerCampaigns(m)
 	a.registerSubscribers(m)
 	a.registerOperations(m)
+	a.registerJobSettings(m)
 	a.registerAWSSettings(m)
 	a.registerWebhooks(m)
 	a.registerPublic(m)

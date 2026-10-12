@@ -4,8 +4,8 @@ import { Badge } from "../ui/badge";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
-import { Section, Field, Message, useAction, Secret, Checks } from "./Common";
+import { Switch } from "../ui/switch";
+import { Section, Field, Message, useAction, Secret } from "./Common";
 type Hook = {
   id: number;
   url: string;
@@ -84,13 +84,34 @@ export function Webhooks({ brandId }: { brandId: number }) {
         />
         <div className="space-y-2">
           <p className="text-sm font-medium">Events to send</p>
-          <Checks values={events} selected={selected} onChange={setSelected} />
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,200px),1fr))] gap-x-6 gap-y-3">
+            {events.map((event) => (
+              <label
+                key={event}
+                htmlFor={`webhook-event-${event}`}
+                className="flex min-w-0 items-center gap-3 text-sm"
+              >
+                <Switch
+                  id={`webhook-event-${event}`}
+                  checked={selected.includes(event)}
+                  onCheckedChange={(checked) =>
+                    setSelected((current) =>
+                      checked
+                        ? [...current, event]
+                        : current.filter((value) => value !== event),
+                    )
+                  }
+                />
+                <span className="whitespace-nowrap">{event.charAt(0).toUpperCase() + event.slice(1).replaceAll("_", " ")}</span>
+              </label>
+            ))}
+          </div>
         </div>
         <label htmlFor="webhook-active" className="flex items-center gap-3 text-sm">
-          <Checkbox
+          <Switch
             id="webhook-active"
             checked={active}
-            onCheckedChange={(checked) => setActive(checked === true)}
+            onCheckedChange={setActive}
           />
           Active
         </label>
@@ -128,7 +149,7 @@ export function Webhooks({ brandId }: { brandId: number }) {
           {q.data.pages.flat().map((h) => (
             <li key={h.id} className="rounded-xl border p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="row-title break-all">{h.url}</p>
+                <p className="row-title break-all text-lg font-medium">{h.url}</p>
                 <Badge variant={h.is_active ? "success" : "secondary"}>
                   {h.is_active ? "Active" : "Paused"}
                 </Badge>
@@ -141,19 +162,6 @@ export function Webhooks({ brandId }: { brandId: number }) {
                 ))}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="default"
-                  disabled={a.busy}
-                  onClick={() => {
-                    setEdit(h);
-                    setUrl(h.url);
-                    setSelected(h.events);
-                    setActive(h.is_active);
-                  }}
-                >
-                  Edit
-                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -194,24 +202,39 @@ export function Webhooks({ brandId }: { brandId: number }) {
                 >
                   Rotate secret
                 </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={a.busy}
-                  onClick={() => {
-                    if (window.confirm("Delete this webhook?"))
-                      void a.run(async () => {
-                        await api(`/webhooks/${h.id}`, {
-                          method: "DELETE",
-                          brandId,
-                        });
-                        if (edit?.id === h.id) reset();
-                        await refresh();
-                      }, "Webhook deleted.");
-                  }}
-                >
-                  Delete
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    disabled={a.busy}
+                    onClick={() => {
+                      setEdit(h);
+                      setUrl(h.url);
+                      setSelected(h.events);
+                      setActive(h.is_active);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={a.busy}
+                    onClick={() => {
+                      if (window.confirm("Delete this webhook?"))
+                        void a.run(async () => {
+                          await api(`/webhooks/${h.id}`, {
+                            method: "DELETE",
+                            brandId,
+                          });
+                          if (edit?.id === h.id) reset();
+                          await refresh();
+                        }, "Webhook deleted.");
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
               </div>
             </li>
           ))}

@@ -107,12 +107,15 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                       : "Enter an AWS access key ID and secret access key. Use IAM access keys, not SES SMTP credentials."}
                   </p>
                   <Field label="Access key ID" type="password" autoComplete="new-password" value={accessKey}
+                    placeholder={q.data.has_credentials ? "••••••••" : undefined}
                     required={!q.data.has_credentials || !!secretKey}
                     disabled={action.busy} onChange={(e) => setAccessKey(e.target.value)} />
                   <Field label="Secret access key" type="password" autoComplete="new-password" value={secretKey}
+                    placeholder={q.data.has_credentials ? "••••••••" : undefined}
                     required={!q.data.has_credentials || !!accessKey}
                     disabled={action.busy} onChange={(e) => setSecretKey(e.target.value)} />
                   <Field label="Session token (optional)" type="password" autoComplete="new-password" value={token}
+                    placeholder={q.data.has_session_token && !clearToken ? "••••••••" : undefined}
                     disabled={action.busy || clearToken} onChange={(e) => setToken(e.target.value)} />
                   <p className="text-sm text-muted-foreground">
                     {q.data.has_session_token ? "A session token is saved. Leave blank to keep it." : "Use a session token only for temporary AWS credentials."}

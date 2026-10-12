@@ -41,6 +41,13 @@ func (r *Runner) RegisterMaintenance(cfg MaintenanceConfig) error {
 		return errors.New("backup timeout must not exceed one minute")
 	}
 	if err := r.RegisterRecurring("housekeeping", cfg.Interval, func(ctx context.Context, j Job) error {
+		days, err := FailedJobRetentionDays(ctx, r.db)
+		if err != nil {
+			return err
+		}
+		if err := r.PurgeFailed(ctx, time.Now().Add(-time.Duration(days)*24*time.Hour), cfg.BatchSize); err != nil {
+			return err
+		}
 		if cfg.RawRetention > 0 {
 			if err := r.PurgeRaw(ctx, time.Now().Add(-cfg.RawRetention), cfg.BatchSize); err != nil {
 				return err
