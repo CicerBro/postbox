@@ -56,7 +56,7 @@ type Report = {
   countries: { country: string; opens: number; clicks: number }[];
   hourly: Hour[];
   recent?: Record<"opened" | "unsubscribed" | "bounced" | "complained", RecentRecipient[]>;
-  delivery?: { first_sent_at: number | null; last_sent_at: number | null; from_name: string; from_email: string; sender_snapshotted: boolean };
+  delivery?: { first_sent_at: number | null; last_sent_at: number | null; from_name: string; from_email: string; sender_snapshotted: boolean; historical?: boolean; delivered_estimated?: boolean };
   targets?: { target_type: "list" | "segment"; target_id: number; mode: "include" | "exclude"; name: string | null }[];
 };
 type RecentRecipient = { id: number; email: string; name: string | null; at: number };
@@ -230,7 +230,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
             <div><dt className="row-subtitle">Sent</dt><dd className="mt-1 text-sm font-medium">{report.data.delivery.first_sent_at ? new Date(report.data.delivery.first_sent_at).toLocaleString() : "No send recorded"}</dd></div>
             <div><dt className="row-subtitle">{report.data.delivery.sender_snapshotted ? "From" : "Current brand sender"}</dt><dd className="mt-1 break-words text-sm font-medium">{report.data.delivery.from_name}<span className="block text-muted-foreground">{report.data.delivery.from_email}</span></dd></div>
             <div><dt className="row-subtitle">Audience</dt><dd className="mt-1 text-sm font-medium">{report.data.targets?.length ? report.data.targets.map(target => `${target.mode === "exclude" ? "Exclude: " : ""}${target.name ?? `${target.target_type} #${target.target_id}`}`).join(", ") : "No audience targets"}</dd></div>
-            <div><dt className="row-subtitle">Recipients</dt><dd className="mt-1 text-sm font-medium">{stats?.recipients === undefined ? "Unavailable" : number(stats.recipients)}<span className="block text-muted-foreground">{number(sent)} sent · {number(stats?.delivered ?? 0)} delivered</span></dd></div>
+            <div><dt className="row-subtitle">Recipients</dt><dd className="mt-1 text-sm font-medium">{stats?.recipients === undefined ? "Unavailable" : number(stats.recipients)}<span className="block text-muted-foreground">{number(sent)} sent · {number(stats?.delivered ?? 0)} {report.data.delivery.delivered_estimated ? "estimated delivered" : "delivered"}</span></dd></div>
           </dl>
         </CardContent></Card>
       )}
@@ -258,6 +258,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           ))}
         </div>
       )}
+      {report.data?.delivery?.historical && <p className="text-xs text-muted-foreground">Imported Sendy report. Delivery is estimated as sent minus hard bounces when no delivery counter was supplied. Unsubscribes, bounces and complaints reflect the archived subscriber statuses attributed to this campaign; later Sendy campaigns may have reassigned older statuses. Recipient delivery events and human engagement classifications are unavailable.</p>}
       <p className="text-xs text-muted-foreground">Open and click rates include all recorded activity. Human engagement counters are available below.</p>
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card className="min-w-0">
@@ -295,7 +296,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
               <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-5 md:grid-cols-4 xl:grid-cols-6">
                 {metrics.map(([key, label]) => (
                   <div key={key}>
-                    <dt className="row-subtitle">{label}</dt>
+                    <dt className="row-subtitle">{label}{key === "delivered" && report.data?.delivery?.delivered_estimated ? " (estimated)" : ""}</dt>
                     <dd className="mt-1 text-lg font-semibold">
                       {stats[key] === undefined
                         ? "Unavailable"

@@ -13,7 +13,7 @@ func documentCampaignReport(method, path string, op map[string]any) {
 		}
 	}
 	op["parameters"] = kept
-	op["description"] = "Campaign counters, link metrics, country and hourly rollups. Recent contains up to 10 distinct campaign recipients per opened, unsubscribed, bounced and complained category, ordered by durable event timestamp descending then subscriber ID descending. Opened timestamps are the first open, including machine opens. Recipient email and name prefer the send snapshot. Timestamps are Unix milliseconds; samples survive raw-event retention. Delivery contains the first and last recipient sent_at and the preparation sender when present, otherwise the current brand sender with sender_snapshotted=false. Target names reflect current lists and segments and are null when removed."
+	op["description"] = "Campaign counters, link metrics, country and hourly rollups. Recent contains up to 10 distinct campaign recipients per opened, unsubscribed, bounced and complained category, ordered by durable event timestamp descending then subscriber ID descending. Opened timestamps are the first open, including machine opens. Recipient email and name prefer the send snapshot. Timestamps are Unix milliseconds; samples survive raw-event retention. Historical imports use the campaign started_at as first_sent_at when recipient timestamps are unavailable. historical identifies imported campaigns; delivered_estimated identifies imports without an explicit archived delivery counter. Delivery contains the first and last recipient sent_at and the preparation sender when present, otherwise the current brand sender with sender_snapshotted=false. Target names reflect current lists and segments and are null when removed."
 	integer := map[string]any{"type": "integer"}
 	text := map[string]any{"type": "string"}
 	nullableTime := map[string]any{"type": "integer", "nullable": true, "description": "Unix milliseconds"}
@@ -27,7 +27,7 @@ func documentCampaignReport(method, path string, op map[string]any) {
 		properties[key] = map[string]any{"type": "array", "items": map[string]any{"type": "object"}}
 	}
 	properties["recent"] = map[string]any{"type": "object", "required": []string{"opened", "unsubscribed", "bounced", "complained"}, "properties": recent}
-	properties["delivery"] = map[string]any{"type": "object", "properties": map[string]any{"first_sent_at": nullableTime, "last_sent_at": nullableTime, "from_name": text, "from_email": text, "sender_snapshotted": map[string]any{"type": "boolean"}}}
+	properties["delivery"] = map[string]any{"type": "object", "properties": map[string]any{"first_sent_at": nullableTime, "last_sent_at": nullableTime, "from_name": text, "from_email": text, "sender_snapshotted": map[string]any{"type": "boolean"}, "historical": map[string]any{"type": "boolean"}, "delivered_estimated": map[string]any{"type": "boolean"}}}
 	properties["targets"] = map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"target_type": map[string]any{"type": "string", "enum": []string{"list", "segment"}}, "target_id": integer, "mode": map[string]any{"type": "string", "enum": []string{"include", "exclude"}}, "name": map[string]any{"type": "string", "nullable": true}}}}
 	op["responses"].(map[string]any)["200"] = map[string]any{"description": "Campaign report", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": properties}}}}
 }

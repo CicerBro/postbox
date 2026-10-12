@@ -320,7 +320,7 @@ export function OverviewPage({ brandId }: { brandId: number }) {
         {data.period.days === null
           ? "Campaigns across the entire history."
           : `Campaigns starting in the last ${data.period.days} days.`} Engagement is
-        attributed to those campaigns. Rates use sent emails as denominator.
+        attributed to those campaigns. Rates use sent emails as denominator. Imported Sendy deliveries are estimated as sent minus hard bounces when no delivery counter was supplied.
       </p>
       <div className="chart-panels">
         <Card>

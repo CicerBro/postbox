@@ -79,12 +79,15 @@ func (a *API) campaignReportData(ctx context.Context, brand, id int64) (map[stri
 	}
 	var firstSent, lastSent sql.NullInt64
 	var fromName, fromEmail string
-	var snapshotted bool
+	var snapshotted, historical, deliveryEstimated bool
 	e = a.db.Reader.QueryRowContext(ctx, `SELECT
-		(SELECT sent_at FROM campaign_recipients WHERE campaign_id=c.id AND sent_at IS NOT NULL ORDER BY sent_at,subscriber_id LIMIT 1),
+		COALESCE((SELECT sent_at FROM campaign_recipients WHERE campaign_id=c.id AND sent_at IS NOT NULL ORDER BY sent_at,subscriber_id LIMIT 1), CASE WHEN m.target_id IS NOT NULL THEN c.started_at END),
 		(SELECT sent_at FROM campaign_recipients WHERE campaign_id=c.id AND sent_at IS NOT NULL ORDER BY sent_at DESC,subscriber_id DESC LIMIT 1),
-		COALESCE(p.from_name,b.from_name),COALESCE(p.from_email,b.from_email),p.campaign_id IS NOT NULL
-		FROM campaigns c JOIN brands b ON b.id=c.brand_id LEFT JOIN campaign_preparations p ON p.campaign_id=c.id WHERE c.id=?`, id).Scan(&firstSent, &lastSent, &fromName, &fromEmail, &snapshotted)
+		COALESCE(p.from_name,b.from_name),COALESCE(p.from_email,b.from_email),p.campaign_id IS NOT NULL,m.target_id IS NOT NULL,
+        m.target_id IS NOT NULL AND json_extract(r.payload,'$.delivered') IS NULL
+		FROM campaigns c JOIN brands b ON b.id=c.brand_id LEFT JOIN campaign_preparations p ON p.campaign_id=c.id LEFT JOIN migration_identities m ON m.entity='campaigns' AND m.target_id=c.id
+        LEFT JOIN migration_records r ON r.source=m.source AND r.entity=m.entity AND r.source_id=m.source_id
+        WHERE c.id=?`, id).Scan(&firstSent, &lastSent, &fromName, &fromEmail, &snapshotted, &historical, &deliveryEstimated)
 	if e != nil {
 		return nil, e
 	}
@@ -102,7 +105,7 @@ func (a *API) campaignReportData(ctx context.Context, brand, id int64) (map[stri
 		LEFT JOIN segments s ON t.target_type='segment' AND s.id=t.target_id AND s.brand_id=?
 		WHERE t.campaign_id=? ORDER BY t.mode,t.target_type,t.target_id`, brand, brand, id)
 	return map[string]any{"stats": stats, "links": links, "countries": countries, "hourly": hourly, "recent": recent, "targets": targets,
-		"delivery": map[string]any{"first_sent_at": firstAt, "last_sent_at": lastAt, "from_name": fromName, "from_email": fromEmail, "sender_snapshotted": snapshotted}}, e
+		"delivery": map[string]any{"first_sent_at": firstAt, "last_sent_at": lastAt, "from_name": fromName, "from_email": fromEmail, "sender_snapshotted": snapshotted, "historical": historical, "delivered_estimated": deliveryEstimated}}, e
 }
 
 func (a *API) exportRecipients(w http.ResponseWriter, r *http.Request, id int64) {

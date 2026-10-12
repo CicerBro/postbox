@@ -20,13 +20,23 @@ type EngagementStats struct {
 	ClicksUnique int64 `json:"clicks_unique"`
 }
 
+type OutcomeStats struct {
+	Delivered    int64 `json:"delivered"`
+	Unsubscribes int64 `json:"unsubscribes"`
+	BouncesHard  int64 `json:"bounces_hard"`
+	Complaints   int64 `json:"complaints"`
+}
+
 type CampaignStatsRecovery struct {
-	SourceCampaignID string          `json:"source_campaign_id"`
-	CampaignID       int64           `json:"campaign_id"`
-	Before           EngagementStats `json:"before"`
-	After            EngagementStats `json:"after"`
-	Links            int             `json:"links"`
-	StartedAt        *int64          `json:"started_at,omitempty"`
+	SourceCampaignID  string          `json:"source_campaign_id"`
+	CampaignID        int64           `json:"campaign_id"`
+	Before            EngagementStats `json:"before"`
+	After             EngagementStats `json:"after"`
+	Links             int             `json:"links"`
+	StartedAt         *int64          `json:"started_at,omitempty"`
+	BeforeOutcomes    OutcomeStats    `json:"before_outcomes"`
+	AfterOutcomes     OutcomeStats    `json:"after_outcomes"`
+	DeliveryEstimated bool            `json:"delivery_estimated"`
 }
 
 // Sendy's sent column is a Unix timestamp in the inspected production schema.
@@ -160,8 +170,13 @@ func recoverCampaignStats(ctx context.Context, db *store.DB, source string, dryR
 		if len(campaigns) == 0 && only == nil {
 			return errors.New("no imported campaigns found for source_id")
 		}
+		// Scan the source subscriber archive once, rather than once per campaign.
+		outcomes, attributed, e := archivedOutcomes(ctx, conn, source)
+		if e != nil {
+			return e
+		}
 		for _, c := range campaigns {
-			item, e := recoverCampaign(ctx, conn, source, c.sourceID, c.target, dryRun)
+			item, e := recoverCampaign(ctx, conn, source, c.sourceID, c.target, dryRun, outcomes[c.sourceID], attributed)
 			if e != nil {
 				return fmt.Errorf("campaign source id %s: %w", c.sourceID, e)
 			}
@@ -175,7 +190,7 @@ func recoverCampaignStats(ctx context.Context, db *store.DB, source string, dryR
 	return report, err
 }
 
-func recoverCampaign(ctx context.Context, conn *sql.Conn, source, sourceID string, target int64, dryRun bool) (item CampaignStatsRecovery, err error) {
+func recoverCampaign(ctx context.Context, conn *sql.Conn, source, sourceID string, target int64, dryRun bool, outcomes OutcomeStats, available OutcomeStats) (item CampaignStatsRecovery, err error) {
 	item.SourceCampaignID, item.CampaignID = sourceID, target
 	var status string
 	var recipients int
@@ -212,6 +227,44 @@ func recoverCampaign(ctx context.Context, conn *sql.Conn, source, sourceID strin
 	err = conn.QueryRowContext(ctx, `SELECT opens_total,opens_unique,clicks_total,clicks_unique FROM campaign_stats WHERE campaign_id=?`, target).Scan(&item.Before.OpensTotal, &item.Before.OpensUnique, &item.Before.ClicksTotal, &item.Before.ClicksUnique)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return item, err
+	}
+	err = conn.QueryRowContext(ctx, `SELECT delivered,unsubscribes,bounces_hard,complaints FROM campaign_stats WHERE campaign_id=?`, target).Scan(&item.BeforeOutcomes.Delivered, &item.BeforeOutcomes.Unsubscribes, &item.BeforeOutcomes.BouncesHard, &item.BeforeOutcomes.Complaints)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return item, err
+	}
+	item.AfterOutcomes = item.BeforeOutcomes
+	for _, counter := range []struct {
+		keys      []string
+		dest      *int64
+		fallback  int64
+		available bool
+	}{
+		{[]string{"unsubscribes"}, &item.AfterOutcomes.Unsubscribes, outcomes.Unsubscribes, available.Unsubscribes > 0},
+		{[]string{"bounces"}, &item.AfterOutcomes.BouncesHard, outcomes.BouncesHard, available.BouncesHard > 0},
+		{[]string{"complaints"}, &item.AfterOutcomes.Complaints, outcomes.Complaints, available.Complaints > 0},
+	} {
+		if raw := r.get(counter.keys...); strings.TrimSpace(raw) != "" {
+			*counter.dest, err = archivedCounter(raw)
+			if err != nil {
+				return item, err
+			}
+		} else if counter.available {
+			*counter.dest = counter.fallback
+		}
+	}
+	if raw := r.get("delivered"); strings.TrimSpace(raw) != "" {
+		item.AfterOutcomes.Delivered, err = archivedCounter(raw)
+		if err != nil {
+			return item, err
+		}
+	} else if available.BouncesHard > 0 && item.StartedAt != nil {
+		// Match Sendy's report estimate, not SES-confirmed delivery events.
+		sent, e := archivedCounter(r.get("recipients", "sent_count", "sent_to", "to_send"))
+		if e != nil {
+			return item, e
+		}
+		item.AfterOutcomes.Delivered = max(0, sent-item.AfterOutcomes.BouncesHard)
+		item.DeliveryEstimated = true
 	}
 	// A single ID in links.clicks is a clicker, never an aggregate counter.
 	rows, err := conn.QueryContext(ctx, `SELECT payload FROM migration_records WHERE source=? AND entity='links' AND CAST(json_extract(payload,'$.campaign_id') AS TEXT)=? ORDER BY source_id`, source, sourceID)
@@ -282,6 +335,10 @@ func recoverCampaign(ctx context.Context, conn *sql.Conn, source, sourceID strin
 	if err != nil {
 		return item, err
 	}
+	_, err = conn.ExecContext(ctx, `UPDATE campaign_stats SET delivered=?,unsubscribes=?,bounces_hard=?,complaints=? WHERE campaign_id=?`, item.AfterOutcomes.Delivered, item.AfterOutcomes.Unsubscribes, item.AfterOutcomes.BouncesHard, item.AfterOutcomes.Complaints, target)
+	if err != nil {
+		return item, err
+	}
 	urls := make([]string, 0, len(links))
 	for url := range links {
 		urls = append(urls, url)
@@ -306,4 +363,39 @@ func recoverCampaign(ctx context.Context, conn *sql.Conn, source, sourceID strin
 		}
 	}
 	return item, nil
+}
+
+// Sendy reports count source rows whose status flag is exactly one and whose
+// last_campaign matches. Do not use merged contacts or current Postbox statuses.
+// A last_campaign snapshot cannot reconstruct events reassigned by later sends.
+func archivedOutcomes(ctx context.Context, conn *sql.Conn, source string) (map[string]OutcomeStats, OutcomeStats, error) {
+	rows, err := conn.QueryContext(ctx, `SELECT trim(CAST(json_extract(payload,'$.last_campaign') AS TEXT)),
+        sum(CASE WHEN trim(CAST(json_extract(payload,'$.unsubscribed') AS TEXT))='1' THEN 1 ELSE 0 END),
+        sum(CASE WHEN trim(CAST(json_extract(payload,'$.bounced') AS TEXT))='1' THEN 1 ELSE 0 END),
+        sum(CASE WHEN trim(CAST(json_extract(payload,'$.complaint') AS TEXT))='1' THEN 1 ELSE 0 END),
+        count(json_extract(payload,'$.unsubscribed')),
+        count(json_extract(payload,'$.bounced')),
+        count(json_extract(payload,'$.complaint'))
+        FROM migration_records WHERE source=? AND entity='subscribers'
+        AND json_extract(payload,'$.last_campaign') IS NOT NULL
+        AND trim(CAST(json_extract(payload,'$.last_campaign') AS TEXT)) NOT IN ('','0')
+        GROUP BY trim(CAST(json_extract(payload,'$.last_campaign') AS TEXT))`, source)
+	if err != nil {
+		return nil, OutcomeStats{}, err
+	}
+	defer rows.Close()
+	result := map[string]OutcomeStats{}
+	var available OutcomeStats
+	for rows.Next() {
+		var id string
+		var stats, columns OutcomeStats
+		if err := rows.Scan(&id, &stats.Unsubscribes, &stats.BouncesHard, &stats.Complaints, &columns.Unsubscribes, &columns.BouncesHard, &columns.Complaints); err != nil {
+			return nil, OutcomeStats{}, err
+		}
+		result[id] = stats
+		available.Unsubscribes += columns.Unsubscribes
+		available.BouncesHard += columns.BouncesHard
+		available.Complaints += columns.Complaints
+	}
+	return result, available, rows.Err()
 }

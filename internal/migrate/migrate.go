@@ -845,9 +845,9 @@ var knownColumns = func() map[string]map[string]bool {
 		"apps":              "id app_name name from_name from_email email reply_to created_at timestamp",
 		"lists":             "id app app_id brand_id name opt_in double_opt_in custom_fields created_at timestamp",
 		"custom_fields":     "id app app_id brand_id list list_id key name label type", "customfields": "id app app_id brand_id list list_id key name label type",
-		"subscribers": "id list list_id email name custom_fields fields status confirmed unconfirmed unsubscribed bounced complaint complained blocklisted suppressed join_date timestamp created_at",
+		"subscribers": "id list list_id email name custom_fields fields status confirmed unconfirmed unsubscribed bounced bounce_soft complaint complained last_campaign last_ares blocklisted suppressed join_date timestamp created_at",
 		"templates":   "id app app_id brand_id name title html html_text plain_text text created_at timestamp",
-		"campaigns":   "id app app_id brand_id subject title html_text html plain_text text sent status recipients sent_count sent_to to_send opens opens_total unique_opens opens_unique clicks clicks_total unique_clicks clicks_unique unsubscribes bounces complaints timestamp created_at",
+		"campaigns":   "id app app_id brand_id subject title html_text html plain_text text sent status recipients sent_count sent_to to_send opens opens_total unique_opens opens_unique clicks clicks_total unique_clicks clicks_unique unsubscribes bounces complaints delivered timestamp created_at",
 		"links":       "id campaign_id ares_emails_id link url clicks",
 	} {
 		m[table] = map[string]bool{}

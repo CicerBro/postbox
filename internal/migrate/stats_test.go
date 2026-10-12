@@ -174,3 +174,71 @@ func TestRecoveryRollsBackAndScopesSource(t *testing.T) {
 		t.Fatal("repaired an active campaign")
 	}
 }
+
+func TestArchivedSubscriberOutcomesAndEstimatedDelivery(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	dump := engagementFixture + `
+ INSERT INTO lists(id,app,name) VALUES(1,1,'Main');
+ INSERT INTO subscribers(id,list,email,confirmed,last_campaign,unsubscribed,bounced,complaint,bounce_soft) VALUES
+ (1,1,'one@example.com',1,1,1,0,0,0),
+ (2,1,'ONE@example.com',1,1,1,1,0,0),
+ (3,1,'spam@example.com',1,1,0,0,1,0),
+ (4,1,'soft@example.com',1,1,0,0,0,1),
+ (5,1,'other@example.com',1,2,1,1,1,0),
+ (6,1,'unknown@example.com',1,NULL,1,1,1,0),
+ (7,1,'flag@example.com',1,1,2,2,2,0);
+ `
+	for _, source := range []string{"sendy", "other"} {
+		if _, err := Import(ctx, db, DumpSource{Reader: strings.NewReader(dump)}, Options{SourceID: source}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := scalar(t, db, `SELECT target_id FROM migration_identities WHERE source='sendy' AND entity='campaigns' AND source_id='1'`)
+	check := func() {
+		t.Helper()
+		for column, want := range map[string]int64{"unsubscribes": 2, "bounces_hard": 1, "bounces_soft": 0, "complaints": 1, "delivered": 99} {
+			if got := scalar(t, db, "SELECT "+column+" FROM campaign_stats WHERE campaign_id=?", id); got != want {
+				t.Fatalf("%s=%d want %d", column, got, want)
+			}
+		}
+	}
+	check()
+	if _, err := db.Writer.Exec(`UPDATE campaign_stats SET unsubscribes=0,bounces_hard=0,complaints=0,delivered=0`); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := RecoverCampaignStats(ctx, db, "sendy", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Campaigns[0].AfterOutcomes != (OutcomeStats{99, 2, 1, 1}) || !preview.Campaigns[0].DeliveryEstimated {
+		t.Fatalf("preview: %+v", preview)
+	}
+	if scalar(t, db, "SELECT sum(delivered) FROM campaign_stats") != 0 {
+		t.Fatal("preview mutated stats")
+	}
+	for range 2 {
+		if _, err := RecoverCampaignStats(ctx, db, "sendy", false); err != nil {
+			t.Fatal(err)
+		}
+		check()
+	}
+	if scalar(t, db, `SELECT sum(delivered) FROM campaign_stats WHERE campaign_id IN (SELECT target_id FROM migration_identities WHERE source='other' AND entity='campaigns')`) != 0 {
+		t.Fatal("crossed source boundary")
+	}
+	// Explicit numeric counters take precedence over snapshot status rows.
+	if _, err := db.Writer.Exec(`UPDATE migration_records SET payload=json_set(payload,'$.unsubscribes','8','$.bounces','4','$.complaints','3','$.delivered','90') WHERE source='sendy' AND entity='campaigns' AND source_id='1'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RecoverCampaignStats(ctx, db, "sendy", false); err != nil {
+		t.Fatal(err)
+	}
+	for column, want := range map[string]int64{"unsubscribes": 8, "bounces_hard": 4, "complaints": 3, "delivered": 90} {
+		if got := scalar(t, db, "SELECT "+column+" FROM campaign_stats WHERE campaign_id=?", id); got != want {
+			t.Fatalf("%s=%d", column, got)
+		}
+	}
+	if scalar(t, db, "SELECT count(*) FROM campaign_recipients") != 0 || scalar(t, db, "SELECT count(*) FROM jobs") != 0 {
+		t.Fatal("created send work")
+	}
+}

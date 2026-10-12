@@ -123,3 +123,46 @@ func TestCampaignReportRecentRecipientsAndDelivery(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 }
+
+func TestImportedCampaignReportUsesArchivedSendDate(t *testing.T) {
+	_, mux, db, cookie, _ := setup(t)
+	brand, err := subscribers.New(db).CreateBrand(context.Background(), subscribers.Brand{Name: "Imported", FromEmail: "from@example.org"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Writer.Exec(`INSERT INTO campaigns(id,brand_id,uuid,status,subject,html,created_at,updated_at,started_at) VALUES(1,?,'imported','sent','Imported','',1,1,1788254101000);
+ INSERT INTO migration_identities(source,entity,source_id,target_id) VALUES('sendy','campaigns','39',1);
+ INSERT INTO migration_records(source,entity,source_id,payload) VALUES('sendy','campaigns','39','{"sent":"1788254101"}');`, brand.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := request(mux, "GET", fmt.Sprintf("/api/v1/campaigns/1/report?brand_id=%d", brand.ID), "", &cookie, "")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var out struct {
+		Delivery struct {
+			First      int64  `json:"first_sent_at"`
+			Last       *int64 `json:"last_sent_at"`
+			Historical bool   `json:"historical"`
+			Estimated  bool   `json:"delivered_estimated"`
+		} `json:"delivery"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Delivery.First != 1788254101000 || out.Delivery.Last != nil || !out.Delivery.Historical || !out.Delivery.Estimated {
+		t.Fatalf("delivery: %+v", out.Delivery)
+	}
+	// An explicit delivery counter must not be labelled estimated.
+	if _, err := db.Writer.Exec(`UPDATE migration_records SET payload=json_set(payload,'$.delivered','100')`); err != nil {
+		t.Fatal(err)
+	}
+	w = request(mux, "GET", fmt.Sprintf("/api/v1/campaigns/1/report?brand_id=%d", brand.ID), "", &cookie, "")
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Delivery.Estimated {
+		t.Fatal("explicit delivery counter labelled estimated")
+	}
+}
