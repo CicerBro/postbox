@@ -107,14 +107,16 @@ export function Webhooks({ brandId }: { brandId: number }) {
             ))}
           </div>
         </div>
-        <label htmlFor="webhook-active" className="flex items-center gap-3 text-sm">
-          <Switch
-            id="webhook-active"
-            checked={active}
-            onCheckedChange={setActive}
-          />
-          Active
-        </label>
+        <div className="border-t pt-5">
+          <label htmlFor="webhook-active" className="flex items-center gap-3 text-sm">
+            <Switch
+              id="webhook-active"
+              checked={active}
+              onCheckedChange={setActive}
+            />
+            Active
+          </label>
+        </div>
         <div className="flex gap-2">
           <Button disabled={a.busy || !selected.length}>
             <Plus size={16} aria-hidden="true" />
