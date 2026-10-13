@@ -13,7 +13,7 @@ func documentPreferences(method, path string, op map[string]any) {
 		return
 	}
 	op["security"] = []map[string]any{{"cookieAuth": []string{}}}
-	zone := map[string]any{"type": "string", "maxLength": 255, "description": "IANA timezone such as Europe/Amsterdam or UTC. Empty string uses the browser timezone.", "example": "Europe/Amsterdam"}
+	zone := map[string]any{"type": "string", "maxLength": 255, "description": "IANA timezone such as Europe/London or UTC. Empty string uses the browser timezone.", "example": "Europe/London"}
 	if method == "PATCH" {
 		op["description"] = "Save the signed-in user's display name and timezone across the app. Requires a user session and its CSRF token. API keys cannot update preferences. Dates remain stored as UTC timestamps."
 		schema := map[string]any{"type": "object", "additionalProperties": false, "minProperties": 1, "properties": map[string]any{"timezone": zone, "display_name": displayNameSchema()}}

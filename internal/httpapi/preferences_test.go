@@ -19,7 +19,7 @@ func TestTimezonePreferencesPersistenceAndValidation(t *testing.T) {
 		}
 	}
 	read(mux, "")
-	for _, zone := range []string{"Europe/Amsterdam", "America/New_York", "Asia/Kathmandu", "UTC", ""} {
+	for _, zone := range []string{"Europe/London", "America/New_York", "Asia/Kathmandu", "UTC", ""} {
 		body, _ := json.Marshal(PreferencesResponse{Timezone: zone})
 		w := request(mux, "PATCH", "/api/v1/auth/preferences", string(body), &cookie, csrf)
 		if w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" {
@@ -35,13 +35,13 @@ func TestTimezonePreferencesPersistenceAndValidation(t *testing.T) {
 		restarted.Register(restartMux)
 		read(restartMux, zone)
 	}
-	request(mux, "PATCH", "/api/v1/auth/preferences", `{"timezone":"Europe/Amsterdam"}`, &cookie, csrf)
+	request(mux, "PATCH", "/api/v1/auth/preferences", `{"timezone":"Europe/London"}`, &cookie, csrf)
 	for _, body := range []string{`{}`, `{"timezone":null}`, `{"timezone":"Local"}`, `{"timezone":"Mars/Olympus"}`, `{"timezone":"../UTC"}`, `{"timezone":" UTC "}`, `{"timezone":42}`, `{"timezone":"UTC","user_id":2}`} {
 		w := request(mux, "PATCH", "/api/v1/auth/preferences", body, &cookie, csrf)
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("invalid preference %s: %d %s", body, w.Code, w.Body.String())
 		}
-		read(mux, "Europe/Amsterdam")
+		read(mux, "Europe/London")
 	}
 }
 
@@ -119,7 +119,7 @@ func TestDisplayNamePreferences(t *testing.T) {
 		}
 		read(strings.TrimSpace(name))
 	}
-	request(mux, "PATCH", "/api/v1/auth/preferences", `{"timezone":"Europe/Amsterdam","display_name":"Ada"}`, &cookie, csrf)
+	request(mux, "PATCH", "/api/v1/auth/preferences", `{"timezone":"Europe/London","display_name":"Ada"}`, &cookie, csrf)
 	request(mux, "PATCH", "/api/v1/auth/preferences", `{"timezone":"UTC"}`, &cookie, csrf)
 	read("Ada")
 	for _, body := range []string{`{"display_name":null}`, `{"display_name":42}`, `{"display_name":"Ada","user_id":2}`, `{"display_name":"` + strings.Repeat("界", 101) + `"}`} {

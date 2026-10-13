@@ -18,12 +18,12 @@ CREATE TABLE subscribers (
  KEY list_idx (list)
 );
 INSERT INTO subscribers VALUES
- (1,10,'O\'Brien',' ACTIVE@Example.com ',1,0,0,0,'NL%s%9'),
- (2,10,'Duplicate','active@example.com',1,0,0,0,'NL%s%9'),
- (3,10,'Unsubscribe','off@example.com',1,1,0,0,'NL%s%8'),
- (4,10,'Unconfirmed','pending@example.com',0,0,0,0,'NL%s%7'),
- (5,10,'Bounce','bounce@example.com',1,0,1,0,'NL%s%6'),
- (6,10,'Complaint','complaint@example.com',1,0,0,1,'NL%s%5'),
+ (1,10,'O\'Brien',' ACTIVE@Example.com ',1,0,0,0,'UK%s%9'),
+ (2,10,'Duplicate','active@example.com',1,0,0,0,'UK%s%9'),
+ (3,10,'Unsubscribe','off@example.com',1,1,0,0,'UK%s%8'),
+ (4,10,'Unconfirmed','pending@example.com',0,0,0,0,'UK%s%7'),
+ (5,10,'Bounce','bounce@example.com',1,0,1,0,'UK%s%6'),
+ (6,10,'Complaint','complaint@example.com',1,0,0,1,'UK%s%5'),
  (7,11,'Cross brand','bounce@example.com',1,0,0,0,'');
 CREATE TABLE apps (id int, app_name text, from_name text, from_email text, unexpected text);
 INSERT INTO apps VALUES (1,'Brand','Sender','sender@example.com','retain me'),(2,'Other','Other','other@example.com',NULL);
@@ -31,7 +31,7 @@ INSERT INTO lists (id,app,name,opt_in,custom_fields) VALUES (10,1,'Main',1,'Coun
 INSERT INTO templates (id,app,name,html) VALUES (21,1,'Table','<html><style>p { color:red; }</style><!--[if mso]><table><![endif]-->[Name]</html>');
 INSERT INTO campaigns (id,app,subject,html_text,plain_text,sent,recipients,opens,unique_opens,clicks,complaints,timestamp) VALUES (31,1,'Past','<p>[Name]</p>','Hello',1,42,10,8,4,1,1700000000);
 INSERT INTO campaigns (id,app,subject,html_text,sent) VALUES (32,1,'Scheduled source','<p>draft</p>',0);
-INSERT INTO unknown_reports (id,campaign,geo) VALUES (100,31,'NL');
+INSERT INTO unknown_reports (id,campaign,geo) VALUES (100,31,'UK');
 DROP TABLE subscribers;
 `
 
@@ -201,7 +201,7 @@ func TestMissingConsentSuppresses(t *testing.T) {
 }
 func TestMalformedCustomFieldsFailActionably(t *testing.T) {
 	db := testDB(t)
-	dump := `INSERT INTO apps(id,app_name,from_email) VALUES(1,'X','from@example.com');INSERT INTO lists(id,app,name,custom_fields) VALUES(1,1,'X','Country:Text%s%Age:Number');INSERT INTO subscribers(id,list,email,confirmed,custom_fields) VALUES(1,1,'a@example.com',1,'NL');`
+	dump := `INSERT INTO apps(id,app_name,from_email) VALUES(1,'X','from@example.com');INSERT INTO lists(id,app,name,custom_fields) VALUES(1,1,'X','Country:Text%s%Age:Number');INSERT INTO subscribers(id,list,email,confirmed,custom_fields) VALUES(1,1,'a@example.com',1,'UK');`
 	_, e := Import(context.Background(), db, DumpSource{Reader: strings.NewReader(dump)}, Options{SourceID: "fields"})
 	if e == nil || !strings.Contains(e.Error(), "custom field value count") {
 		t.Fatalf("%v", e)

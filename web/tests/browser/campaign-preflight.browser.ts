@@ -10,11 +10,11 @@ function checklist(): Checklist {
     personalized: false,
   }));
   return {
-    recipients: 273793,
-    message_bytes: 16077,
-    upload_bytes: 4401690061,
-    duration_seconds: 1608,
-    quota: { MaxSendRate: 170, Max24HourSend: 350000, SentLast24Hours: 0 },
+    recipients: 1000,
+    message_bytes: 2048,
+    upload_bytes: 2048000,
+    duration_seconds: 120,
+    quota: { MaxSendRate: 10, Max24HourSend: 5000, SentLast24Hours: 0 },
     fits_daily_quota: true,
     checks: {
       ready: true,
@@ -24,12 +24,12 @@ function checklist(): Checklist {
         message: `${link.url}: HTTP 403`,
       })),
       links,
-      html_bytes: 12288,
+      html_bytes: 1024,
       html_clipping: false,
-      suppressed: 32,
-      inactive: 0,
-      skipped: 32,
-      remaining_daily_quota: 350000,
+      suppressed: 2,
+      inactive: 1,
+      skipped: 3,
+      remaining_daily_quota: 4000,
     },
   };
 }
@@ -91,9 +91,9 @@ for (const mobile of [false, true]) {
       "The website refused the automated check (HTTP 403).",
     );
     await expect(results).toContainText(
-      "32 contacts excluded: 32 suppressed and 0 inactive.",
+      "3 contacts excluded: 2 suppressed and 1 inactive.",
     );
-    await expect(results).toContainText("27 minutes");
+    await expect(results).toContainText("2 minutes");
     await expect(results).toContainText("Within SES daily quota");
     await expect(
       results.getByText("https://example.org/terms", { exact: true }),
@@ -160,7 +160,7 @@ test("ready preflight keeps nonblocking notes and permits confirmation", async (
       tag: "first_name",
     },
   ];
-  result.checks.user_remaining_daily_quota = 300000;
+  result.checks.user_remaining_daily_quota = 4000;
   await fixture(context, result);
   await page.goto("/campaigns/7");
   await page
@@ -197,7 +197,7 @@ test("quota failures and clipping stay distinct from passing checks", async ({
       message: "Campaign exceeds the remaining SES daily quota",
     },
   ];
-  result.checks.remaining_daily_quota = 12000;
+  result.checks.remaining_daily_quota = 50;
   result.checks.html_bytes = 110000;
   result.checks.html_clipping = true;
   await fixture(context, result);

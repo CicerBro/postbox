@@ -20,7 +20,7 @@ func TestBatchSegmentValidationPreservesOwnershipAndFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	rules := []Rule{
-		{All: []Rule{{Field: "list", Value: list.ID}, {Field: "fields.country", Op: "eq", Value: "NL"}}},
+		{All: []Rule{{Field: "list", Value: list.ID}, {Field: "fields.country", Op: "eq", Value: "UK"}}},
 		{Any: []Rule{{Field: "opened", Value: 1}, {Field: "clicked", Value: 1}}},
 	}
 	if err := s.ValidateSegments(ctx, brand.ID, rules); err != nil {

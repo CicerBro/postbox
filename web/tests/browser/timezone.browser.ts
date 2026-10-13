@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.use({ timezoneId: 'Europe/Amsterdam' });
+test.use({ timezoneId: 'Europe/London' });
 
 test('searchable account timezone persists and formats dates after navigation and reload', async ({ page }) => {
   let timezone = '';
@@ -21,7 +21,7 @@ test('searchable account timezone persists and formats dates after navigation an
   });
   await page.goto('/account/preferences');
   const picker = page.getByRole('combobox', { name: 'Timezone', exact: true });
-  await expect(picker).toHaveValue('Browser timezone (Europe/Amsterdam)');
+  await expect(picker).toHaveValue('Browser timezone (Europe/London)');
   await picker.fill('los angeles');
   await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1);
   await picker.press('Enter');
@@ -39,7 +39,7 @@ test('searchable account timezone persists and formats dates after navigation an
   await expect(picker).toHaveValue('America/Los_Angeles');
   await picker.fill('browser');
   await picker.press('Enter');
-  await expect(picker).toHaveValue('Browser timezone (Europe/Amsterdam)');
+  await expect(picker).toHaveValue('Browser timezone (Europe/London)');
   expect(timezone).toBe('');
 });
 

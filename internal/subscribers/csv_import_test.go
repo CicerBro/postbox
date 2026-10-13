@@ -81,7 +81,7 @@ func TestImportCSVFieldsObjectsAndPrecedence(t *testing.T) {
 					header = []string{"email", "Age", "fields"}
 				}
 				records := [][]string{header}
-				for i, value := range []string{"null", `{"age":99,"country":"NL"}`, "[]", `"scalar"`, "42", "true", "{"} {
+				for i, value := range []string{"null", `{"age":99,"country":"UK"}`, "[]", `"scalar"`, "42", "true", "{"} {
 					row := []string{fmt.Sprintf("reader%d@example.org", i), value, "32"}
 					if reverse {
 						row[1], row[2] = row[2], row[1]
@@ -105,7 +105,7 @@ func TestImportCSVFieldsObjectsAndPrecedence(t *testing.T) {
 				for i, in := range result.Preview {
 					want := map[string]any{"age": float64(32)}
 					if i == 1 {
-						want["country"] = "NL"
+						want["country"] = "UK"
 					}
 					if !reflect.DeepEqual(in.Fields, want) {
 						t.Fatalf("preview fields=%v want=%v", in.Fields, want)

@@ -20,7 +20,7 @@ func TestEditorPreviewRendersUnsavedMergeTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := fmt.Sprintf("/api/v1/email-preview?brand_id=%d", brand.ID)
-	source := `<style>p{color:red}</style><p>Hello {{ name }} ({{ email }}), {{ city | "Amsterdam" }} {{ currentyear }}</p><p>Hi {{ name | "Subscriber" }}! [Name,fallback=Reader]</p><a href="{{ unsubscribe }}">Unsubscribe</a><a href="{{ webversion }}">Browser</a><a href="[unsubscribe_url]">Legacy</a><a href="https://example.net/article">Article</a>`
+	source := `<style>p{color:red}</style><p>Hello {{ name }} ({{ email }}), {{ city | "London" }} {{ currentyear }}</p><p>Hi {{ name | "Subscriber" }}! [Name,fallback=Reader]</p><a href="{{ unsubscribe }}">Unsubscribe</a><a href="{{ webversion }}">Browser</a><a href="[unsubscribe_url]">Legacy</a><a href="https://example.net/article">Article</a>`
 	for _, domain := range []string{"", "mail.example.org/"} {
 		if _, err = db.Writer.Exec(`UPDATE brands SET tracking_domain=? WHERE id=?`, domain, brand.ID); err != nil {
 			t.Fatal(err)
@@ -41,7 +41,7 @@ func TestEditorPreviewRendersUnsavedMergeTags(t *testing.T) {
 		if domain != "" {
 			base = "https://mail.example.org"
 		}
-		for _, want := range []string{"Hello there (preview@example.org), Amsterdam " + time.Now().Format("2006"), base + "/u/preview", base + "/w/0/preview", `href="https://example.net/article"`, "color:red"} {
+		for _, want := range []string{"Hello there (preview@example.org), London " + time.Now().Format("2006"), base + "/u/preview", base + "/w/0/preview", `href="https://example.net/article"`, "color:red"} {
 			if !strings.Contains(out.HTML, want) {
 				t.Fatalf("missing %q in %s", want, out.HTML)
 			}
@@ -96,7 +96,7 @@ func TestEditorPreviewSubscriberValuesAndFallback(t *testing.T) {
 	if _, err = db.Writer.Exec(`INSERT INTO custom_fields(brand_id,key,label,type) VALUES(?,?,?,?)`, brand.ID, "username", "Username", "text"); err != nil {
 		t.Fatal(err)
 	}
-	first, err := s.Upsert(ctx, subscribers.UpsertInput{BrandID: brand.ID, Email: "first@example.org", Name: "First", Fields: map[string]any{"username": "Dark<Shines>"}, ListIDs: []int64{list.ID}})
+	first, err := s.Upsert(ctx, subscribers.UpsertInput{BrandID: brand.ID, Email: "first@example.org", Name: "First", Fields: map[string]any{"username": "Test<User>"}, ListIDs: []int64{list.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestEditorPreviewSubscriberValuesAndFallback(t *testing.T) {
 		want string
 		code int
 	}{
-		{first.ID, "Hi Dark&lt;Shines&gt;! First first@example.org", 200},
+		{first.ID, "Hi Test&lt;User&gt;! First first@example.org", 200},
 		{second.ID, "Hi reader! friend second@example.org", 200},
 		{foreign.ID, "", 404},
 		{-1, "", 400},

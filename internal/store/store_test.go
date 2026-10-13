@@ -314,7 +314,7 @@ func TestHotQueryPlans(t *testing.T) {
 	if _, err := db.Writer.Exec(`CREATE INDEX subscribers_country ON subscribers(brand_id, fields ->> '$.country')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Writer.Exec(`UPDATE subscribers SET fields=json_object('country',CASE WHEN id=1 THEN 'NL' ELSE 'US' END); ANALYZE;`); err != nil {
+	if _, err := db.Writer.Exec(`UPDATE subscribers SET fields=json_object('country',CASE WHEN id=1 THEN 'UK' ELSE 'US' END); ANALYZE;`); err != nil {
 		t.Fatal(err)
 	}
 	tests := map[string]string{
@@ -325,7 +325,7 @@ func TestHotQueryPlans(t *testing.T) {
 		"email":            `SELECT id FROM subscribers WHERE brand_id=1 AND email='person1@example.test'`,
 		"subscribers_page": `SELECT id,email FROM subscribers WHERE brand_id=1 AND id>100 ORDER BY id LIMIT 100`,
 		"list_page":        `SELECT s.id,s.email FROM list_subscribers ls JOIN subscribers s ON s.id=ls.subscriber_id WHERE ls.list_id=1 AND ls.subscriber_id>100 ORDER BY ls.subscriber_id LIMIT 100`,
-		"segment_count":    `SELECT count(*) FROM subscribers INDEXED BY subscribers_country WHERE brand_id=1 AND (fields ->> '$.country')='NL'`,
+		"segment_count":    `SELECT count(*) FROM subscribers INDEXED BY subscribers_country WHERE brand_id=1 AND (fields ->> '$.country')='UK'`,
 		"report":           `SELECT cs.* FROM campaigns c JOIN campaign_stats cs ON cs.campaign_id=c.id WHERE c.brand_id=1 AND c.id>0 ORDER BY c.id LIMIT 100`,
 		"due_jobs":         `SELECT id FROM jobs WHERE queue='retention' AND status='pending' AND run_at<=100 ORDER BY run_at,id LIMIT 10`,
 		"due_campaigns":    `SELECT id FROM campaigns WHERE status='scheduled' AND scheduled_at<=100 ORDER BY scheduled_at LIMIT 10`,

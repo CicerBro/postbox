@@ -35,7 +35,7 @@ describe("timezone-aware dates", () => {
 describe("campaign schedule wall clock conversion", () => {
   test("uses the selected timezone, including fractional offsets", () => {
     expect(zonedDateTimeToTimestamp("2026-01-01T00:30", "Asia/Kathmandu")).toBe(Date.parse("2025-12-31T18:45:00Z"));
-    expect(zonedDateTimeToTimestamp("2026-07-01T12:00", "Europe/Amsterdam")).toBe(Date.parse("2026-07-01T10:00:00Z"));
+    expect(zonedDateTimeToTimestamp("2026-07-01T12:00", "Europe/London")).toBe(Date.parse("2026-07-01T11:00:00Z"));
   });
   test("rejects nonexistent dates and daylight saving wall times", () => {
     expect(zonedDateTimeToTimestamp("2026-03-08T02:30", "America/New_York")).toBeNaN();

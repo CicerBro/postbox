@@ -14,14 +14,14 @@ import (
 
 func TestTagsEscapingAndRestore(t *testing.T) {
 	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
-	p, e := Prepare(Options{CampaignID: 7, Subject: `Hello [Name,fallback=there] {{ country | "NL" }}`, HTML: `<html><body><!--[if mso]>yes<![endif]--><p>[Name,fallback=there] [Email] [currentdaydate] [currentmonth] [currentyear] {{ country | "NL" }}</p><a href="https://example.com/?a=1&amp;b=2">Go</a><a href='https://example.com/?a=1&amp;b=2'>Again</a><a href="[unsubscribe]">Bye</a></body></html>`, Fields: []string{"country"}, TrackingURL: "https://track.example", Now: now})
+	p, e := Prepare(Options{CampaignID: 7, Subject: `Hello [Name,fallback=there] {{ country | "UK" }}`, HTML: `<html><body><!--[if mso]>yes<![endif]--><p>[Name,fallback=there] [Email] [currentdaydate] [currentmonth] [currentyear] {{ country | "UK" }}</p><a href="https://example.com/?a=1&amp;b=2">Go</a><a href='https://example.com/?a=1&amp;b=2'>Again</a><a href="[unsubscribe]">Bye</a></body></html>`, Fields: []string{"country"}, TrackingURL: "https://track.example", Now: now})
 	if e != nil {
 		t.Fatal(e)
 	}
 	if len(p.Links) != 1 || p.Links[0].URL != "https://example.com/?a=1&b=2" {
 		t.Fatalf("links %#v", p.Links)
 	}
-	r := Recipient{Name: `<b>"A" & B</b>`, Email: "a@example.com", Token: "abc", UnsubscribeURL: "https://track.example/u/abc", Fields: map[string]string{"country": "<NL>"}}
+	r := Recipient{Name: `<b>"A" & B</b>`, Email: "a@example.com", Token: "abc", UnsubscribeURL: "https://track.example/u/abc", Fields: map[string]string{"country": "<UK>"}}
 	subject, body, text, e := p.Render(r)
 	if e != nil {
 		t.Fatal(e)
@@ -40,12 +40,12 @@ func TestTagsEscapingAndRestore(t *testing.T) {
 	if e != nil || s != subject || h != body || txt != text {
 		t.Fatalf("restore changed personalized output: %v", e)
 	}
-	fallback, e := Prepare(Options{Subject: `[Name,fallback=there] {{ country | "NL" }}`, Fields: []string{"country"}})
+	fallback, e := Prepare(Options{Subject: `[Name,fallback=there] {{ country | "UK" }}`, Fields: []string{"country"}})
 	if e != nil {
 		t.Fatal(e)
 	}
 	s, _, _, e = fallback.Render(Recipient{})
-	if e != nil || s != "there NL" {
+	if e != nil || s != "there UK" {
 		t.Fatal(s, e)
 	}
 }

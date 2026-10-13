@@ -19,7 +19,7 @@ func TestSubscriberSearchScopeAndListCounters(t *testing.T) {
 	other, _ := s.CreateBrand(ctx, subscribers.Brand{Name: "other", FromEmail: "other@example.org"})
 	list, _ := s.CreateList(ctx, subscribers.List{BrandID: b.ID, Name: "members", OptIn: "single"})
 	foreign, _ := s.CreateList(ctx, subscribers.List{BrandID: other.ID, Name: "foreign", OptIn: "single"})
-	one, err := s.Upsert(ctx, subscribers.UpsertInput{BrandID: b.ID, Email: "match@example.org", ListIDs: []int64{list.ID}, Fields: map[string]any{"city": "Amsterdam"}})
+	one, err := s.Upsert(ctx, subscribers.UpsertInput{BrandID: b.ID, Email: "match@example.org", ListIDs: []int64{list.ID}, Fields: map[string]any{"city": "London"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestSubscriberSearchScopeAndListCounters(t *testing.T) {
 			if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || len(out) != tc.count {
 				t.Fatalf("%s: %s %v", tc.query, w.Body.String(), err)
 			}
-			if len(out) > 0 && (out[0].BrandID != b.ID || out[0].Fields["city"] != "Amsterdam") {
+			if len(out) > 0 && (out[0].BrandID != b.ID || out[0].Fields["city"] != "London") {
 				t.Fatal(out)
 			}
 		}

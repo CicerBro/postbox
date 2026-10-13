@@ -143,7 +143,7 @@ test("test-send feedback stays beside the button and recovers on retry", async (
 
 test("SES access errors appear in a red alert beside test send on mobile", async ({ page, context }, testInfo) => {
   const state = await fixture(context);
-  state.testSendError = "operation error SESv2: SendEmail, https response error StatusCode: 403, RequestID: 00000000-0000-4000-8000-000000000000, api error AccessDeniedException: User 'arn:aws:iam::123456789012:user/postbox' is not authorized to perform 'ses:SendRawEmail' on resource 'arn:aws:ses:eu-central-1:123456789012:identity/noreply@example.org'";
+  state.testSendError = "operation error SESv2: SendEmail, https response error StatusCode: 403, RequestID: 00000000-0000-4000-8000-000000000000, api error AccessDeniedException: User 'arn:aws:iam::123456789012:user/postbox' is not authorized to perform 'ses:SendRawEmail' on resource 'arn:aws:ses:eu-west-1:123456789012:identity/noreply@example.org'";
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/campaigns/7");
   const delivery = page.getByRole("group", { name: "Test email delivery" });

@@ -33,7 +33,7 @@ func fixture(t *testing.T) (*Service, Brand, List) {
 func TestConsentConfirmationAndUnsubscribe(t *testing.T) {
 	ctx := context.Background()
 	s, b, l := fixture(t)
-	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "  A@EXAMPLE.ORG ", Fields: map[string]any{"country": "NL"}, ListIDs: []int64{l.ID}, Consent: true, ConsentIP: "127.0.0.1"})
+	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "  A@EXAMPLE.ORG ", Fields: map[string]any{"country": "UK"}, ListIDs: []int64{l.ID}, Consent: true, ConsentIP: "127.0.0.1"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -51,7 +51,7 @@ func TestConsentConfirmationAndUnsubscribe(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if v2.ID != v.ID || v2.Fields["country"] != "NL" {
+	if v2.ID != v.ID || v2.Fields["country"] != "UK" {
 		t.Fatal("upsert was not idempotent")
 	}
 	var subscribed string
@@ -80,7 +80,7 @@ func TestSegmentsAndIndexes(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "segment@example.org", Fields: map[string]any{"country": "NL"}, ListIDs: []int64{l.ID}})
+	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "segment@example.org", Fields: map[string]any{"country": "UK"}, ListIDs: []int64{l.ID}})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -92,7 +92,7 @@ func TestSegmentsAndIndexes(t *testing.T) {
 	if _, e = s.db.Writer.Exec("INSERT INTO campaign_recipients(campaign_id,subscriber_id,status,first_opened_at,first_clicked_at) VALUES(?,?,'sent',1,1)", campaign, v.ID); e != nil {
 		t.Fatal(e)
 	}
-	for _, rule := range []Rule{{Field: "opened", Op: "in", Value: campaign}, {Field: "clicked", Op: "in", Value: campaign}, {Field: "fields.country", Op: "eq", Value: "NL"}} {
+	for _, rule := range []Rule{{Field: "opened", Op: "in", Value: campaign}, {Field: "clicked", Op: "in", Value: campaign}, {Field: "fields.country", Op: "eq", Value: "UK"}} {
 		n, e := s.SegmentCount(ctx, b.ID, rule)
 		if e != nil || n != 1 {
 			t.Fatalf("rule %+v: %d %v", rule, n, e)
@@ -105,10 +105,10 @@ func TestSegmentsAndIndexes(t *testing.T) {
 	if _, e = s.SegmentCount(ctx, b.ID+100, Rule{Field: "opened", Value: campaign}); e == nil {
 		t.Fatal("cross brand campaign accepted")
 	}
-	if _, _, e = CompileSegment(Rule{Field: "fields.country' OR 1=1--", Op: "eq", Value: "NL"}); e == nil {
+	if _, _, e = CompileSegment(Rule{Field: "fields.country' OR 1=1--", Op: "eq", Value: "UK"}); e == nil {
 		t.Fatal("unsafe field accepted")
 	}
-	rows, e := s.db.Reader.Query("EXPLAIN QUERY PLAN SELECT id FROM subscribers INDEXED BY subscribers_custom_"+fmt.Sprint(field.ID)+" WHERE brand_id=? AND fields ->> '$.country'=?", b.ID, "NL")
+	rows, e := s.db.Reader.Query("EXPLAIN QUERY PLAN SELECT id FROM subscribers INDEXED BY subscribers_custom_"+fmt.Sprint(field.ID)+" WHERE brand_id=? AND fields ->> '$.country'=?", b.ID, "UK")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -127,7 +127,7 @@ func TestSegmentsAndIndexes(t *testing.T) {
 func TestCSVAndErasure(t *testing.T) {
 	ctx := context.Background()
 	s, b, _ := fixture(t)
-	csv := "Email,Country\nTest@EXAMPLE.ORG,NL\ninvalid,US\n"
+	csv := "Email,Country\nTest@EXAMPLE.ORG,UK\ninvalid,US\n"
 	opt := ImportOptions{BrandID: b.ID, Mapping: map[string]string{"Email": "email", "Country": "fields.country"}, DryRun: true}
 	res, e := s.ImportCSV(ctx, strings.NewReader(csv), opt)
 	if e != nil || res.Rows != 2 || res.Invalid != 1 || res.Imported != 0 {
@@ -278,7 +278,7 @@ func TestExportRoundTripPreservesOptOut(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "optout@example.org", Fields: map[string]any{"country": "NL"}, ListIDs: []int64{list.ID}, Consent: true})
+	v, e := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "optout@example.org", Fields: map[string]any{"country": "UK"}, ListIDs: []int64{list.ID}, Consent: true})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -301,7 +301,7 @@ func TestExportRoundTripPreservesOptOut(t *testing.T) {
 		t.Fatalf("export reactivated optout: %q %v", status, e)
 	}
 	again, e := s.GetByEmail(ctx, b.ID, v.Email)
-	if e != nil || again.Fields["country"] != "NL" || again.ConsentAt == nil {
+	if e != nil || again.Fields["country"] != "UK" || again.ConsentAt == nil {
 		t.Fatalf("fields or consent lost: %+v %v", again, e)
 	}
 }

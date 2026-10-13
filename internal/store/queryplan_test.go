@@ -136,7 +136,7 @@ func representativeDB(t *testing.T) *store.DB {
  INSERT INTO campaigns(id,brand_id,uuid,status,subject,html,created_at,updated_at) SELECT id,id,printf('campaign%d',id),'sending','Hi','<p>Hi</p>',1,1 FROM brands;
  INSERT INTO campaign_stats(campaign_id) SELECT id FROM campaigns;
  WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000)
- INSERT INTO subscribers(id,brand_id,email,fields,created_at,updated_at) SELECT x,(x-1)%40+1,printf('person%d@example.test',x),json_object('country',CASE WHEN x%101=1 THEN 'NL' ELSE 'US' END),x,x FROM n;
+ INSERT INTO subscribers(id,brand_id,email,fields,created_at,updated_at) SELECT x,(x-1)%40+1,printf('person%d@example.test',x),json_object('country',CASE WHEN x%101=1 THEN 'UK' ELSE 'US' END),x,x FROM n;
  INSERT INTO list_subscribers(list_id,subscriber_id,status,created_at,updated_at) SELECT brand_id,id,'subscribed',1,1 FROM subscribers;
  INSERT INTO campaign_recipients(campaign_id,subscriber_id,status,message_id) SELECT brand_id,id,CASE WHEN id%3=0 THEN 'sent' WHEN id%3=1 THEN 'pending' ELSE 'claimed' END,printf('msg%d',id) FROM subscribers;
  INSERT INTO opens(campaign_id,subscriber_id,at) SELECT brand_id,id,id FROM subscribers;
@@ -144,7 +144,7 @@ func representativeDB(t *testing.T) *store.DB {
  INSERT INTO ses_events(sns_message_id,ses_message_id,type,recipient,at,payload) SELECT printf('sns%d',id),printf('msg%d',id),'Delivery',email,id,'{}' FROM subscribers;
  INSERT INTO links(id,campaign_id,url) SELECT id,id,'https://example.test' FROM campaigns;
  INSERT INTO link_stats(link_id,campaign_id) SELECT id,campaign_id FROM links;
- INSERT INTO campaign_countries(campaign_id,country) SELECT id,'NL' FROM campaigns;
+ INSERT INTO campaign_countries(campaign_id,country) SELECT id,'UK' FROM campaigns;
  INSERT INTO engagement_hourly(campaign_id,hour) SELECT id,1 FROM campaigns;
  INSERT INTO jobs(queue,payload,status,run_at,created_at) SELECT CASE WHEN id%40=1 THEN 'retention' ELSE 'other' END,'{}',CASE WHEN id%3=0 THEN 'done' ELSE 'pending' END,id,1 FROM subscribers;
  ANALYZE;`)
@@ -252,7 +252,7 @@ func TestProductionCustomSegmentPlan(t *testing.T) {
 	if _, err = db.Writer.Exec("ANALYZE"); err != nil {
 		t.Fatal(err)
 	}
-	rule := subscribers.Rule{Field: "fields.country", Op: "eq", Value: "NL"}
+	rule := subscribers.Rule{Field: "fields.country", Op: "eq", Value: "UK"}
 	predicate, args, err := subscribers.CompileSegment(rule)
 	if err != nil {
 		t.Fatal(err)

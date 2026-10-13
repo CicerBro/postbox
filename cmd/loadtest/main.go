@@ -63,7 +63,7 @@ func seed(ctx context.Context, db *store.DB, n, size int) error {
 		if _, err := c.ExecContext(ctx, `INSERT INTO campaign_targets(campaign_id,target_type,target_id,mode) VALUES(1,'list',1,'include')`); err != nil {
 			return err
 		}
-		sub, err := c.PrepareContext(ctx, `INSERT INTO subscribers(id,brand_id,email,name,fields,created_at,updated_at) VALUES(?,1,?,?,'{"country":"NL","interest":"news"}',?,?)`)
+		sub, err := c.PrepareContext(ctx, `INSERT INTO subscribers(id,brand_id,email,name,fields,created_at,updated_at) VALUES(?,1,?,?,'{"country":"UK","interest":"news"}',?,?)`)
 		if err != nil {
 			return err
 		}

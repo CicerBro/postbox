@@ -18,7 +18,7 @@ func TestPublicSubscribePreservesExistingProfile(t *testing.T) {
 				t.Fatal(err)
 			}
 			at := int64(42)
-			original, err := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "reader@example.org", Name: "Original", Fields: map[string]any{"country": "NL"}, ListIDs: []int64{l.ID}, ConsentAt: &at, ConsentIP: "original"})
+			original, err := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "reader@example.org", Name: "Original", Fields: map[string]any{"country": "UK"}, ListIDs: []int64{l.ID}, ConsentAt: &at, ConsentIP: "original"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -52,7 +52,7 @@ func TestPublicSubscribePreservesExistingProfile(t *testing.T) {
 func TestPublicPendingSubscribeAndExplicitRenewalPreserveProfile(t *testing.T) {
 	ctx := context.Background()
 	s, b, l := fixture(t)
-	original, err := s.PublicSubscribe(ctx, UpsertInput{BrandID: b.ID, Email: "pending@example.org", Name: "Initial", Fields: map[string]any{"country": "NL"}, ListIDs: []int64{l.ID}, Consent: true})
+	original, err := s.PublicSubscribe(ctx, UpsertInput{BrandID: b.ID, Email: "pending@example.org", Name: "Initial", Fields: map[string]any{"country": "UK"}, ListIDs: []int64{l.ID}, Consent: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestPublicPendingSubscribeAndExplicitRenewalPreserveProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored, err := s.GetByEmail(ctx, b.ID, original.Email)
-	if err != nil || stored.Name != "Initial" || stored.Fields["country"] != "NL" || stored.MarketingUnsubscribedAt != nil {
+	if err != nil || stored.Name != "Initial" || stored.Fields["country"] != "UK" || stored.MarketingUnsubscribedAt != nil {
 		t.Fatalf("confirmed profile=%+v err=%v", stored, err)
 	}
 	var pending sql.NullInt64

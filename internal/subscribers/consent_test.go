@@ -81,11 +81,11 @@ func TestGlobalConsentAcrossAudienceAndCampaignStates(t *testing.T) {
 	if err := s.UpdateList(ctx, l); err != nil {
 		t.Fatal(err)
 	}
-	v, err := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "audience@example.org", Fields: map[string]any{"country": "NL"}, ListIDs: []int64{l.ID}})
+	v, err := s.Upsert(ctx, UpsertInput{BrandID: b.ID, Email: "audience@example.org", Fields: map[string]any{"country": "UK"}, ListIDs: []int64{l.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := s.db.Writer.Exec(`INSERT INTO segments(brand_id,name,rules,created_at) VALUES(?,'NL','{"field":"fields.country","op":"eq","value":"NL"}',1)`, b.ID)
+	r, err := s.db.Writer.Exec(`INSERT INTO segments(brand_id,name,rules,created_at) VALUES(?,'UK','{"field":"fields.country","op":"eq","value":"UK"}',1)`, b.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
