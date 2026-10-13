@@ -41,7 +41,7 @@ async function fixture(context: BrowserContext, result: Checklist) {
     if (path === "/auth/session")
       body = { user_id: 1, admin: true, csrf_token: "csrf" };
     else if (path === "/brands")
-      body = [{ id: 1, name: "Acme", from_email: "hello@example.org" }];
+      body = [{ id: 1, name: "Acme", from_email: "sender@example.org" }];
     else if (path === "/sending") body = { enabled: true };
     else if (path === "/campaigns/7")
       body = [
