@@ -9,20 +9,25 @@ import { StatusMessage } from "../StatusMessage";
 export function Section({
   title,
   description,
+  action,
   children,
 }: {
   title?: string;
   description?: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="space-y-4">
-      {(title || description) && (
-        <div className="space-y-1 border-b pb-4">
-          {title && <h3 className="text-lg font-medium">{title}</h3>}
-          {description && (
-            <p className="text-sm text-muted-foreground">{description}</p>
-          )}
+      {(title || description || action) && (
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
+          <div className="min-w-0 space-y-1">
+            {title && <h3 className="text-lg font-medium">{title}</h3>}
+            {description && (
+              <p className="text-sm text-muted-foreground">{description}</p>
+            )}
+          </div>
+          {action}
         </div>
       )}
       <div className="space-y-4">{children}</div>

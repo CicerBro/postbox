@@ -4,17 +4,25 @@ import { useTableSort } from "../lib/use-table-sort";
 import { useEffect, useState } from "react";
 import { KeyRound, Plus, ShieldCheck } from "lucide-react";
 import { Badge } from "../components/ui/badge";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useApp } from "../lib/app-context";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import {
   Section,
   Field,
   Message,
   useAction,
   Secret,
-  Checks,
   strings,
   date,
 } from "../components/settings/Common";
@@ -36,17 +44,15 @@ export function ApiKeysPage({
   const sorting = useTableSort<"name" | "scopes" | "used" | "status">("name");
   const { session } = useApp();
   const qc = useQueryClient();
-  const [name, setName] = useState("");
-  const [scopes, setScopes] = useState(["read"]);
+  const [createOpen, setCreateOpen] = useState(false);
   const [secret, setSecret] = useState("");
   const a = useAction();
   const { requestConfirmation, closeConfirmation, confirmationDialog } =
     useConfirmDialog({ pending: a.busy, error: a.error });
   useEffect(() => {
     setSecret("");
+    setCreateOpen(false);
     closeConfirmation();
-    setName("");
-    setScopes(["read"]);
   }, [brandId]);
   const q = useQuery({
     queryKey: ["api-keys", brandId],
@@ -81,72 +87,32 @@ export function ApiKeysPage({
     );
   return (
     <div className="space-y-6">
-      <div className="page-heading">
-        <div>
-          {embedded ? (
-            <h3 className="text-lg font-medium">API keys</h3>
-          ) : (
+      {!embedded && (
+        <div className="page-heading">
+          <div>
             <h1 className="text-2xl font-bold tracking-tight">API keys</h1>
-          )}
-          <p className="page-subtitle">
-            Connect your tools with secure access to this brand.
-          </p>
-        </div>
-        <Badge>
-          <KeyRound size={13} aria-hidden="true" />
-          Brand scoped
-        </Badge>
-      </div>
-      <Section
-        title="Create API key"
-        description="Give each integration its own key and choose the access it needs."
-      >
-        <form
-          className="space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void a.run(async () => {
-              const r = await api<{ secret: string }>("/api-keys", {
-                method: "POST",
-                brandId,
-                body: { name, scopes },
-              });
-              setSecret(r.secret);
-              setName("");
-              await qc.invalidateQueries({ queryKey: ["api-keys", brandId] });
-            }, "API key created.");
-          }}
-        >
-          <Field
-            label="Key name"
-            placeholder="e.g. Website integration"
-            value={name}
-            required
-            onChange={(e) => setName(e.target.value)}
-          />
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Permissions</p>
-            <Checks
-              values={["read", "write"]}
-              selected={scopes}
-              onChange={setScopes}
-            />
-            <p className="text-xs text-muted-foreground">
-              Read retrieves brand data. Write allows changes.
+            <p className="page-subtitle">
+              Connect your tools with secure access to this brand.
             </p>
           </div>
-          <Button disabled={a.busy || !scopes.length}>
-            <Plus size={16} aria-hidden="true" />
-            Create key
-          </Button>
-        </form>
-        <Message {...a} />
-        {secret && <Secret value={secret} onDismiss={() => setSecret("")} />}
-      </Section>
+          <Badge>
+            <KeyRound size={13} aria-hidden="true" />
+            Brand scoped
+          </Badge>
+        </div>
+      )}
       <Section
         title="Brand API keys"
         description="Store secrets securely in your integration. Revoking a key takes effect immediately."
+        action={
+          <Button onClick={() => setCreateOpen(true)} disabled={a.busy}>
+            <Plus size={16} aria-hidden="true" />
+            Create API key
+          </Button>
+        }
       >
+        <Message {...a} />
+        {secret && <Secret value={secret} onDismiss={() => setSecret("")} />}
         <Message error={q.error} />
         {q.isPending ? (
           <p role="status">Loading keys…</p>
@@ -159,11 +125,11 @@ export function ApiKeysPage({
             <KeyRound size={26} aria-hidden="true" />
             <h3>No API keys yet</h3>
             <p className="page-subtitle">
-              Create a key above to connect your first integration.
+              Create an API key to connect your first integration.
             </p>
           </div>
         ) : (
-          <div className="table-card overflow-x-auto">
+          <div className="table-card relative overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr>
@@ -248,7 +214,125 @@ export function ApiKeysPage({
           </div>
         )}
       </Section>
+      {createOpen && (
+        <CreateKeyDialog
+          brandId={brandId}
+          onClose={() => setCreateOpen(false)}
+          onCreated={(value) => {
+            setSecret(value);
+            setCreateOpen(false);
+            void qc.invalidateQueries({ queryKey: ["api-keys", brandId] });
+          }}
+        />
+      )}
       {confirmationDialog}
     </div>
+  );
+}
+
+function CreateKeyDialog({
+  brandId,
+  onClose,
+  onCreated,
+}: {
+  brandId: number;
+  onClose: () => void;
+  onCreated: (secret: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [scopes, setScopes] = useState(["read"]);
+  const create = useMutation({
+    mutationFn: () =>
+      api<{ secret: string }>("/api-keys", {
+        method: "POST",
+        brandId,
+        body: { name, scopes },
+      }),
+    onSuccess: (result) => onCreated(result.secret),
+  });
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !create.isPending) onClose();
+      }}
+    >
+      <DialogContent
+        width="md"
+        showCloseButton={!create.isPending}
+        aria-busy={create.isPending}
+        onOverlayClick={() => {
+          if (!create.isPending) onClose();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Create API key</DialogTitle>
+          <DialogDescription>
+            Give each integration its own key and choose the access it needs.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (scopes.length && !create.isPending) create.mutate();
+          }}
+        >
+          <Field
+            label="Key name"
+            placeholder="e.g. Website integration"
+            value={name}
+            required
+            disabled={create.isPending}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <fieldset disabled={create.isPending}>
+            <legend className="mb-3 text-sm font-medium">Permissions</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  ["read", "Read", "Retrieve brand data."],
+                  ["write", "Write", "Make changes to this brand."],
+                ] as const
+              ).map(([scope, label, description]) => (
+                <label key={scope} className="rounded-lg border p-3">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <Checkbox
+                      checked={scopes.includes(scope)}
+                      disabled={create.isPending}
+                      onCheckedChange={(checked) =>
+                        setScopes((current) =>
+                          checked === true
+                            ? [...current, scope]
+                            : current.filter((value) => value !== scope),
+                        )
+                      }
+                    />
+                    {label}
+                  </span>
+                  <span className="mt-1 ml-6 block text-xs text-muted-foreground">
+                    {description}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <Message error={create.error} />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={create.isPending}
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={create.isPending || !scopes.length}>
+              {create.isPending ? "Creating…" : "Create key"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
