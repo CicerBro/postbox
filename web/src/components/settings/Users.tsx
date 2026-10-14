@@ -84,10 +84,10 @@ export function Users() {
                   </p>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="campaign-row-actions">
                 <Button
                   size="icon"
-                  variant="outline"
+                  variant="ghost"
                   className="action-edit"
                   aria-label={`Edit access for ${u.email}`}
                   title="Edit access"
@@ -97,8 +97,8 @@ export function Users() {
                 </Button>
                 <Button
                   size="icon"
-                  variant="outline"
-                  className="action-delete"
+                  variant="ghost"
+                  className="campaign-delete-action"
                   aria-label={`Delete ${u.email}`}
                   title="Delete user"
                   disabled={a.busy}

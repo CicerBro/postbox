@@ -205,7 +205,9 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                   <SortableTableHead label="Template" {...sorting.header("name")} />
                   <SortableTableHead label="HTML size" {...sorting.header("size")} />
                   <SortableTableHead label="Updated" {...sorting.header("updated")} />
-                  <th>Actions</th>
+                  <th>
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -235,9 +237,9 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                       </td>
                       <td>{formatDateTime(t.updated_at)}</td>
                       <td>
-                        <div className="flex gap-2">
+                        <div className="campaign-row-actions">
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="icon"
                             className="action-edit"
                             aria-label={`Edit template ${t.name}`}
@@ -247,9 +249,9 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                             <Pencil size={16} aria-hidden="true" />
                           </Button>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="icon"
-                            className="action-delete"
+                            className="campaign-delete-action"
                             aria-label={`Delete template ${t.name}`}
                             title="Delete template"
                             onClick={() => {

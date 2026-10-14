@@ -989,7 +989,9 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                       {sortableHead("Email", "email")}
                       {sortableHead("Last activity", "last_activity")}
                       {sortableHead("Created at", "created_at")}
-                      <th className="w-32">Action</th>
+                      <th>
+                        <span className="sr-only">Actions</span>
+                      </th>
                     </tr>
                     <tr>
                       <th className="min-w-48 px-2 pb-2" scope="col">
@@ -1098,7 +1100,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                           </time>
                         </td>
                         <td>
-                          <div className="flex items-center gap-1">
+                          <div className="campaign-row-actions">
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1111,7 +1113,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="text-destructive"
+                              className="campaign-delete-action"
                               disabled={!canWrite}
                               aria-label={`Delete ${s.email}`}
                               title="Delete"

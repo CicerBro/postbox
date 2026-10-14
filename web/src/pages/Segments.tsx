@@ -451,7 +451,9 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
                 <tr>
                   <SortableTableHead label="Name" {...sorting.header("name")} />
                   <SortableTableHead label="Rules" {...sorting.header("rules")} />
-                  <th>Actions</th>
+                  <th>
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -488,10 +490,10 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
                       </details>
                     </td>
                     <td>
-                      <div className="flex gap-2">
+                      <div className="campaign-row-actions">
                         <Button
                           size="icon"
-                          variant="outline"
+                          variant="ghost"
                           className="action-edit"
                           aria-label={`Edit segment ${s.name}`}
                           title="Edit segment"
@@ -501,8 +503,8 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
                         </Button>
                         <Button
                           size="icon"
-                          variant="outline"
-                          className="action-delete"
+                          variant="ghost"
+                          className="campaign-delete-action"
                           aria-label={`Delete segment ${s.name}`}
                           title="Delete segment"
                           onClick={() => {
