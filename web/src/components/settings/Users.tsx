@@ -37,7 +37,7 @@ export function Users() {
       rows.length === 100 ? rows.at(-1)?.id : undefined,
   });
   return (
-    <Section title="Users and brand access">
+    <Section>
       <p className="text-sm text-muted-foreground">
         Administrators can manage every brand. Brand users need explicit read,
         write and send grants. The server prevents removal of the last

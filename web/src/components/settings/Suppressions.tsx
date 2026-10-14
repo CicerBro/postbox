@@ -94,7 +94,7 @@ export function Suppressions({
   return (
     <Section
       title={
-        pageScope === "global" ? "Global suppressions" : "Brand suppressions"
+        pageScope === "global" ? undefined : "Brand suppressions"
       }
     >
       <p className="text-sm text-muted-foreground">
@@ -120,9 +120,9 @@ export function Suppressions({
             }, "Suppression added.");
           }}
         >
-          <div className="flex flex-wrap gap-3">
-            <label htmlFor="suppression-kind" className="text-sm space-y-2">
-              Kind
+          <div className="grid grid-cols-[8rem_minmax(0,1fr)] items-start gap-3">
+            <label htmlFor="suppression-kind" className="block space-y-2 text-sm">
+              <span className="font-medium">Kind</span>
               <SelectField
                 id="suppression-kind"
                 value={kind}
@@ -133,22 +133,22 @@ export function Suppressions({
                 ]}
               />
             </label>
+            <Field
+              label={kind === "email" ? "Email address" : "Domain"}
+              type={kind === "email" ? "email" : "text"}
+              pattern={
+                kind === "email" ? "[^@\\s]+@[^@\\s]+\\.[^@\\s]+" : undefined
+              }
+              title={
+                kind === "email"
+                  ? "Enter an email address such as name@example.com."
+                  : undefined
+              }
+              required
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
           </div>
-          <Field
-            label={kind === "email" ? "Email address" : "Domain"}
-            type={kind === "email" ? "email" : "text"}
-            pattern={
-              kind === "email" ? "[^@\\s]+@[^@\\s]+\\.[^@\\s]+" : undefined
-            }
-            title={
-              kind === "email"
-                ? "Enter an email address such as name@example.com."
-                : undefined
-            }
-            required
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-          />
           <Button disabled={a.busy}>Add suppression</Button>
         </form>
       )}
