@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, download } from "../lib/api";
-import { SelectField } from "../components/ui/select";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { useTableSort } from "../lib/use-table-sort";
 import { Button } from "../components/ui/button";
@@ -74,14 +73,6 @@ type Report = {
   targets?: { target_type: "list" | "segment"; target_id: number; mode: "include" | "exclude"; name: string | null }[];
 };
 type RecentRecipient = { id: number; email: string; name: string | null; at: number };
-type Recipient = {
-  id: number;
-  email: string;
-  status: string;
-  error: string | null;
-  message_id: string | null;
-  sent_at: number | null;
-};
 export function CampaignReportPage({ brandId }: { brandId: number }) {
   const { id } = useParams();
   return (
@@ -94,9 +85,6 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
   const { session } = useApp();
   const countrySort = useTableSort<"country" | "opens" | "clicks">("opens", "desc");
   const client = useQueryClient(),
-    [status, setStatus] = useState(""),
-    [after, setAfter] = useState(0),
-    [history, setHistory] = useState<number[]>([]),
     [stream, setStream] = useState("Connecting live updates"),
     [streamConnected, setStreamConnected] = useState(false),
     [exportError, setExportError] = useState<unknown>(null),
@@ -126,7 +114,6 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
         client.invalidateQueries({ queryKey: ["campaign", brandId, id] }),
         client.invalidateQueries({ queryKey: ["campaigns", brandId] }),
         client.invalidateQueries({ queryKey: ["campaign-report", brandId, id] }),
-        client.invalidateQueries({ queryKey: ["campaign-recipients", brandId, id] }),
       ]);
     },
   });
@@ -136,16 +123,6 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     enabled: valid && Boolean(campaign.data?.length),
   });
   const previewHTML = useMemo(() => inertPreview(preview.data?.html ?? ""), [preview.data?.html]);
-  const recipients = useQuery({
-    queryKey: ["campaign-recipients", brandId, id, status, after],
-    queryFn: () =>
-      api<Recipient[]>(
-        `/campaigns/${id}/recipients?after=${after}&limit=50${status ? `&status=${status}` : ""}`,
-        { brandId },
-      ),
-    enabled: valid,
-    refetchInterval: 10000,
-  });
   useEffect(() => {
     if (!valid) return;
     const source = new EventSource(
@@ -220,7 +197,6 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
         client.invalidateQueries({ queryKey: ["campaigns", brandId] }),
         client.invalidateQueries({ queryKey: ["campaign-report", brandId, id] }),
         client.invalidateQueries({ queryKey: ["campaign-preview", brandId, id] }),
-        client.invalidateQueries({ queryKey: ["campaign-recipients", brandId, id] }),
       ]);
       navigate(`/campaigns/${id}`);
     } catch (e) {
@@ -312,7 +288,6 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           <Button variant="outline" disabled={deliveryAction.isPending || (campaignStatus === "paused" && !canResume)} onClick={() => deliveryAction.mutate(campaignStatus === "paused" ? "resume" : "pause")}>
             {deliveryAction.isPending ? "Updating…" : campaignStatus === "paused" ? "Resume sending" : "Pause sending"}
           </Button>
-          <Button variant="ghost" asChild><a href="#campaign-recipient-statuses">View recipient statuses</a></Button>
         </div>
       </CardContent></Card>}
       {report.data?.delivery && (
@@ -342,8 +317,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
                   <span className="metric-icon"><Icon size={16} /></span>
                 </div>
                 <p className="mt-3 text-2xl font-semibold tracking-tight">{count === undefined ? "Unavailable" : denominator > 0 ? `${((count / denominator) * 100).toFixed(2)}%` : "Unavailable"}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{count === undefined ? "No counter recorded" : `${number(count)} recorded`}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{denominator > 0 ? basis : "No denominator available"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{count === undefined ? "No counter recorded" : `${number(count)} recorded`} {denominator > 0 ? basis : "· No denominator available"}</p>
               </CardContent>
             </Card>
           ))}
@@ -482,106 +456,6 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           </div>
         </CardContent>
       </Card>
-      <Card id="campaign-recipient-statuses">
-        <CardHeader>
-          <CardTitle>Recipient outcomes</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Unknown outcomes are terminal. SES may already have accepted those
-            messages, so uncertain recipients cannot be resent.
-          </p>
-          <label className="block max-w-xs text-sm">
-            Delivery status
-            <SelectField
-              aria-label="Delivery status"
-              className="mt-2"
-              value={status}
-              onValueChange={(value) => {
-                setStatus(value);
-                setAfter(0);
-                setHistory([]);
-              }}
-              options={[
-                { value: "", label: "All outcomes" },
-                ...[
-                  "pending",
-                  "claimed",
-                  "sent",
-                  "failed",
-                  "unknown",
-                  "skipped",
-                ].map((value) => ({ value, label: value })),
-              ]}
-            />
-          </label>
-          <ErrorMessage error={recipients.error} />
-          {recipients.isPending ? (
-            <p role="status">Loading recipient outcomes…</p>
-          ) : (
-            <div className="overflow-auto">
-              <table className={tableClass}>
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Status</th>
-                    <th>Message ID</th>
-                    <th>Sent</th>
-                    <th>Error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recipients.data?.map((r) => (
-                    <tr key={r.id}>
-                      <td className="row-title">{r.email}</td>
-                      <td>
-                        <StatusBadge status={r.status} />
-                      </td>
-                      <td className="break-all">{r.message_id ?? "None"}</td>
-                      <td>
-                        {r.sent_at
-                          ? formatDateTime(r.sent_at)
-                          : "Not recorded"}
-                      </td>
-                      <td className="max-w-md break-words">{r.error ?? ""}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!recipients.data?.length && (
-                <p className="py-4 text-sm text-muted-foreground">
-                  No recipients match this page and status.
-                </p>
-              )}
-            </div>
-          )}
-          <div className="table-footer flex gap-2">
-            <span className="row-subtitle mr-auto">
-              Page {history.length + 1}
-            </span>
-            <Button
-              variant="outline"
-              disabled={!history.length}
-              onClick={() => {
-                setAfter(history.at(-1) ?? 0);
-                setHistory(history.slice(0, -1));
-              }}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              disabled={recipients.data?.length !== 50}
-              onClick={() => {
-                setHistory([...history, after]);
-                setAfter(recipients.data!.at(-1)!.id);
-              }}
-            >
-              Next
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -601,9 +475,27 @@ function inertPreview(html: string) {
 }
 function RecentActivity({ title, description, rows, loading }: { title: string; description: string; rows: RecentRecipient[]; loading: boolean }) {
   const { formatDateTime } = useDateTime();
-  return <Card className="min-w-0"><CardHeader><CardTitle>{title}</CardTitle><p className="row-subtitle">{description}</p></CardHeader><CardContent>
-    {loading ? <p role="status" className="text-sm text-muted-foreground">Loading activity…</p> : rows.length ? <div className="overflow-auto"><table className={tableClass}><thead><tr><th>Recipient</th><th>When</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td className="break-all"><span className="row-title">{row.email || "Email unavailable"}</span>{row.name && <span className="row-subtitle block">{row.name}</span>}</td><td className="whitespace-nowrap text-muted-foreground">{formatDateTime(row.at)}</td></tr>)}</tbody></table></div> : <p className="py-4 text-sm text-muted-foreground">No activity recorded yet.</p>}
-  </CardContent></Card>;
+  return (
+    <Card className="min-w-0">
+      <CardHeader><CardTitle>{title}</CardTitle><p className="row-subtitle">{description}</p></CardHeader>
+      <CardContent>
+        {loading ? <p role="status" className="text-sm text-muted-foreground">Loading activity…</p> : rows.length ? (
+          <div className="overflow-auto">
+            <table className={`${tableClass} whitespace-nowrap`}>
+              <thead><tr><th>Name</th><th>Email</th><th>When</th></tr></thead>
+              <tbody>{rows.map(row => (
+                <tr key={row.id}>
+                  <td>{row.name || "Unnamed"}</td>
+                  <td className="row-title">{row.email || "Email unavailable"}</td>
+                  <td className="text-muted-foreground">{formatDateTime(row.at)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        ) : <p className="py-4 text-sm text-muted-foreground">No activity recorded yet.</p>}
+      </CardContent>
+    </Card>
+  );
 }
 function ActivityChart({ rows }: { rows: Hour[] }) {
   const { timeZone, formatDateTime } = useDateTime();

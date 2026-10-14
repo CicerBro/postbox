@@ -111,9 +111,8 @@ test("opening a live campaign shows streaming progress and supports pause, resum
   await monitor.getByRole("button", { name: "Resume sending" }).click();
   await expect(monitor.getByRole("button", { name: "Pause sending" })).toBeEnabled();
   await expect(monitor).toContainText("Estimating time remaining");
-  await page.getByRole("link", { name: "View recipient statuses" }).click();
-  await expect(page).toHaveURL(/#campaign-recipient-statuses$/);
-  await expect(page.getByRole("heading", { name: "Recipient outcomes" })).toBeInViewport();
+  await expect(page.getByRole("link", { name: "View recipient statuses" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Recipient outcomes" })).toHaveCount(0);
   await page.getByRole("link", { name: "Manage campaign" }).click();
   await expect(page).toHaveURL(/\/campaigns\/7\?manage=true$/);
   await expect(page.getByRole("heading", { name: "Campaign content" })).toBeVisible();

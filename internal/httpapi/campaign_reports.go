@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -81,19 +82,31 @@ func (a *API) campaignReportData(ctx context.Context, brand, id int64) (map[stri
 		}
 		recent[event.name] = rows
 	}
-	var firstSent, lastSent sql.NullInt64
+	var firstSent, lastSent, startedAt sql.NullInt64
+	var source, sourceID sql.NullString
+	var campaignUUID string
 	var fromName, fromEmail string
 	var snapshotted, historical, deliveryEstimated bool
 	e = a.db.Reader.QueryRowContext(ctx, `SELECT
-		COALESCE((SELECT sent_at FROM campaign_recipients WHERE campaign_id=c.id AND sent_at IS NOT NULL ORDER BY sent_at,subscriber_id LIMIT 1), CASE WHEN m.target_id IS NOT NULL THEN c.started_at END),
+		(SELECT sent_at FROM campaign_recipients WHERE campaign_id=c.id AND sent_at IS NOT NULL ORDER BY sent_at,subscriber_id LIMIT 1),
 		(SELECT sent_at FROM campaign_recipients WHERE campaign_id=c.id AND sent_at IS NOT NULL ORDER BY sent_at DESC,subscriber_id DESC LIMIT 1),
-		COALESCE(p.from_name,b.from_name),COALESCE(p.from_email,b.from_email),p.campaign_id IS NOT NULL,m.target_id IS NOT NULL,
+		COALESCE(p.from_name,b.from_name),COALESCE(p.from_email,b.from_email),p.campaign_id IS NOT NULL,c.started_at,c.uuid,m.source,m.source_id,
         m.target_id IS NOT NULL AND json_extract(r.payload,'$.delivered') IS NULL
 		FROM campaigns c JOIN brands b ON b.id=c.brand_id LEFT JOIN campaign_preparations p ON p.campaign_id=c.id LEFT JOIN migration_identities m ON m.entity='campaigns' AND m.target_id=c.id
         LEFT JOIN migration_records r ON r.source=m.source AND r.entity=m.entity AND r.source_id=m.source_id
-        WHERE c.id=?`, id).Scan(&firstSent, &lastSent, &fromName, &fromEmail, &snapshotted, &historical, &deliveryEstimated)
+        WHERE c.id=?`, id).Scan(&firstSent, &lastSent, &fromName, &fromEmail, &snapshotted, &startedAt, &campaignUUID, &source, &sourceID, &deliveryEstimated)
 	if e != nil {
 		return nil, e
+	}
+	// Migration mappings survive deletion and numeric campaign IDs can be reused.
+	// Match the deterministic UUID assigned by the importer as well as the ID.
+	if source.Valid && sourceID.Valid && !snapshotted {
+		identity := sha256.Sum256([]byte(source.String + "\x00campaigns\x00" + sourceID.String))
+		historical = campaignUUID == fmt.Sprintf("%x", identity[:16])
+	}
+	deliveryEstimated = historical && deliveryEstimated
+	if !firstSent.Valid && historical {
+		firstSent = startedAt
 	}
 	var firstAt, lastAt any
 	if firstSent.Valid {

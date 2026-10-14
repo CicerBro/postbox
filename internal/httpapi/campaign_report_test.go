@@ -130,7 +130,7 @@ func TestImportedCampaignReportUsesArchivedSendDate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.Writer.Exec(`INSERT INTO campaigns(id,brand_id,uuid,status,subject,html,created_at,updated_at,started_at) VALUES(1,?,'imported','sent','Imported','',1,1,1788254101000);
+	_, err = db.Writer.Exec(`INSERT INTO campaigns(id,brand_id,uuid,status,subject,html,created_at,updated_at,started_at) VALUES(1,?,'45db6466c59b555680b70b4dd505ae8a','sent','Imported','',1,1,1788254101000);
  INSERT INTO migration_identities(source,entity,source_id,target_id) VALUES('sendy','campaigns','39',1);
  INSERT INTO migration_records(source,entity,source_id,payload) VALUES('sendy','campaigns','39','{"sent":"1788254101"}');`, brand.ID)
 	if err != nil {
@@ -164,5 +164,53 @@ func TestImportedCampaignReportUsesArchivedSendDate(t *testing.T) {
 	}
 	if out.Delivery.Estimated {
 		t.Fatal("explicit delivery counter labelled estimated")
+	}
+}
+
+func TestNewCampaignReportIgnoresReusedMigrationID(t *testing.T) {
+	_, mux, db, cookie, csrf := setup(t)
+	brand, err := subscribers.New(db).CreateBrand(context.Background(), subscribers.Brand{Name: "Report", FromEmail: "from@example.org"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Writer.Exec(`INSERT INTO campaigns(id,brand_id,uuid,status,subject,html,created_at,updated_at) VALUES(1,?,'45db6466c59b555680b70b4dd505ae8a','sent','Imported','',1,1);
+ INSERT INTO migration_identities(source,entity,source_id,target_id) VALUES('sendy','campaigns','39',1);
+ INSERT INTO migration_records(source,entity,source_id,payload) VALUES('sendy','campaigns','39','{"sent":"1788254101"}');`, brand.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/api/v1/campaigns/1?brand_id=%d", brand.ID)
+	w := request(mux, "DELETE", path, "", &cookie, csrf)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = request(mux, "POST", fmt.Sprintf("/api/v1/campaigns?brand_id=%d", brand.ID), `{"subject":"New newsletter","html":"<p>New</p>"}`, &cookie, csrf)
+	var created struct{ ID int64 }
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil || w.Code != 200 || created.ID != 1 {
+		t.Fatal("expected reused campaign ID", w.Code, w.Body.String(), err)
+	}
+	for _, prepared := range []bool{false, true} {
+		if prepared {
+			_, err = db.Writer.Exec(`UPDATE campaigns SET status='sent',started_at=1234 WHERE id=1;
+ INSERT INTO campaign_preparations(campaign_id,subject,html,text,from_name,from_email,tracking_url,prepared_at) VALUES(1,'New newsletter','<p>New</p>','','Sender','from@example.org','https://example.org',1234);`)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		w = request(mux, "GET", fmt.Sprintf("/api/v1/campaigns/1/report?brand_id=%d", brand.ID), "", &cookie, "")
+		var out struct {
+			Delivery struct {
+				Historical bool   `json:"historical"`
+				Estimated  bool   `json:"delivered_estimated"`
+				First      *int64 `json:"first_sent_at"`
+				Snapshot   bool   `json:"sender_snapshotted"`
+			} `json:"delivery"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String(), err)
+		}
+		if out.Delivery.Historical || out.Delivery.Estimated || out.Delivery.First != nil || out.Delivery.Snapshot != prepared {
+			t.Fatalf("native campaign mistaken for import (prepared=%v): %+v", prepared, out.Delivery)
+		}
 	}
 }

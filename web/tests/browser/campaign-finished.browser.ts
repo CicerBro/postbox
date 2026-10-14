@@ -32,7 +32,7 @@ for (const status of ['sent', 'cancelled']) {
     await expect(link).toHaveAttribute('href', '/campaigns/7/report');
     await link.click();
     await expect(page.getByRole('heading', { name: 'Historical newsletter', exact: true })).toBeVisible();
-    await expect(page.getByText('8 recorded', { exact: true })).toBeVisible();
+    await expect(page.getByText('8 recorded of sent', { exact: true })).toBeVisible();
     await expect(page.frameLocator('iframe[title="Sent newsletter preview"]').getByText('Historical email body')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Manage campaign', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toHaveCount(0);
