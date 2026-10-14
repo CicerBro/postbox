@@ -1,3 +1,4 @@
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useDateTime } from "../lib/date-time";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { SelectField } from "../components/ui/select";
@@ -739,44 +740,34 @@ function Lists({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog
+      <ConfirmDialog
         open={!!deleting}
         onOpenChange={(open) => !open && setDeleting(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete {deleting?.name}?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm">
+        title={`Delete ${deleting?.name}?`}
+        description={
+          <>
             Deletes the list, its memberships and form, and removes it from
             draft campaign audiences. Subscriber profiles remain in the brand.
             Lists used by scheduled or active campaigns cannot be deleted.
-          </p>
-          <ErrorMessage error={action.error} />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleting(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={!canWrite || action.isPending}
-              onClick={async () => {
-                try {
-                  await action.mutateAsync({
-                    path: `/lists/${deleting?.id}`,
-                    method: "DELETE",
-                  });
-                  setDeleting(null);
-                } catch {
-                  /* displayed */
-                }
-              }}
-            >
-              Delete list
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+        error={action.error}
+        pending={action.isPending}
+        pendingLabel="Deleting…"
+        confirmLabel="Delete list"
+        confirmDisabled={!canWrite || action.isPending}
+        onConfirm={async () => {
+          try {
+            await action.mutateAsync({
+              path: `/lists/${deleting?.id}`,
+              method: "DELETE",
+            });
+            setDeleting(null);
+          } catch {
+            /* displayed */
+          }
+        }}
+      />
       {notifications && (
         <ListNotificationsDialog
           key={notifications.id}

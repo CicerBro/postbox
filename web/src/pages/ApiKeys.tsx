@@ -1,3 +1,4 @@
+import { useConfirmDialog } from "../components/ui/confirm-dialog";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { useTableSort } from "../lib/use-table-sort";
 import { useEffect, useState } from "react";
@@ -39,8 +40,11 @@ export function ApiKeysPage({
   const [scopes, setScopes] = useState(["read"]);
   const [secret, setSecret] = useState("");
   const a = useAction();
+  const { requestConfirmation, closeConfirmation, confirmationDialog } =
+    useConfirmDialog({ pending: a.busy, error: a.error });
   useEffect(() => {
     setSecret("");
+    closeConfirmation();
     setName("");
     setScopes(["read"]);
   }, [brandId]);
@@ -214,20 +218,23 @@ export function ApiKeysPage({
                           size="sm"
                           disabled={a.busy}
                           onClick={() => {
-                            if (
-                              window.confirm(
-                                `Revoke ${k.name}? Integrations using it will stop working.`,
-                              )
-                            )
-                              void a.run(async () => {
-                                await api(`/api-keys/${k.id}`, {
-                                  method: "DELETE",
-                                  brandId,
-                                });
-                                await qc.invalidateQueries({
-                                  queryKey: ["api-keys", brandId],
-                                });
-                              }, "Key revoked.");
+                            requestConfirmation({
+                              title: "Revoke key?",
+                              description: `Revoke ${k.name}? Integrations using it will stop working.`,
+                              confirmLabel: "Revoke key",
+                              onConfirm: () =>
+                                a.run(async () => {
+                                  await api(`/api-keys/${k.id}`, {
+                                    method: "DELETE",
+                                    brandId,
+                                  });
+                                  await qc.invalidateQueries({
+                                    queryKey: ["api-keys", brandId],
+                                  });
+
+                                  closeConfirmation();
+                                }, "Key revoked."),
+                            });
                           }}
                         >
                           Revoke
@@ -241,6 +248,7 @@ export function ApiKeysPage({
           </div>
         )}
       </Section>
+      {confirmationDialog}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { useTableSort } from "../lib/use-table-sort";
 import { SelectField } from "../components/ui/select";
@@ -584,44 +585,33 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog
+      <ConfirmDialog
         open={!!deleteRow}
         onOpenChange={(open) => !open && setDeleteRow(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete {deleteRow?.name}?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm">
+        title={`Delete ${deleteRow?.name}?`}
+        description={
+          <>
             This removes the saved segment and removes it from draft campaign
             audiences. Subscribers remain in the brand. Segments used by
             scheduled or active campaigns cannot be deleted.
-          </p>
-          <ErrorMessage error={action.error} />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteRow(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={action.isPending}
-              onClick={async () => {
-                try {
-                  await action.mutateAsync({
-                    path: `/segments/${deleteRow?.id}`,
-                    method: "DELETE",
-                  });
-                  setDeleteRow(null);
-                } catch {
-                  /* displayed */
-                }
-              }}
-            >
-              Delete segment
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+        error={action.error}
+        pending={action.isPending}
+        pendingLabel="Deleting…"
+        confirmLabel="Delete segment"
+        onConfirm={async () => {
+          try {
+            await action.mutateAsync({
+              path: `/segments/${deleteRow?.id}`,
+              method: "DELETE",
+            });
+            setDeleteRow(null);
+          } catch {
+            /* displayed */
+          }
+        }}
+      />
     </div>
   );
 }

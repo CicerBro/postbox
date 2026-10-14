@@ -2,6 +2,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
+export type DialogWidth = "sm" | "md" | "lg" | "xl";
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
@@ -10,14 +11,16 @@ export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     showCloseButton?: boolean;
+    width?: DialogWidth;
+    onOverlayClick?: React.MouseEventHandler<HTMLDivElement>;
   }
->(({ className, children, showCloseButton = true, ...props }, ref) => (
+>(({ className, children, showCloseButton = true, width, onOverlayClick, ...props }, ref) => (
   <DialogPrimitive.Portal>
-    <DialogPrimitive.Overlay data-slot="dialog-overlay" className="dialog-overlay" />
+    <DialogPrimitive.Overlay data-slot="dialog-overlay" className="dialog-overlay" onClick={onOverlayClick} />
     <DialogPrimitive.Content
       ref={ref}
       data-slot="dialog-content"
-      className={cn("dialog-content", className)}
+      className={cn("dialog-content", width && `dialog-width-${width}`, className)}
       {...props}
     >
       {children}

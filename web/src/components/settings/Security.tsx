@@ -1,3 +1,4 @@
+import { useConfirmDialog } from "../ui/confirm-dialog";
 import { useState } from "react";
 import { ShieldCheck, Fingerprint, Smartphone, Plus } from "lucide-react";
 import { Badge } from "../ui/badge";
@@ -18,6 +19,8 @@ export function Security() {
   const { session, logout } = useApp();
   const qc = useQueryClient();
   const a = useAction();
+  const { requestConfirmation, closeConfirmation, confirmationDialog } =
+    useConfirmDialog({ pending: a.busy, error: a.error });
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
@@ -167,20 +170,24 @@ export function Security() {
           variant="destructive"
           disabled={a.busy || !password || !code}
           onClick={() => {
-            if (
-              window.confirm(
+            requestConfirmation({
+              title: "Remove authenticator?",
+              description:
                 "Remove your authenticator and sign out all sessions?",
-              )
-            )
-              void a.run(async () => {
-                await api("/auth/totp", {
-                  method: "DELETE",
-                  body: { password, code },
-                });
-                setPassword("");
-                setCode("");
-                await logout();
-              }, "Authenticator removed.");
+              confirmLabel: "Remove authenticator",
+              onConfirm: () =>
+                a.run(async () => {
+                  await api("/auth/totp", {
+                    method: "DELETE",
+                    body: { password, code },
+                  });
+                  setPassword("");
+                  setCode("");
+                  await logout();
+
+                  closeConfirmation();
+                }, "Authenticator removed."),
+            });
           }}
         >
           Remove authenticator
@@ -201,7 +208,10 @@ export function Security() {
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Personal laptop"
           />
-          <p id="passkey-requirements" className="text-sm text-muted-foreground">
+          <p
+            id="passkey-requirements"
+            className="text-sm text-muted-foreground"
+          >
             {enrollment
               ? "Finish or cancel authenticator setup before adding a passkey. Then enter your current password and, if your authenticator is enabled, a code in the fields above."
               : session.totp_enabled
@@ -287,20 +297,23 @@ export function Security() {
                       a.busy || !password || (session.totp_enabled && !code)
                     }
                     onClick={() => {
-                      if (
-                        window.confirm(
-                          `Remove ${k.name} and sign out all sessions?`,
-                        )
-                      )
-                        void a.run(async () => {
-                          await api(`/auth/passkeys/${k.id}`, {
-                            method: "DELETE",
-                            body: { password, code: code || undefined },
-                          });
-                          setPassword("");
-                          setCode("");
-                          await logout();
-                        }, "Passkey removed.");
+                      requestConfirmation({
+                        title: "Remove passkey?",
+                        description: `Remove ${k.name} and sign out all sessions?`,
+                        confirmLabel: "Remove passkey",
+                        onConfirm: () =>
+                          a.run(async () => {
+                            await api(`/auth/passkeys/${k.id}`, {
+                              method: "DELETE",
+                              body: { password, code: code || undefined },
+                            });
+                            setPassword("");
+                            setCode("");
+                            await logout();
+
+                            closeConfirmation();
+                          }, "Passkey removed."),
+                      });
                     }}
                   >
                     Remove
@@ -312,6 +325,7 @@ export function Security() {
         </div>
       )}
       <Message {...a} />
+      {confirmationDialog}
     </Section>
   );
 }

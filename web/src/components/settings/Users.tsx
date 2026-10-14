@@ -1,3 +1,4 @@
+import { useConfirmDialog } from "../ui/confirm-dialog";
 import { useEffect, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "../ui/badge";
@@ -28,6 +29,8 @@ export function Users() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<User | null>();
   const a = useAction();
+  const { requestConfirmation, closeConfirmation, confirmationDialog } =
+    useConfirmDialog({ pending: a.busy, error: a.error });
   const q = useInfiniteQuery({
     queryKey: ["users"],
     initialPageParam: 0,
@@ -100,16 +103,19 @@ export function Users() {
                   title="Delete user"
                   disabled={a.busy}
                   onClick={() => {
-                    if (
-                      window.confirm(
-                        `Delete ${u.email}? Their unfinished campaigns will be cancelled.`,
-                      )
-                    )
-                      void a.run(async () => {
-                        await api(`/users/${u.id}`, { method: "DELETE" });
-                        if (u.id === session.user_id) await logout();
-                        await qc.invalidateQueries({ queryKey: ["users"] });
-                      }, "User deleted.");
+                    requestConfirmation({
+                      title: "Delete user?",
+                      description: `Delete ${u.email}? Their unfinished campaigns will be cancelled.`,
+                      confirmLabel: "Delete user",
+                      onConfirm: () =>
+                        a.run(async () => {
+                          await api(`/users/${u.id}`, { method: "DELETE" });
+                          if (u.id === session.user_id) await logout();
+                          await qc.invalidateQueries({ queryKey: ["users"] });
+
+                          closeConfirmation();
+                        }, "User deleted."),
+                    });
                   }}
                 >
                   <Trash2 size={16} aria-hidden="true" />
@@ -136,6 +142,7 @@ export function Users() {
           onClose={() => setEditing(undefined)}
         />
       )}
+      {confirmationDialog}
     </Section>
   );
 }
@@ -149,6 +156,8 @@ function UserEditor({
   const { session, logout } = useApp();
   const qc = useQueryClient();
   const a = useAction();
+  const { requestConfirmation, closeConfirmation, confirmationDialog } =
+    useConfirmDialog({ pending: a.busy, error: a.error });
   const [displayName, setDisplayName] = useState(user?.display_name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
@@ -165,7 +174,12 @@ function UserEditor({
             async () => {
               await api(user ? `/users/${user.id}` : "/users", {
                 method: user ? "PATCH" : "POST",
-                body: { email, display_name: displayName, password: password || undefined, role },
+                body: {
+                  email,
+                  display_name: displayName,
+                  password: password || undefined,
+                  role,
+                },
               });
               setPassword("");
               await qc.invalidateQueries({ queryKey: ["users"] });
@@ -246,21 +260,24 @@ function UserEditor({
                 variant="outline"
                 disabled={a.busy || !adminPassword}
                 onClick={() => {
-                  if (
-                    window.confirm(
-                      `Reset the authenticator for ${user.email}? All their sessions will be signed out.`,
-                    )
-                  )
-                    void a.run(async () => {
-                      await api(`/users/${user.id}/totp`, {
-                        method: "DELETE",
-                        body: { password: adminPassword },
-                      });
-                      setAdminPassword("");
-                      await qc.invalidateQueries({ queryKey: ["users"] });
-                      if (user.id === session.user_id) await logout();
-                      onClose();
-                    }, "Authenticator reset.");
+                  requestConfirmation({
+                    title: "Reset authenticator?",
+                    description: `Reset the authenticator for ${user.email}? All their sessions will be signed out.`,
+                    confirmLabel: "Reset authenticator",
+                    onConfirm: () =>
+                      a.run(async () => {
+                        await api(`/users/${user.id}/totp`, {
+                          method: "DELETE",
+                          body: { password: adminPassword },
+                        });
+                        setAdminPassword("");
+                        await qc.invalidateQueries({ queryKey: ["users"] });
+                        if (user.id === session.user_id) await logout();
+                        onClose();
+
+                        closeConfirmation();
+                      }, "Authenticator reset."),
+                  });
                 }}
               >
                 Reset authenticator
@@ -270,12 +287,15 @@ function UserEditor({
         </>
       )}
       <Message {...a} />
+      {confirmationDialog}
     </div>
   );
 }
 function BrandAccess({ userId }: { userId: number }) {
   const qc = useQueryClient();
   const a = useAction();
+  const { requestConfirmation, closeConfirmation, confirmationDialog } =
+    useConfirmDialog({ pending: a.busy, error: a.error });
   const brands = useInfiniteQuery({
     queryKey: ["access-brands"],
     initialPageParam: 0,
@@ -340,15 +360,22 @@ function BrandAccess({ userId }: { userId: number }) {
                 size="sm"
                 disabled={a.busy}
                 onClick={() => {
-                  if (window.confirm("Remove this brand grant?"))
-                    void a.run(async () => {
-                      await api(`/users/${userId}/brands/${g.brand_id}`, {
-                        method: "DELETE",
-                      });
-                      await qc.invalidateQueries({
-                        queryKey: ["user-brands", userId],
-                      });
-                    }, "Access removed.");
+                  requestConfirmation({
+                    title: "Remove grant?",
+                    description: "Remove this brand grant?",
+                    confirmLabel: "Remove grant",
+                    onConfirm: () =>
+                      a.run(async () => {
+                        await api(`/users/${userId}/brands/${g.brand_id}`, {
+                          method: "DELETE",
+                        });
+                        await qc.invalidateQueries({
+                          queryKey: ["user-brands", userId],
+                        });
+
+                        closeConfirmation();
+                      }, "Access removed."),
+                  });
                 }}
               >
                 Remove
@@ -382,7 +409,9 @@ function BrandAccess({ userId }: { userId: number }) {
             onValueChange={(value) => setBrandId(Number(value))}
             options={[
               { value: "0", label: "Select a brand" },
-              ...(brands.data?.pages.flat().map((b) => ({ value: String(b.id), label: b.name })) ?? []),
+              ...(brands.data?.pages
+                .flat()
+                .map((b) => ({ value: String(b.id), label: b.name })) ?? []),
             ]}
           />
         </label>
@@ -414,6 +443,7 @@ function BrandAccess({ userId }: { userId: number }) {
         </Button>
       </form>
       <Message {...a} />
+      {confirmationDialog}
     </div>
   );
 }

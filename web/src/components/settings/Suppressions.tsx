@@ -1,3 +1,4 @@
+import { useConfirmDialog } from "../ui/confirm-dialog";
 import { SortableTableHead } from "../SortableTableHead";
 import { useTableSort } from "../../lib/use-table-sort";
 import { useEffect, useState } from "react";
@@ -56,6 +57,8 @@ export function Suppressions({
   const [value, setValue] = useState("");
   const [editing, setEditing] = useState<Suppression | null>(null);
   const a = useAction();
+  const { requestConfirmation, closeConfirmation, confirmationDialog } =
+    useConfirmDialog({ pending: a.busy, error: a.error });
   const q = useInfiniteQuery({
     queryKey: [
       "suppressions",
@@ -92,11 +95,7 @@ export function Suppressions({
       : row[column],
   );
   return (
-    <Section
-      title={
-        pageScope === "global" ? undefined : "Brand suppressions"
-      }
-    >
+    <Section title={pageScope === "global" ? undefined : "Brand suppressions"}>
       <p className="text-sm text-muted-foreground">
         {pageScope === "global"
           ? "These suppressions apply to every brand."
@@ -121,7 +120,10 @@ export function Suppressions({
           }}
         >
           <div className="grid grid-cols-[8rem_minmax(0,1fr)] items-start gap-3">
-            <label htmlFor="suppression-kind" className="block space-y-2 text-sm">
+            <label
+              htmlFor="suppression-kind"
+              className="block space-y-2 text-sm"
+            >
               <span className="font-medium">Kind</span>
               <SelectField
                 id="suppression-kind"
@@ -318,24 +320,27 @@ export function Suppressions({
                             title="Remove suppression"
                             disabled={a.busy}
                             onClick={() => {
-                              if (
-                                window.confirm(
-                                  `Remove suppression for ${s.value}? Existing subscriber statuses will remain unchanged.`,
-                                )
-                              )
-                                void a.run(async () => {
-                                  const global = s.brand_id === null;
-                                  await api(
-                                    `/suppressions/${s.id}?scope=${global ? "global" : "brand"}`,
-                                    {
-                                      method: "DELETE",
-                                      ...(global ? {} : { brandId }),
-                                    },
-                                  );
-                                  await qc.invalidateQueries({
-                                    queryKey: ["suppressions"],
-                                  });
-                                }, "Suppression removed.");
+                              requestConfirmation({
+                                title: "Remove suppression?",
+                                description: `Remove suppression for ${s.value}? Existing subscriber statuses will remain unchanged.`,
+                                confirmLabel: "Remove suppression",
+                                onConfirm: () =>
+                                  a.run(async () => {
+                                    const global = s.brand_id === null;
+                                    await api(
+                                      `/suppressions/${s.id}?scope=${global ? "global" : "brand"}`,
+                                      {
+                                        method: "DELETE",
+                                        ...(global ? {} : { brandId }),
+                                      },
+                                    );
+                                    await qc.invalidateQueries({
+                                      queryKey: ["suppressions"],
+                                    });
+
+                                    closeConfirmation();
+                                  }, "Suppression removed."),
+                              });
                             }}
                           >
                             <Trash2 size={16} aria-hidden="true" />
@@ -366,6 +371,7 @@ export function Suppressions({
           onClose={() => setEditing(null)}
         />
       )}
+      {confirmationDialog}
     </Section>
   );
 }

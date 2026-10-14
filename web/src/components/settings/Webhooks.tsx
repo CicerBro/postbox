@@ -1,7 +1,8 @@
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useState } from "react";
 import { Webhook, Plus } from "lucide-react";
 import { Badge } from "../ui/badge";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
@@ -22,6 +23,54 @@ const events = [
   "campaign_started",
   "campaign_finished",
 ];
+function ConfirmWebhookAction({
+  brandId,
+  hook,
+  action,
+  onClose,
+  onSaved,
+}: {
+  brandId: number;
+  hook: Hook;
+  action: "rotate" | "delete";
+  onClose: () => void;
+  onSaved: (hook?: Hook) => void;
+}) {
+  const rotate = action === "rotate";
+  const mutation = useMutation({
+    mutationFn: () =>
+      api<Hook | undefined>(`/webhooks/${hook.id}`, {
+        brandId,
+        method: rotate ? "PATCH" : "DELETE",
+        ...(rotate ? { body: { rotate_secret: true } } : {}),
+      }),
+    onSuccess: onSaved,
+  });
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={rotate ? "Rotate signing secret?" : "Delete webhook?"}
+      description={
+        <>
+          {rotate
+            ? "Update your receiver with the new secret immediately after rotation."
+            : "This receiver will stop receiving events."}
+          <span className="mt-3 block break-all">{hook.url}</span>
+        </>
+      }
+      pending={mutation.isPending}
+      error={mutation.error}
+      variant={rotate ? "default" : "destructive"}
+      confirmLabel={rotate ? "Rotate secret" : "Delete webhook"}
+      pendingLabel={rotate ? "Rotating…" : "Deleting…"}
+      onConfirm={() => mutation.mutateAsync()}
+    />
+  );
+}
+
 export function Webhooks({ brandId }: { brandId: number }) {
   const { session, brand } = useApp();
   const canWrite =
@@ -33,6 +82,10 @@ export function Webhooks({ brandId }: { brandId: number }) {
   const [selected, setSelected] = useState(["subscribe"]);
   const [active, setActive] = useState(true);
   const [secret, setSecret] = useState("");
+  const [confirmation, setConfirmation] = useState<{
+    hook: Hook;
+    action: "rotate" | "delete";
+  } | null>(null);
   const a = useAction();
   const q = useInfiniteQuery({
     queryKey: ["webhooks", brandId],
@@ -212,22 +265,7 @@ export function Webhooks({ brandId }: { brandId: number }) {
                     size="sm"
                     variant="outline"
                     disabled={a.busy}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "Rotate this signing secret? Update your receiver with the new secret immediately.",
-                        )
-                      )
-                        void a.run(async () => {
-                          const r = await api<Hook>(`/webhooks/${h.id}`, {
-                            method: "PATCH",
-                            brandId,
-                            body: { rotate_secret: true },
-                          });
-                          setSecret(r.secret ?? "");
-                          await refresh();
-                        }, "Signing secret rotated.");
-                    }}
+                    onClick={() => setConfirmation({ hook: h, action: "rotate" })}
                   >
                     Rotate secret
                   </Button>
@@ -249,17 +287,7 @@ export function Webhooks({ brandId }: { brandId: number }) {
                       size="sm"
                       variant="destructive"
                       disabled={a.busy}
-                      onClick={() => {
-                        if (window.confirm("Delete this webhook?"))
-                          void a.run(async () => {
-                            await api(`/webhooks/${h.id}`, {
-                              method: "DELETE",
-                              brandId,
-                            });
-                            if (edit?.id === h.id) reset();
-                            await refresh();
-                          }, "Webhook deleted.");
-                      }}
+                      onClick={() => setConfirmation({ hook: h, action: "delete" })}
                     >
                       Delete
                     </Button>
@@ -278,6 +306,19 @@ export function Webhooks({ brandId }: { brandId: number }) {
         >
           Load more
         </Button>
+      )}
+      {canWrite && confirmation && (
+        <ConfirmWebhookAction
+          brandId={brandId}
+          {...confirmation}
+          onClose={() => setConfirmation(null)}
+          onSaved={(hook) => {
+            if (confirmation.action === "delete" && edit?.id === confirmation.hook.id) reset();
+            if (hook?.secret) setSecret(hook.secret);
+            setConfirmation(null);
+            void refresh();
+          }}
+        />
       )}
     </Section>
   );

@@ -1,3 +1,4 @@
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useDateTime } from "../../lib/date-time";
 import { StatusMessage } from "../StatusMessage";
 import { SelectField } from "../ui/select";
@@ -743,44 +744,35 @@ export function Housekeeping({ brandId }: { brandId: number }) {
       </div>
       <ErrorMessage error={action.error} />
       <StatusMessage>{result}</StatusMessage>
-      <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove stale unconfirmed memberships?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm">
+      <ConfirmDialog
+        open={confirm}
+        onOpenChange={setConfirm}
+        title="Remove stale unconfirmed memberships?"
+        description={
+          <>
             Remove unconfirmed memberships created before{" "}
-            {formatDateTime(cutoff)} in this brand. This cannot
-            be undone.
-          </p>
-          <ErrorMessage error={action.error} />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirm(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={action.isPending}
-              onClick={async () => {
-                try {
-                  const v = await action.mutateAsync({
-                    path: "/housekeeping/unconfirmed",
-                    body: { older_than: cutoff },
-                  });
-                  setResult(
-                    `Removed ${v.removed?.toLocaleString()} unconfirmed memberships.`,
-                  );
-                  setConfirm(false);
-                } catch {
-                  /* displayed */
-                }
-              }}
-            >
-              Remove memberships
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            {formatDateTime(cutoff)} in this brand. This cannot be undone.
+          </>
+        }
+        error={action.error}
+        pending={action.isPending}
+        pendingLabel="Removing…"
+        confirmLabel="Remove memberships"
+        onConfirm={async () => {
+          try {
+            const v = await action.mutateAsync({
+              path: "/housekeeping/unconfirmed",
+              body: { older_than: cutoff },
+            });
+            setResult(
+              `Removed ${v.removed?.toLocaleString()} unconfirmed memberships.`,
+            );
+            setConfirm(false);
+          } catch {
+            /* displayed */
+          }
+        }}
+      />
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useDateTime } from "../lib/date-time";
 import { StatusMessage } from "../components/StatusMessage";
 import { SortableTableHead } from "../components/SortableTableHead";
@@ -10,13 +11,6 @@ import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "../components/ui/dialog";
 import {
   Card,
   CardContent,
@@ -314,35 +308,24 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
           Next
         </Button>
       </div>
-      <Dialog
+      <ConfirmDialog
         open={deleting !== null}
         onOpenChange={(open) => {
-          if (!open && !busy) setDeleting(null);
+          if (!open) setDeleting(null);
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete template?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm">
+        title="Delete template?"
+        description={
+          <>
             Permanently delete “{deleting?.name}”. Campaigns keep their own
             saved HTML.
-          </p>
-          <ErrorMessage error={error} />
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => setDeleting(null)}
-            >
-              Cancel
-            </Button>
-            <Button variant="destructive" disabled={busy} onClick={remove}>
-              {busy ? "Deleting…" : "Delete template"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+        error={error}
+        pending={busy}
+        pendingLabel="Deleting…"
+        confirmLabel="Delete template"
+        onConfirm={remove}
+      />
     </div>
   );
 }

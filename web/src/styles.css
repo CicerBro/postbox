@@ -2138,3 +2138,17 @@ select,
     outline-color: var(--ring);
   }
 }
+
+/* Shared dialog widths preserve the viewport gutter at every size. */
+.dialog-content.dialog-width-sm {
+  width: min(400px, calc(100vw - 32px));
+}
+.dialog-content.dialog-width-md {
+  width: min(512px, calc(100vw - 32px));
+}
+.dialog-content.dialog-width-lg {
+  width: min(768px, calc(100vw - 32px));
+}
+.dialog-content.dialog-width-xl {
+  width: min(1200px, calc(100vw - 32px));
+}

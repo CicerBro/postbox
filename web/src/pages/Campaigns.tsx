@@ -1,17 +1,10 @@
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useDateTime } from "../lib/date-time";
 import { StatusMessage } from "../components/StatusMessage";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "../lib/app-context";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -296,42 +289,28 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
           Next
         </Button>
       </div>
-      <Dialog
+      <ConfirmDialog
         open={!!deleting}
         onOpenChange={(open) => {
-          if (!open && !deletion.isPending) setDeleting(null);
+          if (!open) setDeleting(null);
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete campaign?</DialogTitle>
-            <DialogDescription>
-              Permanently delete “{deleting?.subject}” and its delivery history
-              and reports. This cannot be undone. Subscribers and lists will
-              remain.
-            </DialogDescription>
-          </DialogHeader>
-          <ErrorMessage error={deletion.error} />
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={deletion.isPending}
-              onClick={() => setDeleting(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={deletion.isPending || !deleting}
-              onClick={() => {
-                if (deleting) deletion.mutate(deleting);
-              }}
-            >
-              {deletion.isPending ? "Deleting…" : "Delete campaign"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title="Delete campaign?"
+        description={
+          <>
+            Permanently delete “{deleting?.subject}” and its delivery history
+            and reports. This cannot be undone. Subscribers and lists will
+            remain.
+          </>
+        }
+        error={deletion.error}
+        pending={deletion.isPending}
+        pendingLabel="Deleting…"
+        confirmLabel="Delete campaign"
+        confirmDisabled={!deleting}
+        onConfirm={() => {
+          if (deleting) deletion.mutate(deleting);
+        }}
+      />
     </div>
   );
 }

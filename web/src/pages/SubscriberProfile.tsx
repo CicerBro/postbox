@@ -1,3 +1,4 @@
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useDateTime } from "../lib/date-time";
 import { SelectField } from "../components/ui/select";
 import { Checkbox } from "../components/ui/checkbox";
@@ -623,47 +624,36 @@ export function SubscriberProfile({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog
+      <ConfirmDialog
         open={canWrite && unsubscribeList !== null}
         onOpenChange={(open) => !open && closeUnsubscribe()}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Unsubscribe subscriber?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm">
+        title="Unsubscribe subscriber?"
+        description={
+          <>
             Unsubscribe {subscriber?.email} from{" "}
             {unsubscribeList === 0
               ? "all lists in this brand"
               : lists.find((l) => l.id === unsubscribeList)?.name}
             . Pending campaign recipients will be skipped when they are no
             longer in the audience.
-          </p>
-          <ErrorMessage error={membershipAction.error} />
-          <DialogFooter>
-            <Button variant="outline" onClick={closeUnsubscribe}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={membershipAction.isPending}
-              onClick={async () => {
-                try {
-                  await membershipAction.mutateAsync({
-                    path: `/subscribers/${subscriber?.id}/unsubscribe`,
-                    body: { list_id: unsubscribeList },
-                  });
-                  closeUnsubscribe();
-                } catch {
-                  /* displayed */
-                }
-              }}
-            >
-              Unsubscribe
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+        error={membershipAction.error}
+        pending={membershipAction.isPending}
+        pendingLabel="Unsubscribing…"
+        confirmLabel="Unsubscribe"
+        onConfirm={async () => {
+          try {
+            await membershipAction.mutateAsync({
+              path: `/subscribers/${subscriber?.id}/unsubscribe`,
+              body: { list_id: unsubscribeList },
+            });
+            closeUnsubscribe();
+          } catch {
+            /* displayed */
+          }
+        }}
+      />
     </>
   );
 }
