@@ -25,7 +25,7 @@ SELECT ?,printf('person%05d@example.org',i),CASE WHEN i%2=0 THEN 'bounced' ELSE 
 		filter SearchFilter
 		index  string
 	}{
-		{SearchFilter{EmailPrefix: "person099", ListID: list.ID}, "subscribers_brand_email"},
+		{SearchFilter{Email: "son099", ListID: list.ID}, "PRIMARY KEY (list_id=? AND subscriber_id>?)"},
 		{SearchFilter{ListID: list.ID}, "PRIMARY KEY (list_id=? AND subscriber_id>?)"},
 		{SearchFilter{Status: "bounced"}, "subscribers_brand_status_id"},
 	} {
@@ -50,18 +50,34 @@ SELECT ?,printf('person%05d@example.org',i),CASE WHEN i%2=0 THEN 'bounced' ELSE 
 		if strings.Contains(plan.String(), "SCAN ") || !strings.Contains(plan.String(), tc.index) {
 			t.Fatalf("filter %+v has unbounded plan:\n%s", tc.filter, plan.String())
 		}
-		if tc.filter.ListID != 0 && tc.filter.EmailPrefix == "" && strings.Contains(plan.String(), "TEMP B-TREE") {
+		if tc.filter.ListID != 0 && tc.filter.Email == "" && strings.Contains(plan.String(), "TEMP B-TREE") {
 			t.Fatalf("list membership pagination must stream without sorting: %s", plan.String())
 		}
 		t.Log(plan.String())
 	}
-	rows, err := s.SearchFiltered(context.Background(), brand.ID, 1, 1, SearchFilter{EmailPrefix: "  PERSON099  ", ListID: list.ID})
+	rows, err := s.SearchFiltered(context.Background(), brand.ID, 1, 1, SearchFilter{Email: "  SON099  ", ListID: list.ID})
 	if err != nil || len(rows) != 1 || rows[0].ID != 9999 {
-		t.Fatalf("prefix and membership across 10k subscribers: %+v, %v", rows, err)
+		t.Fatalf("email substring and membership across 10k subscribers: %+v, %v", rows, err)
 	}
-	rows, err = s.SearchFiltered(context.Background(), brand.ID, 9999, 1, SearchFilter{EmailPrefix: "person099", ListID: list.ID})
+	rows, err = s.SearchFiltered(context.Background(), brand.ID, 9999, 1, SearchFilter{Email: "son099", ListID: list.ID})
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("filtered cursor: %+v, %v", rows, err)
+	}
+}
+
+func TestSubscriberSearchTreatsWildcardsLiterally(t *testing.T) {
+	s, brand, _ := fixture(t)
+	_, err := s.db.Writer.Exec(`INSERT INTO subscribers(brand_id,email,name,status,created_at,updated_at) VALUES
+(?, 'tag_100@example.org', '50% Done', 'active', 0, 0),
+(?, 'tagx100@example.org', '500 Done', 'active', 0, 0)`, brand.ID, brand.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, filter := range []SearchFilter{{Email: "_100"}, {Name: "50%"}, {Email: "G_100", Name: "50%"}} {
+		rows, err := s.SearchFiltered(context.Background(), brand.ID, 0, 10, filter)
+		if err != nil || len(rows) != 1 || rows[0].Email != "tag_100@example.org" {
+			t.Fatalf("literal search %+v: %+v, %v", filter, rows, err)
+		}
 	}
 }
 
@@ -109,7 +125,7 @@ func TestSubscriberSortedPagination(t *testing.T) {
 			})
 		}
 	}
-	rows, err := s.SearchFiltered(context.Background(), brand.ID, 0, 10, SearchFilter{EmailPrefix: "a@", Status: "active", ListID: list.ID, MembershipStatus: "subscribed", Sort: "name", Direction: "desc"})
+	rows, err := s.SearchFiltered(context.Background(), brand.ID, 0, 10, SearchFilter{Email: "a@", Name: "sam", Status: "active", ListID: list.ID, MembershipStatus: "subscribed", Sort: "name", Direction: "desc"})
 	if err != nil || len(rows) != 1 || rows[0].Email != "a@example.org" {
 		t.Fatalf("sorted filters: %+v, %v", rows, err)
 	}
@@ -144,11 +160,11 @@ SELECT brand_id+1,id,'click',1000 FROM subscribers WHERE email='created@example.
 	}
 	wantEmails := []string{"created@example.org", "updated@example.org", "tied@example.org", "unsubscribed@example.org", "activity@example.org"}
 	wantTimes := []int64{30, 50, 50, 60, 70}
-	for _, filter := range []SearchFilter{{}, {ListID: list.ID, MembershipStatus: "subscribed"}, {EmailPrefix: "updated@"}, {Status: "active"}} {
+	for _, filter := range []SearchFilter{{}, {ListID: list.ID, MembershipStatus: "subscribed"}, {Email: "updated@"}, {Status: "active"}} {
 		for _, direction := range []string{"asc", "desc"} {
 			filter.Sort, filter.Direction = "last_activity", direction
 			emails, times := wantEmails, wantTimes
-			if filter.EmailPrefix != "" {
+			if filter.Email != "" {
 				emails, times = wantEmails[1:2], wantTimes[1:2]
 			}
 			var after int64

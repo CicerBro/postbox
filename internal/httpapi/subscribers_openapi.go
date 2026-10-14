@@ -24,7 +24,8 @@ func documentSubscriberRead(method, path string, op map[string]any) {
 	}
 	params := op["parameters"].([]map[string]any)
 	params = append(params,
-		map[string]any{"name": "q", "in": "query", "description": "ASCII email prefix, trimmed and lowercased. Matches literal characters, including % and _. Uses an indexed binary range across the entire brand before pagination.", "schema": map[string]any{"type": "string"}},
+		map[string]any{"name": "q", "in": "query", "description": "Case-insensitive email substring. Trims surrounding whitespace and treats %, _ and backslash literally.", "schema": map[string]any{"type": "string"}},
+		map[string]any{"name": "name", "in": "query", "description": "Case-insensitive name substring. Combines with the email and other filters.", "schema": map[string]any{"type": "string"}},
 		map[string]any{"name": "list_id", "in": "query", "description": "Restrict to members of a list in this brand, including all membership states unless membership_status is supplied. Unknown or other-brand lists return 404.", "schema": map[string]any{"type": "integer", "minimum": 1}},
 		map[string]any{"name": "status", "in": "query", "description": "Global subscriber delivery status.", "schema": map[string]any{"type": "string", "enum": []string{"active", "bounced", "complained", "blocklisted"}}},
 		map[string]any{"name": "membership_status", "in": "query", "description": "List membership state; requires list_id.", "schema": map[string]any{"type": "string", "enum": []string{"subscribed", "unsubscribed", "unconfirmed"}}},

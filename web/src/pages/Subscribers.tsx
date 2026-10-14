@@ -826,6 +826,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
   const [history, setHistory] = useState<number[]>([]);
   const [q, setQ] = useState("");
+  const [name, setName] = useState("");
   const [list, setList] = useState(0);
   const [status, setStatus] = useState("");
   const [membershipStatus, setMembershipStatus] = useState("");
@@ -842,9 +843,6 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
     setProfileAction(action);
     setProfile(subscriber);
   };
-  const [lookup, setLookup] = useState("");
-  const [lookupError, setLookupError] = useState<unknown>();
-  const [lookupBusy, setLookupBusy] = useState(false);
   useEffect(() => {
     const request = searchParams.get("new");
     if (canWrite && (request === "subscriber" || request === "contact"))
@@ -873,6 +871,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
   params.set("sort", sort);
   params.set("direction", direction);
   if (q.trim()) params.set("q", q.trim());
+  if (name.trim()) params.set("name", name.trim());
   if (list) params.set("list_id", String(list));
   if (status) params.set("status", status);
   if (list && membershipStatus)
@@ -942,18 +941,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
       {tab === "subscribers" && (
         <section className="space-y-4">
           <div className="table-card">
-            <div className="table-toolbar toolbar grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Email prefix">
-                <Input
-                  placeholder="Search by email prefix"
-                  className="toolbar-search"
-                  value={q}
-                  onChange={(e) => {
-                    setQ(e.target.value);
-                    resetPage();
-                  }}
-                />
-              </Field>
+            <div className="table-toolbar toolbar grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="List">
                 <SelectField
                   value={String(list)}
@@ -1001,52 +989,8 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                 />
               </Field>
             </div>
-            <div className="table-toolbar flex flex-wrap items-center justify-between gap-3">
-              <div className="flex gap-3 w-full max-w-xl">
-                <Input
-                  type="email"
-                  aria-label="Find subscriber by exact email"
-                  placeholder="Find exact email address"
-                  value={lookup}
-                  onChange={(e) => setLookup(e.target.value)}
-                />
-                <Button
-                  variant="info"
-                  disabled={!lookup.trim() || lookupBusy}
-                  onClick={async () => {
-                    setLookupBusy(true);
-                    setLookupError(undefined);
-                    try {
-                      const v = await api<Subscriber>(
-                        `/subscribers/by-email?email=${encodeURIComponent(lookup.trim())}`,
-                        { brandId },
-                      );
-                      openProfile(v);
-                    } catch (e) {
-                      setLookupError(e);
-                    } finally {
-                      setLookupBusy(false);
-                    }
-                  }}
-                >
-                  <Search size={15} />
-                  {lookupBusy ? "Searching…" : "Search"}
-                </Button>
-              </div>
-            </div>
-            <ErrorMessage error={lookupError || subscribers.error} />
-            {subscribers.isPending ? (
-              <p role="status">Loading subscribers…</p>
-            ) : !subscribers.data?.length ? (
-              <div className="empty-panel rounded-lg p-10 text-center text-muted-foreground">
-                <Users className="mx-auto mb-3" size={28} />
-                <p className="row-title">No subscribers match these filters.</p>
-                <p className="row-subtitle mt-1">
-                  Try a different email prefix, list or status.
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
+            <ErrorMessage error={subscribers.error} />
+            <div className="overflow-x-auto">
                 <table className={`${tableClass} whitespace-nowrap`}>
                   <thead>
                     <tr>
@@ -1056,9 +1000,42 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                       {sortableHead("Created at", "created_at")}
                       <th className="w-32">Action</th>
                     </tr>
+                    <tr>
+                      <th className="min-w-48 px-2 pb-2" scope="col">
+                        <Input
+                          aria-label="Search subscriber names"
+                          placeholder="Search names"
+                          value={name}
+                          onChange={(e) => {
+                            setName(e.target.value);
+                            resetPage();
+                          }}
+                        />
+                      </th>
+                      <th className="min-w-56 px-2 pb-2" scope="col">
+                        <Input
+                          aria-label="Search subscriber emails"
+                          placeholder="Search emails"
+                          value={q}
+                          onChange={(e) => {
+                            setQ(e.target.value);
+                            resetPage();
+                          }}
+                        />
+                      </th>
+                      <th colSpan={3} />
+                    </tr>
                   </thead>
                   <tbody>
-                    {subscribers.data.map((s) => (
+                    {subscribers.isPending ? (
+                      <tr><td colSpan={5} role="status">Loading subscribers…</td></tr>
+                    ) : !subscribers.data?.length ? (
+                      <tr><td colSpan={5} className="p-10 text-center text-muted-foreground">
+                        <Users className="mx-auto mb-3" size={28} />
+                        <p className="row-title">No subscribers match these filters.</p>
+                        <p className="row-subtitle mt-1">Try a different name, email, list or status.</p>
+                      </td></tr>
+                    ) : subscribers.data.map((s) => (
                       <tr
                         key={s.id}
                         tabIndex={0}
@@ -1168,7 +1145,6 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                   </tbody>
                 </table>
               </div>
-            )}
             <div className="table-footer flex flex-wrap gap-3 justify-between items-center">
               <p className="text-xs text-muted-foreground">
                 {subscribers.data?.length || 0} subscribers on this page. Status

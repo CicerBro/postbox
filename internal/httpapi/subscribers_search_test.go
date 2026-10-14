@@ -19,7 +19,7 @@ func TestSubscriberSearchScopeAndListCounters(t *testing.T) {
 	other, _ := s.CreateBrand(ctx, subscribers.Brand{Name: "other", FromEmail: "other@example.org"})
 	list, _ := s.CreateList(ctx, subscribers.List{BrandID: b.ID, Name: "members", OptIn: "single"})
 	foreign, _ := s.CreateList(ctx, subscribers.List{BrandID: other.ID, Name: "foreign", OptIn: "single"})
-	one, err := s.Upsert(ctx, subscribers.UpsertInput{BrandID: b.ID, Email: "match@example.org", ListIDs: []int64{list.ID}, Fields: map[string]any{"city": "London"}})
+	one, err := s.Upsert(ctx, subscribers.UpsertInput{BrandID: b.ID, Email: "match@example.org", Name: "Ada Lovelace", ListIDs: []int64{list.ID}, Fields: map[string]any{"city": "London"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,6 +33,10 @@ func TestSubscriberSearchScopeAndListCounters(t *testing.T) {
 		count int
 	}{
 		{fmt.Sprintf("&q=MATCH&list_id=%d&membership_status=subscribed&status=active", list.ID), 200, 1},
+		{"&q=AMPLE.O", 200, 1},
+		{"&name=lovel", 200, 1},
+		{"&q=ample&name=ada", 200, 1},
+		{"&q=other&name=ada", 200, 0},
 		{fmt.Sprintf("&q=match&after=%d", one.ID), 200, 0},
 		{"&q=match%25", 200, 0},
 		{fmt.Sprintf("&list_id=%d", foreign.ID), 404, 0},

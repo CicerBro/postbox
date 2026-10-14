@@ -91,7 +91,7 @@ CASE WHEN i%10=0 THEN 'bounced' ELSE 'active' END,CASE WHEN i%3=0 THEN NULL ELSE
 					case "status":
 						f.Status = "bounced"
 					case "prefix":
-						f.EmailPrefix = "person349"
+						f.Email = "person349"
 					case "list":
 						f.ListID = list.ID
 						f.MembershipStatus = "subscribed"
