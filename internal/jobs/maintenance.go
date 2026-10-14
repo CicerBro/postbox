@@ -53,6 +53,9 @@ func (r *Runner) RegisterMaintenance(cfg MaintenanceConfig) error {
 				return err
 			}
 		}
+		if err := r.PurgeSendHistory(ctx, time.Now().Add(-sendHistoryRetention), cfg.BatchSize); err != nil {
+			return err
+		}
 		if cfg.UnconfirmedRetention > 0 {
 			if err := r.PurgeUnconfirmed(ctx, time.Now().Add(-cfg.UnconfirmedRetention), cfg.BatchSize); err != nil {
 				return err

@@ -218,6 +218,8 @@ func TestProductionHotQueryPlans(t *testing.T) {
 		{"brand_rollups", "../httpapi/brands.go", "overview", "SELECT COALESCE(SUM(s.sent)", []any{1}, nil},
 		{"due_job_claim", "../jobs/runner.go", "claim", "UPDATE jobs", []any{1000, "retention", 500}, nil},
 		{"due_campaign", "../send/engine.go", "Start", "SELECT id FROM campaigns", []any{500}, nil},
+		{"message_id_retention", "../jobs/send_retention.go", "PurgeSendHistory", "UPDATE campaign_recipients", []any{500, 1000}, nil},
+		{"send_attempt_retention", "../jobs/send_retention.go", "PurgeSendHistory", "DELETE FROM send_attempts", []any{500, 1000}, nil},
 		{"open_erasure", "../subscribers/manage.go", "Erase", "DELETE FROM opens", []any{41}, map[string]string{"table": "opens"}},
 		{"click_erasure", "../subscribers/manage.go", "Erase", "DELETE FROM clicks", []any{41}, map[string]string{"table": "clicks"}},
 		{"ses_erasure_lookup", "../subscribers/manage.go", "Erase", "DELETE FROM ses_events", []any{41, 1}, nil},

@@ -7,9 +7,43 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"postbox/internal/jobs"
 	"postbox/internal/store"
 )
+
+func TestDispatchLedgerPreventsRepeatSendAfterHistoryExpires(t *testing.T) {
+	for _, outcome := range []string{"sent", "unknown"} {
+		t.Run(outcome, func(t *testing.T) {
+			db, e, _ := fixture(t, 1)
+			ctx := context.Background()
+			if err := e.ensureDispatchLedger(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if ok, err := ledgerAttempt(t, e, 1, 1, "reader1@example.org"); !ok || err != nil {
+				t.Fatalf("initial dispatch: accepted=%v error=%v", ok, err)
+			}
+			finishLedger(t, e, 1, 1, outcome)
+			if _, err := db.Writer.Exec(`UPDATE send_attempts SET outcome=?,finished_at=1,message_id='expired' WHERE campaign_id=1`, outcome); err != nil {
+				t.Fatal(err)
+			}
+			if err := jobs.New(db, jobs.Config{}).PurgeSendHistory(ctx, time.UnixMilli(500), 1); err != nil {
+				t.Fatal(err)
+			}
+			var attempts int
+			if err := db.Reader.QueryRow(`SELECT count(*) FROM send_attempts`).Scan(&attempts); err != nil || attempts != 0 {
+				t.Fatalf("expired attempts=%d error=%v", attempts, err)
+			}
+			if err := e.Recover(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if ok, err := ledgerAttempt(t, e, 1, 2, "reader1@example.org"); ok || !errors.Is(err, errUnsafeAttempt) {
+				t.Fatalf("expired history allowed repeat send: accepted=%v error=%v", ok, err)
+			}
+		})
+	}
+}
 
 func ledgerAttempt(t *testing.T, e *Engine, sid int64, attempt int, email string) (bool, error) {
 	t.Helper()

@@ -59,6 +59,8 @@ Sending, public signup switches, AWS keys and event resources are persisted appl
 
 Administrators can configure **Failed job retention (days)** under **Administration > Application policies** (`/admin/policies`), or `GET`/`PATCH /api/v1/job-settings` with `failed_job_retention_days`. The application-wide default is 30 days; allowed values are integers from 1 through 3650. The setting is persisted in the database and applies to every brand on the next hourly housekeeping run without restarting. Retention starts at terminal failure, including mail jobs held after an interrupted worker. On upgrade, existing failures receive the upgrade time as their initial failure timestamp. Lowering retention can remove older failures on the next run. Pending, running and successful jobs are preserved.
 
+Hourly housekeeping also clears campaign recipient message IDs 180 days after `sent_at` and deletes completed send attempts 180 days after `finished_at`. This fixed policy is independent of `POSTBOX_RETENTION_DAYS`. In-flight attempts, claimed recipients, and records without a known send or completion time are retained. Campaign statistics, recipient statuses and engagement timestamps, and the dispatch ledger that prevents repeat sends are preserved. Expired message IDs appear as **None** in campaign reports and as an empty value in CSV exports.
+
 ## Value formats
 
 Durations use Go syntax: `30s`, `5m`, `24h` or `1h30m`; `1d` is invalid. Worker counts, retention days, bounce thresholds and session/shutdown durations must be positive.

@@ -5,7 +5,45 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"postbox/internal/jobs"
 )
+
+func TestSESReceiptAfterSendHistoryExpiresPreservesCampaignStats(t *testing.T) {
+	for _, typ := range []string{"Delivery", "Complaint", "Permanent"} {
+		t.Run(typ, func(t *testing.T) {
+			db := eventDB(t)
+			ctx := context.Background()
+			if _, err := db.Writer.Exec(`
+UPDATE campaign_recipients SET sent_at=1 WHERE campaign_id=1;
+UPDATE campaign_stats SET recipients=1,sent=1,delivered=1,opens_total=42 WHERE campaign_id=1;
+INSERT INTO send_attempts(campaign_id,subscriber_id,attempt,started_at,finished_at,outcome,message_id) VALUES(1,1,1,0,1,'sent','ses-id');`); err != nil {
+				t.Fatal(err)
+			}
+			if err := jobs.New(db, jobs.Config{}).PurgeSendHistory(ctx, time.UnixMilli(500), 1); err != nil {
+				t.Fatal(err)
+			}
+			s := New(db, &Config{BrandID: 1})
+			if err := s.Process(ctx, "late-receipt", eventPayload(typ, "ses-id")); err != nil {
+				t.Fatal(err)
+			}
+			var unchanged, details int
+			if err := db.Reader.QueryRow(`SELECT count(*) FROM campaign_stats WHERE campaign_id=1 AND recipients=1 AND sent=1 AND delivered=1 AND opens_total=42 AND complaints=0 AND bounces_hard=0`).Scan(&unchanged); err != nil || unchanged != 1 {
+				t.Fatalf("late receipt changed campaign stats: unchanged=%d error=%v", unchanged, err)
+			}
+			if err := db.Reader.QueryRow(`SELECT (SELECT count(*) FROM send_attempts)+(SELECT count(*) FROM campaign_recipients WHERE campaign_id=1 AND message_id IS NOT NULL)`).Scan(&details); err != nil || details != 0 {
+				t.Fatalf("late receipt restored expired details: count=%d error=%v", details, err)
+			}
+			if typ != "Delivery" {
+				var suppressed int
+				if err := db.Reader.QueryRow(`SELECT count(*) FROM suppressions WHERE brand_id=1`).Scan(&suppressed); err != nil || suppressed != 1 {
+					t.Fatalf("late complaint/bounce lost suppression: count=%d error=%v", suppressed, err)
+				}
+			}
+		})
+	}
+}
 
 func TestBrandEventsIsolateSuppressionsAndBounceCounts(t *testing.T) {
 	for _, typ := range []string{"Complaint", "Permanent", "Transient"} {
