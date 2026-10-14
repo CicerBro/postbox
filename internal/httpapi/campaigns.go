@@ -28,7 +28,7 @@ func (a *API) registerCampaigns(m *http.ServeMux) {
 	for _, p := range []string{"GET /api/v1/campaigns", "POST /api/v1/campaigns", "GET /api/v1/campaigns/{id}", "PATCH /api/v1/campaigns/{id}", "DELETE /api/v1/campaigns/{id}"} {
 		a.route(m, p, a.campaigns)
 	}
-	for _, action := range []string{"start", "pause", "resume", "cancel", "schedule", "duplicate", "resend-unknown", "test-send"} {
+	for _, action := range []string{"start", "pause", "resume", "cancel", "reactivate", "schedule", "duplicate", "resend-unknown", "test-send"} {
 		a.route(m, "POST /api/v1/campaigns/{id}/"+action, a.campaignAction)
 	}
 	for _, p := range []string{"GET /api/v1/campaigns/{id}/targets", "PUT /api/v1/campaigns/{id}/targets"} {
@@ -192,6 +192,12 @@ func (a *API) campaignAction(w http.ResponseWriter, r *http.Request) {
 		err = a.engine.Resume(r.Context(), id)
 	case has(action, "cancel"):
 		err = a.engine.Cancel(r.Context(), id)
+	case has(action, "reactivate"):
+		err = a.engine.Reactivate(r.Context(), id)
+		if errors.Is(err, send.ErrCannotReactivate) {
+			fail(w, http.StatusConflict, err)
+			return
+		}
 	case has(action, "test-send"):
 		var in struct {
 			Emails []string `json:"emails"`

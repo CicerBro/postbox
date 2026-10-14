@@ -85,6 +85,11 @@ func (a *API) documentRoute(pattern string) {
 		op["description"] = "Copy the saved subject, HTML, text version, CSS setting, and audience targets of any campaign into a new draft. The new draft has its own ID and does not inherit schedule or delivery history."
 		op["responses"].(map[string]any)["200"] = map[string]any{"description": "New draft campaign", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"id"}, "properties": map[string]any{"id": map[string]any{"type": "integer"}}}}}}
 	}
+	if method == "POST" && path == "/api/v1/campaigns/{id}/reactivate" {
+		delete(op, "requestBody")
+		op["description"] = "Return a cancelled campaign to draft only when no emails were sent and no uncertain or active sends exist. Clears the schedule and prepared delivery data while preserving the campaign ID, saved content, owner, and audience targets."
+		op["responses"].(map[string]any)["409"] = map[string]any{"description": "Campaign is not cancelled or has sent, uncertain, or active sends"}
+	}
 	if method != "GET" && path != "/api/v1/auth/login" && !strings.HasPrefix(path, "/subscribe/") && !strings.HasPrefix(path, "/confirm/") {
 		op["parameters"] = append(parameters, map[string]any{"name": "X-CSRF-Token", "in": "header", "required": false, "description": "Required for mutations authenticated by the session cookie. Returned by login or session endpoint; Scalar adds it automatically for the signed-in user.", "schema": map[string]any{"type": "string"}})
 	}

@@ -389,16 +389,16 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 	}
 	e.runMu.Lock()
 	defer e.runMu.Unlock()
-	c, err := e.prepareCampaignRun(ctx, id)
-	if err != nil {
-		return err
-	}
 	claimCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	e.mu.Lock()
 	e.running[id] = stop
 	e.mu.Unlock()
 	defer func() { e.mu.Lock(); delete(e.running, id); e.mu.Unlock() }()
+	c, err := e.prepareCampaignRun(claimCtx, id)
+	if err != nil {
+		return err
+	}
 	if err := e.activateCampaignRun(claimCtx, id); err != nil {
 		return err
 	}

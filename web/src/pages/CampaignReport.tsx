@@ -61,6 +61,7 @@ type LinkStats = {
 };
 type Hour = { hour: number; opens: number; clicks: number; deliveries: number };
 type Report = {
+  can_reactivate?: boolean;
   stats: Stats[];
   links: LinkStats[];
   countries: { country: string; opens: number; clicks: number }[];
@@ -97,6 +98,8 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     [exporting, setExporting] = useState(false),
     [duplicating, setDuplicating] = useState(false),
     [duplicateError, setDuplicateError] = useState<unknown>(null),
+    [reactivating, setReactivating] = useState(false),
+    [reactivateError, setReactivateError] = useState<unknown>(null),
     [previewWidth, setPreviewWidth] = useState<"desktop" | "mobile">("desktop");
   const valid = Number.isSafeInteger(id) && id > 0 && brandId > 0;
   const campaign = useQuery({
@@ -188,6 +191,26 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
       setDuplicating(false);
     }
   }
+  async function reactivateCampaign() {
+    setReactivating(true);
+    setReactivateError(null);
+    try {
+      await api(`/campaigns/${id}/reactivate`, { method: "POST", brandId });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["campaign", brandId, id] }),
+        client.invalidateQueries({ queryKey: ["campaigns", brandId] }),
+        client.invalidateQueries({ queryKey: ["campaign-report", brandId, id] }),
+        client.invalidateQueries({ queryKey: ["campaign-preview", brandId, id] }),
+        client.invalidateQueries({ queryKey: ["campaign-recipients", brandId, id] }),
+      ]);
+      navigate(`/campaigns/${id}`);
+    } catch (e) {
+      setReactivateError(e);
+      void report.refetch();
+    } finally {
+      setReactivating(false);
+    }
+  }
   if (!valid) return <ErrorMessage error={new Error("Invalid campaign ID")} />;
   const stats = report.data?.stats?.[0];
   const metrics: [string, string][] = [
@@ -247,6 +270,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+        {campaign.data?.[0]?.status === "cancelled" && report.data?.can_reactivate && <Button disabled={reactivating} onClick={reactivateCampaign}>{reactivating ? "Returning to draft…" : "Return to draft"}</Button>}
         {campaign.data?.[0] && !isFinishedCampaign(campaign.data[0].status) && <Button variant="outline" asChild><Link to={`/campaigns/${id}`}>Manage campaign</Link></Button>}
         {campaign.data?.[0] && <Button variant="outline" disabled={duplicating} onClick={duplicateCampaign}><Copy size={16} /> {duplicating ? "Duplicating…" : "Duplicate"}</Button>}
         <Button variant="outline" disabled={exporting} onClick={exportCSV}>
@@ -255,7 +279,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
         </Button>
         </div>
       </div>
-      <ErrorMessage error={campaign.error ?? report.error ?? exportError ?? duplicateError} />
+      <ErrorMessage error={campaign.error ?? report.error ?? exportError ?? duplicateError ?? reactivateError} />
       {report.data?.delivery && (
         <Card><CardContent className="pt-5">
           <dl className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">

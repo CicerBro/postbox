@@ -23,6 +23,7 @@ func documentCampaignReport(method, path string, op map[string]any) {
 		recent[event.name] = map[string]any{"type": "array", "maxItems": 10, "items": recentItem}
 	}
 	properties := map[string]any{}
+	properties["can_reactivate"] = map[string]any{"type": "boolean", "description": "Whether this cancelled campaign has no sent, uncertain, or active sends and can return to draft."}
 	for _, key := range []string{"stats", "links", "countries", "hourly"} {
 		properties[key] = map[string]any{"type": "array", "items": map[string]any{"type": "object"}}
 	}
