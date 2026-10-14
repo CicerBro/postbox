@@ -166,15 +166,6 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
         <p role="status">Loading campaigns…</p>
       ) : (
         <div className="table-card">
-          <div className="table-toolbar">
-            <div>
-              <h2 className="section-heading">Campaign overview</h2>
-              <p className="row-subtitle">
-                {query.data?.length ?? 0} campaigns on this page
-                {hasLiveCampaign && <span className="block">{query.isError ? "Updates unavailable. Retrying…" : query.isFetching ? "Updating…" : `Updated ${formatDateTime(query.dataUpdatedAt)}`}</span>}
-              </p>
-            </div>
-          </div>
           <div className="relative overflow-auto">
             <table className={`${tableClass} campaigns-table`}>
               <thead>
