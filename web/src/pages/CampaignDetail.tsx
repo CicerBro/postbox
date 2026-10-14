@@ -1,11 +1,11 @@
 import { useDateTime, zonedDateTimeToTimestamp } from "../lib/date-time";
 import { useState } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { StatusMessage } from "../components/StatusMessage";
-import { ErrorMessage, StatusBadge, isFinishedCampaign } from "./campaign-shared";
+import { ErrorMessage, StatusBadge, isFinishedCampaign, isLiveCampaign } from "./campaign-shared";
 import { CampaignContent, CampaignAudience } from "./campaign-content";
 import {
   CampaignDelivery,
@@ -27,6 +27,7 @@ export function CampaignDetailPage({ brandId }: { brandId: number }) {
 }
 function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
   const { timeZone } = useDateTime();
+  const [params] = useSearchParams();
   const routeID = id && id !== "new" ? Number(id) : 0;
   const navigate = useNavigate(),
     client = useQueryClient();
@@ -159,7 +160,8 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
   }
   if (routeID && (!Number.isSafeInteger(routeID) || routeID < 1))
     return <ErrorMessage error={new Error("Invalid campaign ID")} />;
-  if (routeID && isFinishedCampaign(campaign.data?.[0]?.status))
+  if (routeID && (isFinishedCampaign(campaign.data?.[0]?.status) ||
+    (isLiveCampaign(campaign.data?.[0]?.status) && params.get("manage") !== "true")))
     return <Navigate to={`/campaigns/${routeID}/report`} replace />;
   if (routeID && (campaign.isPending || targetQuery.isPending))
     return <p role="status">Loading campaign…</p>;

@@ -41,6 +41,9 @@ export const bytes = (n: number) =>
 export const isFinishedCampaign = (status: string | undefined) =>
   status === "sent" || status === "cancelled";
 
+export const isLiveCampaign = (status: string | undefined) =>
+  status === "preparing" || status === "sending" || status === "paused";
+
 export function StatusBadge({ status }: { status: string }) {
   const tone = ["sent", "delivered", "completed", "finished"].includes(status)
     ? "success"

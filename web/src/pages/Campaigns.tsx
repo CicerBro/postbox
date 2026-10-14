@@ -17,9 +17,12 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Plus, Search, ArrowUpRight, Copy, Mail, Trash2 } from "lucide-react";
 import { SortableTableHead } from "../components/SortableTableHead";
+import { CampaignProgress } from "../components/CampaignProgress";
+import { type CampaignCounters } from "../lib/campaign-progress";
 import {
   StatusBadge,
   isFinishedCampaign,
+  isLiveCampaign,
   Campaign,
   ErrorMessage,
   tableClass,
@@ -28,7 +31,7 @@ import {
 type CampaignSummary = Pick<
   Campaign,
   "id" | "subject" | "status" | "created_at" | "scheduled_at"
-> & { excerpt: string };
+> & { excerpt: string; progress?: CampaignCounters | null };
 
 export function CampaignsPage({ brandId }: { brandId: number }) {
   const { formatDateTime } = useDateTime();
@@ -92,7 +95,9 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
       return api<CampaignSummary[]>(`/campaigns?${params}`, { brandId });
     },
     enabled: brandId > 0,
+    refetchInterval: query => query.state.data?.some(c => isLiveCampaign(c.status)) ? 5000 : 30000,
   });
+  const hasLiveCampaign = query.data?.some(c => isLiveCampaign(c.status));
   function sortBy(column: string) {
     setDirection(sort === column && direction === "asc" ? "desc" : "asc");
     setSort(column);
@@ -152,6 +157,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
               <h2 className="section-heading">Campaign overview</h2>
               <p className="row-subtitle">
                 {query.data?.length ?? 0} campaigns on this page
+                {hasLiveCampaign && <span className="block">{query.isError ? "Updates unavailable. Retrying…" : query.isFetching ? "Updating…" : `Updated ${formatDateTime(query.dataUpdatedAt)}`}</span>}
               </p>
             </div>
             <div className="toolbar-search">
@@ -167,14 +173,16 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
               />
             </div>
           </div>
-          <div className="overflow-auto">
+          <div className="relative overflow-auto">
             <table className={tableClass}>
               <thead>
                 <tr>
                   {sortHeader("Campaign", "subject")}
                   {sortHeader("Status", "status")}
-                  {sortHeader("Created", "created_at")}
-                  {sortHeader("Scheduled", "scheduled_at")}
+                  {hasLiveCampaign ? sortHeader("Schedule / delivery", "scheduled_at") : <>
+                    {sortHeader("Created", "created_at")}
+                    {sortHeader("Scheduled", "scheduled_at")}
+                  </>}
                   <th>
                     <span className="sr-only">Actions</span>
                   </th>
@@ -186,7 +194,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                     <td>
                       <Link
                         className="row-title font-medium hover:underline"
-                        to={`/campaigns/${c.id}${isFinishedCampaign(c.status) ? "/report" : ""}`}
+                        to={`/campaigns/${c.id}${isFinishedCampaign(c.status) || isLiveCampaign(c.status) ? "/report" : ""}`}
                       >
                         {c.subject}
                       </Link>
@@ -197,12 +205,15 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                     <td>
                       <StatusBadge status={c.status} />
                     </td>
-                    <td>{formatDateTime(c.created_at)}</td>
-                    <td>
-                      {c.scheduled_at
-                        ? formatDateTime(c.scheduled_at)
-                        : "Unscheduled"}
-                    </td>
+                    {hasLiveCampaign ? <td>
+                      {isLiveCampaign(c.status) ? <CampaignProgress compact stats={c.progress} status={c.status} observedAt={query.dataUpdatedAt} fresh={!query.isError} /> : <>
+                        <p>{c.scheduled_at ? `Scheduled ${formatDateTime(c.scheduled_at)}` : "Unscheduled"}</p>
+                        <p className="row-subtitle">Created {formatDateTime(c.created_at)}</p>
+                      </>}
+                    </td> : <>
+                      <td>{formatDateTime(c.created_at)}</td>
+                      <td>{c.scheduled_at ? formatDateTime(c.scheduled_at) : "Unscheduled"}</td>
+                    </>}
                     <td className="campaign-actions-cell">
                       <div className="campaign-row-actions">
                         <Button
@@ -224,7 +235,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                           asChild
                         >
                           <Link to={`/campaigns/${c.id}/report`}>
-                            Report <ArrowUpRight size={14} />
+                            {isLiveCampaign(c.status) ? "View live" : "Report"} <ArrowUpRight size={14} />
                           </Link>
                         </Button>
                         {session.admin &&

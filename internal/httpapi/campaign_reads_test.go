@@ -91,3 +91,40 @@ func TestCampaignExcerptVisibleText(t *testing.T) {
 		}
 	}
 }
+
+func TestCampaignSummaryIncludesLiveCountersOnly(t *testing.T) {
+	_, mux, db, cookie, _ := setup(t)
+	brand := streamCampaignFixture(t, db)
+	execStreamSQL(t, db, `UPDATE campaign_stats SET recipients=100,sent=50,failed=5,skipped=3,unknown=2 WHERE campaign_id=1`)
+	for _, status := range []string{"preparing", "sending", "paused", "draft", "scheduled", "sent", "cancelled"} {
+		t.Run(status, func(t *testing.T) {
+			execStreamSQL(t, db, `UPDATE campaigns SET status=? WHERE id=1`, status)
+			for _, paging := range []string{"&offset=0&sort=subject&direction=asc", "&after=0"} {
+				w := request(mux, "GET", fmt.Sprintf("/api/v1/campaigns?brand_id=%d&summary=true%s", brand, paging), "", &cookie, "")
+				var rows []struct {
+					ID       int
+					Progress map[string]int64
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil || w.Code != 200 || len(rows) != 1 || rows[0].ID != 1 {
+					t.Fatal(w.Code, w.Body.String(), err)
+				}
+				live := status == "preparing" || status == "sending" || status == "paused"
+				if live {
+					progress := rows[0].Progress
+					if progress["recipients"] != 100 || progress["sent"] != 50 || progress["failed"] != 5 || progress["skipped"] != 3 || progress["unknown"] != 2 {
+						t.Fatal(progress)
+					}
+				} else if rows[0].Progress != nil {
+					t.Fatal("inactive campaign exposed live counters", rows[0].Progress)
+				}
+			}
+		})
+	}
+	execStreamSQL(t, db, `DELETE FROM campaign_stats WHERE campaign_id=1`)
+	execStreamSQL(t, db, `UPDATE campaigns SET status='preparing' WHERE id=1`)
+	w := request(mux, "GET", fmt.Sprintf("/api/v1/campaigns?brand_id=%d&summary=true&offset=0", brand), "", &cookie, "")
+	var rows []map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil || w.Code != 200 || len(rows) != 1 || rows[0]["progress"] != nil {
+		t.Fatal("missing counters should stay null", w.Code, w.Body.String(), err)
+	}
+}

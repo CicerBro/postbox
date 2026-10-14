@@ -33,14 +33,21 @@ func TestCampaignTableSortingAndPagination(t *testing.T) {
 	read := func(params string) []struct {
 		ID      int
 		Subject string
-	} { t.Helper(); w := request(mux, "GET", fmt.Sprintf("/api/v1/campaigns?brand_id=%d&%s", brand.ID, params), "", &cookie, ""); if w.Code != 200 {
-		t.Fatal(w.Code, w.Body.String())
-	}; var rows []struct {
-		ID      int
-		Subject string
-	}; if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil {
-		t.Fatal(err)
-	}; return rows }
+	} {
+		t.Helper()
+		w := request(mux, "GET", fmt.Sprintf("/api/v1/campaigns?brand_id=%d&%s", brand.ID, params), "", &cookie, "")
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var rows []struct {
+			ID      int
+			Subject string
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil {
+			t.Fatal(err)
+		}
+		return rows
+	}
 	first := read("offset=0&limit=2")
 	second := read("offset=2&limit=2")
 	if len(first) != 2 || len(second) != 2 || first[0].Subject != "Delta draft" || first[1].Subject != "Zulu draft" || second[0].Subject != "Alpha sent" {
@@ -62,5 +69,14 @@ func TestCampaignTableSortingAndPagination(t *testing.T) {
 	legacy := read("after=1&limit=2")
 	if len(legacy) != 2 || legacy[0].ID != 2 || legacy[1].ID != 3 {
 		t.Fatalf("legacy cursor: %v", legacy)
+	}
+	// Joining live counters must preserve the same page and sort contracts.
+	summary := read("offset=1&limit=2&sort=subject&direction=asc&summary=true")
+	if len(summary) != 2 || summary[0].Subject != "Beta scheduled" || summary[1].Subject != "Delta draft" {
+		t.Fatalf("summary sorted page: %v", summary)
+	}
+	summary = read("offset=0&limit=2&summary=true")
+	if len(summary) != 2 || summary[0].Subject != "Delta draft" || summary[1].Subject != "Zulu draft" {
+		t.Fatalf("summary priority page: %v", summary)
 	}
 }

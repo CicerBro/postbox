@@ -2,12 +2,14 @@ import { useDateTime } from "../lib/date-time";
 import { onSessionExpired } from "../lib/session-lifecycle";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, download } from "../lib/api";
 import { SelectField } from "../components/ui/select";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { useTableSort } from "../lib/use-table-sort";
 import { Button } from "../components/ui/button";
+import { CampaignProgress } from "../components/CampaignProgress";
+import { useApp } from "../lib/app-context";
 import {
   ChartInstructions,
   ChartTooltip,
@@ -38,6 +40,7 @@ import {
 import {
   StatusBadge,
   isFinishedCampaign,
+  isLiveCampaign,
   Campaign,
   ErrorMessage,
   number,
@@ -88,12 +91,14 @@ export function CampaignReportPage({ brandId }: { brandId: number }) {
 function ReportView({ brandId, id }: { brandId: number; id: number }) {
   const { formatDateTime } = useDateTime();
   const navigate = useNavigate();
+  const { session } = useApp();
   const countrySort = useTableSort<"country" | "opens" | "clicks">("opens", "desc");
   const client = useQueryClient(),
     [status, setStatus] = useState(""),
     [after, setAfter] = useState(0),
     [history, setHistory] = useState<number[]>([]),
     [stream, setStream] = useState("Connecting live updates"),
+    [streamConnected, setStreamConnected] = useState(false),
     [exportError, setExportError] = useState<unknown>(null),
     [exporting, setExporting] = useState(false),
     [duplicating, setDuplicating] = useState(false),
@@ -106,13 +111,24 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     queryKey: ["campaign", brandId, id],
     queryFn: () => api<Campaign[]>(`/campaigns/${id}`, { brandId }),
     enabled: valid,
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
   const report = useQuery({
     queryKey: ["campaign-report", brandId, id],
     queryFn: () => api<Report>(`/campaigns/${id}/report`, { brandId }),
     enabled: valid,
     refetchInterval: 15000,
+  });
+  const deliveryAction = useMutation({
+    mutationFn: (action: "pause" | "resume") => api(`/campaigns/${id}/${action}`, { method: "POST", brandId }),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["campaign", brandId, id] }),
+        client.invalidateQueries({ queryKey: ["campaigns", brandId] }),
+        client.invalidateQueries({ queryKey: ["campaign-report", brandId, id] }),
+        client.invalidateQueries({ queryKey: ["campaign-recipients", brandId, id] }),
+      ]);
+    },
   });
   const preview = useQuery({
     queryKey: ["campaign-preview", brandId, id],
@@ -145,14 +161,17 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
             current ? { ...current, stats: stats as Stats[] } : current,
         );
         setStream("Live updates connected");
+        setStreamConnected(true);
       } catch {
+        setStreamConnected(false);
         setStream("Invalid live update. Reports refresh automatically.");
       }
     };
     source.addEventListener("stats", listener);
-    source.onopen = () => setStream("Live updates connected");
+    source.onopen = () => { setStream("Live updates connected"); setStreamConnected(true); };
     source.onerror = () => {
       source.close();
+      setStreamConnected(false);
       setStream("Live updates disconnected. Reports refresh automatically.");
       // EventSource hides HTTP status. An authenticated request identifies expiry.
       void api(`/campaigns/${id}/report`, { brandId }).catch(() => {});
@@ -213,6 +232,9 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
   }
   if (!valid) return <ErrorMessage error={new Error("Invalid campaign ID")} />;
   const stats = report.data?.stats?.[0];
+  const campaignStatus = campaign.data?.[0]?.status;
+  const live = isLiveCampaign(campaignStatus);
+  const canResume = session.admin || campaign.data?.[0]?.created_by === session.user_id;
   const metrics: [string, string][] = [
     ["recipients", "Recipients"],
     ["sent", "Sent"],
@@ -261,17 +283,17 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           {campaign.data?.[0] && (
             <StatusBadge status={campaign.data[0].status} />
           )}
-          <p
+          {!live && <p
             role="status"
             className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"
           >
             <Activity size={14} aria-hidden="true" />
             {stream}
-          </p>
+          </p>}
         </div>
         <div className="flex flex-wrap gap-2">
         {campaign.data?.[0]?.status === "cancelled" && report.data?.can_reactivate && <Button disabled={reactivating} onClick={reactivateCampaign}>{reactivating ? "Returning to draft…" : "Return to draft"}</Button>}
-        {campaign.data?.[0] && !isFinishedCampaign(campaign.data[0].status) && <Button variant="outline" asChild><Link to={`/campaigns/${id}`}>Manage campaign</Link></Button>}
+        {campaign.data?.[0] && !isFinishedCampaign(campaign.data[0].status) && <Button variant="outline" asChild><Link to={`/campaigns/${id}?manage=true`}>Manage campaign</Link></Button>}
         {campaign.data?.[0] && <Button variant="outline" disabled={duplicating} onClick={duplicateCampaign}><Copy size={16} /> {duplicating ? "Duplicating…" : "Duplicate"}</Button>}
         <Button variant="outline" disabled={exporting} onClick={exportCSV}>
           <Download size={16} />{" "}
@@ -279,7 +301,20 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
         </Button>
         </div>
       </div>
-      <ErrorMessage error={campaign.error ?? report.error ?? exportError ?? duplicateError ?? reactivateError} />
+      <ErrorMessage error={campaign.error ?? report.error ?? exportError ?? duplicateError ?? reactivateError ?? deliveryAction.error} />
+      {live && <Card aria-label="Live delivery progress"><CardContent className="pt-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <StatusBadge status={campaignStatus!} />
+          <p role="status" className="row-subtitle flex flex-wrap items-center gap-2"><Activity size={14} className="shrink-0" aria-hidden="true" />{streamConnected ? "Live updates connected" : stream}{report.dataUpdatedAt > 0 && <span>· Updated {formatDateTime(report.dataUpdatedAt)}</span>}</p>
+        </div>
+        <CampaignProgress stats={stats} status={campaignStatus!} observedAt={report.dataUpdatedAt} fresh={!report.isError} />
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Button variant="outline" disabled={deliveryAction.isPending || (campaignStatus === "paused" && !canResume)} onClick={() => deliveryAction.mutate(campaignStatus === "paused" ? "resume" : "pause")}>
+            {deliveryAction.isPending ? "Updating…" : campaignStatus === "paused" ? "Resume sending" : "Pause sending"}
+          </Button>
+          <Button variant="ghost" asChild><a href="#campaign-recipient-statuses">View recipient statuses</a></Button>
+        </div>
+      </CardContent></Card>}
       {report.data?.delivery && (
         <Card><CardContent className="pt-5">
           <dl className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -447,7 +482,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           </div>
         </CardContent>
       </Card>
-      <Card>
+      <Card id="campaign-recipient-statuses">
         <CardHeader>
           <CardTitle>Recipient outcomes</CardTitle>
         </CardHeader>

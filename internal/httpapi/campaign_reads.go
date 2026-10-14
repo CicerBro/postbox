@@ -12,12 +12,15 @@ import (
 
 func (a *API) campaignRows(r *http.Request, brand, id int64) ([]map[string]any, error) {
 	summary := id == 0 && r.URL.Query().Get("summary") == "true"
-	projection := "*"
+	projection := "c.*"
+	from := "campaigns c"
 	if summary {
-		projection = "id,subject,status,created_at,scheduled_at,html"
+		// Durable counters use a primary-key lookup, never a recipient scan.
+		projection = "c.id,c.subject,c.status,c.created_at,c.scheduled_at,c.html,s.recipients,s.sent,s.failed,s.skipped,s.unknown"
+		from += " LEFT JOIN campaign_stats s ON s.campaign_id=c.id AND c.status IN ('preparing','sending','paused')"
 	}
 	after, limit := page(r)
-	q := "SELECT " + projection + " FROM campaigns WHERE brand_id=? AND id>? ORDER BY id LIMIT ?"
+	q := "SELECT " + projection + " FROM " + from + " WHERE c.brand_id=? AND c.id>? ORDER BY c.id LIMIT ?"
 	args := []any{brand, after, limit}
 	// Offset pagination supports globally sorted and filtered table views.
 	// Keep the existing ID cursor contract for integrations using after.
@@ -26,30 +29,30 @@ func (a *API) campaignRows(r *http.Request, brand, id int64) ([]map[string]any, 
 		if offset < 0 {
 			offset = 0
 		}
-		order := "CASE WHEN status='draft' AND scheduled_at IS NULL THEN 0 ELSE 1 END, created_at DESC, id DESC"
-		columns := map[string]string{"subject": "subject COLLATE NOCASE", "status": "status", "created_at": "created_at", "scheduled_at": "scheduled_at"}
+		order := "CASE WHEN c.status='draft' AND c.scheduled_at IS NULL THEN 0 ELSE 1 END, c.created_at DESC, c.id DESC"
+		columns := map[string]string{"subject": "c.subject COLLATE NOCASE", "status": "c.status", "created_at": "c.created_at", "scheduled_at": "c.scheduled_at"}
 		if column, ok := columns[r.URL.Query().Get("sort")]; ok {
 			direction := "ASC"
 			if r.URL.Query().Get("direction") == "desc" {
 				direction = "DESC"
 			}
-			order = column + " " + direction + ", id " + direction
+			order = column + " " + direction + ", c.id " + direction
 		}
-		q = "SELECT " + projection + " FROM campaigns WHERE brand_id=?"
+		q = "SELECT " + projection + " FROM " + from + " WHERE c.brand_id=?"
 		args = []any{brand}
 		if status := r.URL.Query().Get("status"); status != "" && status != "all" {
-			q += " AND status=?"
+			q += " AND c.status=?"
 			args = append(args, status)
 		}
 		if search := strings.TrimSpace(r.URL.Query().Get("search")); search != "" {
-			q += " AND instr(lower(subject), lower(?)) > 0"
+			q += " AND instr(lower(c.subject), lower(?)) > 0"
 			args = append(args, search)
 		}
 		q += " ORDER BY " + order + " LIMIT ? OFFSET ?"
 		args = append(args, limit, offset)
 	}
 	if id != 0 {
-		q = "SELECT " + projection + " FROM campaigns WHERE brand_id=? AND id=?"
+		q = "SELECT " + projection + " FROM " + from + " WHERE c.brand_id=? AND c.id=?"
 		args = []any{brand, id}
 	}
 	if summary {
@@ -81,14 +84,19 @@ func (a *API) queryCampaignSummaries(ctx context.Context, query string, args ...
 		var id, created int64
 		var scheduled sql.NullInt64
 		var subject, status, content string
-		if err := rows.Scan(&id, &subject, &status, &created, &scheduled, &content); err != nil {
+		var recipients, sent, failed, skipped, unknown sql.NullInt64
+		if err := rows.Scan(&id, &subject, &status, &created, &scheduled, &content, &recipients, &sent, &failed, &skipped, &unknown); err != nil {
 			return nil, err
 		}
 		var scheduledAt any
 		if scheduled.Valid {
 			scheduledAt = scheduled.Int64
 		}
-		out = append(out, map[string]any{"id": id, "subject": subject, "status": status, "created_at": created, "scheduled_at": scheduledAt, "excerpt": campaignExcerpt(content)})
+		var progress any
+		if recipients.Valid {
+			progress = map[string]int64{"recipients": recipients.Int64, "sent": sent.Int64, "failed": failed.Int64, "skipped": skipped.Int64, "unknown": unknown.Int64}
+		}
+		out = append(out, map[string]any{"id": id, "subject": subject, "status": status, "created_at": created, "scheduled_at": scheduledAt, "excerpt": campaignExcerpt(content), "progress": progress})
 	}
 	return out, rows.Err()
 }

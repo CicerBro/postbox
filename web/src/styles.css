@@ -154,6 +154,12 @@
   }
 }
 @layer components {
+  .campaign-progress { min-width: 0; }
+  .campaign-progress-compact { min-width: 240px; max-width: 380px; }
+  .campaign-progress-track { height: 10px; margin: 16px 0; overflow: hidden; border-radius: 5px; background: var(--secondary); }
+  .campaign-progress-track > div { height: 100%; background: var(--primary); }
+  .campaign-progress-compact .campaign-progress-track { height: 6px; margin: 8px 0; }
+  .campaign-progress-counters { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 16px; }
   label > .input {
     margin-top: 8px;
   }
