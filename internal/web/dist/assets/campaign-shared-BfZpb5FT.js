@@ -1,4 +1,4 @@
-import{H as e}from"./button-EYRx6QlG.js";import{l as t}from"./index-Bo1ZPlIl.js";import"./RequestError-BehzFil_.js";var n=e(),r=`<!DOCTYPE html>
+import{H as e}from"./button-EYRx6QlG.js";import{l as t}from"./index-BcwhZV6z.js";import"./RequestError-BehzFil_.js";var n=e(),r=`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
