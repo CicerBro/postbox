@@ -59,6 +59,8 @@ By default Postbox trusts no proxy headers. Set `POSTBOX_TRUSTED_PROXIES` to the
 
 Each trusted proxy must overwrite incoming `X-Forwarded-For` at the first ingress or append the actual peer when retaining a chain. Postbox reads the chain from right to left and stops at the nearest untrusted IP. `Forwarded` and `X-Real-IP` are ignored. Invalid entries or an oversized chain fall back to the socket peer.
 
+If Cloudflare proxies the instance, configure a [Browser Integrity Check skip rule](configuration.md#browser-integrity-check) for the deployment's hostname and the `/u/` and `/c/` path prefixes. This allows unsubscribe requests and tracked click redirects from email clients and link scanners to reach Postbox.
+
 ## Manage access
 
 Password login requires an authenticator code when TOTP is enabled. Enrolment starts with password confirmation and finishes after a valid code; removal requires the password and current code. Changing a password or TOTP factor revokes existing sessions.

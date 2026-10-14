@@ -111,6 +111,22 @@ Only a trusted direct socket peer can supply `X-Forwarded-For`. Entries must be 
 
 ## Cloudflare and HTML responses
 
+### Browser Integrity Check
+
+When proxying Postbox through Cloudflare, create a custom security rule with the **Skip** action and select **Browser Integrity Check** under the components to skip. Match the Postbox hostname and paths starting with `/u/` or `/c/`:
+
+```text
+(http.host eq "mail.example.com" and
+ (starts_with(http.request.uri.path, "/u/") or
+  starts_with(http.request.uri.path, "/c/")))
+```
+
+Replace `mail.example.com` with the hostname in your deployment's `POSTBOX_BASE_URL`. Apply the rule to all HTTP methods so it covers unsubscribe pages and POST requests, including one-click unsubscribe, as well as tracked click redirects.
+
+These links are used by email clients and automated link scanners as well as browsers. Browser Integrity Check can reject requests with missing or nonstandard user agents before they reach Postbox. Skipping it for these paths lets unsubscribe requests and tracked clicks reach the application. Select only Browser Integrity Check; other Cloudflare security checks and Postbox's signed-link validation remain in effect. See [Browser Integrity Check](https://developers.cloudflare.com/waf/tools/browser-integrity-check/) and [available Skip options](https://developers.cloudflare.com/waf/custom-rules/skip/options/).
+
+### HTML responses
+
 HTML responses send `Cache-Control: no-transform` alongside their existing caching policy. The nonempty `Speculation-Rules: "data:application/speculationrules+json,%7B%7D"` header provides an empty rule set without a network request. Cloudflare replaces an empty header with its Speed Brain URL, which causes CORS errors from sandboxed previews. Keep Origin Cache Control enabled so Cloudflare respects the response directives.
 
 The app, documentation and signup policies permit Cloudflare Web Analytics only from `https://static.cloudflareinsights.com`, with reporting to `https://cloudflareinsights.com`. Signup also permits Turnstile. Because `no-transform` stops automatic beacon injection, analytics requires an explicitly installed beacon snippet if wanted; allowing its origins does not enable analytics by itself.
