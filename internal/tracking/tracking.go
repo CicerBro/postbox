@@ -11,7 +11,9 @@ import (
 	"html"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
+	"postbox/internal/clientip"
 	"postbox/internal/consent"
 	"postbox/internal/emailpreferences"
 	"postbox/internal/htmlpolicy"
@@ -33,6 +35,7 @@ type Config struct {
 	QueueSize, BatchSize int
 	FlushInterval        time.Duration
 	GeoIPPath            string
+	TrustedProxies       []netip.Prefix
 }
 type record struct {
 	campaign, subscriber, link, at int64
@@ -163,7 +166,7 @@ func (s *Service) event(r *http.Request, c, u, l int64) record {
 	}
 	country := ""
 	if s.geo != nil {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := clientip.IP(r, s.cfg.TrustedProxies)
 		var loc struct {
 			Country struct {
 				ISO string `maxminddb:"iso_code"`

@@ -1,73 +1,16 @@
 package httpapi
 
 import (
-	"net"
 	"net/http"
-	"net/netip"
+	"postbox/internal/clientip"
 	"strconv"
-	"strings"
 	"time"
 )
 
 const maxRateBuckets = 10000
 
-// peerIP accepts socket addresses and bare IPs, never hostnames or zones.
-func peerIP(raw string) (netip.Addr, bool) {
-	if host, _, err := net.SplitHostPort(raw); err == nil {
-		raw = host
-	}
-	ip, err := netip.ParseAddr(raw)
-	if err != nil || ip.Zone() != "" {
-		return netip.Addr{}, false
-	}
-	return ip.Unmap(), true
-}
-
-func (a *API) trustedProxy(ip netip.Addr) bool {
-	for _, prefix := range a.cfg.TrustedProxies {
-		if prefix.Contains(ip) {
-			return true
-		}
-	}
-	return false
-}
-
-// clientIP ignores forwarding headers unless the socket peer is trusted. Walk
-// X-Forwarded-For from the closest proxy toward the client, stopping at the
-// first untrusted hop. Earlier entries cannot influence that identity, even if
-// a client supplied a malformed prefix before the ingress proxy appended its
-// observed peer. Forwarded and X-Real-IP are intentionally ignored.
 func (a *API) clientIP(r *http.Request) string {
-	peer, ok := peerIP(r.RemoteAddr)
-	if !ok {
-		return "unknown"
-	}
-	if !a.trustedProxy(peer) {
-		return peer.String()
-	}
-	values := r.Header.Values("X-Forwarded-For")
-	if len(values) == 0 {
-		return peer.String()
-	}
-	raw := strings.Join(values, ",")
-	if len(raw) > 4096 {
-		return peer.String()
-	}
-	parts := strings.Split(raw, ",")
-	if len(parts) > 32 {
-		return peer.String()
-	}
-	for j := len(parts) - 1; j >= 0; j-- {
-		ip, err := netip.ParseAddr(strings.TrimSpace(parts[j]))
-		if err != nil || ip.Zone() != "" {
-			return peer.String()
-		}
-		peer = ip.Unmap()
-		if !a.trustedProxy(peer) {
-			return peer.String()
-		}
-	}
-	return peer.String()
+	return clientip.IP(r, a.cfg.TrustedProxies)
 }
 
 // Authenticated factor operations follow the account across connections and

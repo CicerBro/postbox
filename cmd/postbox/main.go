@@ -163,7 +163,7 @@ func serve(db *store.DB, c config.Config) error {
 	if err = runner.ScheduleMaintenance(ctx); err != nil {
 		return err
 	}
-	tracker := tracking.New(db, &tracking.Config{TokenSecret: secret, BaseURL: c.BaseURL, GeoIPPath: c.GeoIP})
+	tracker := tracking.New(db, &tracking.Config{TokenSecret: secret, BaseURL: c.BaseURL, GeoIPPath: c.GeoIP, TrustedProxies: c.TrustedProxies})
 	eventService := events.New(db, &events.Config{ResolveTopic: awsProvider.EventBrand, SoftBounceLimit: c.SoftBounceLimit})
 	mux := http.NewServeMux()
 	httpapi.New(db, engine, httpapi.Config{

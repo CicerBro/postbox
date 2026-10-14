@@ -61,6 +61,14 @@ Each trusted proxy must overwrite incoming `X-Forwarded-For` at the first ingres
 
 If Cloudflare proxies the instance, configure a [Browser Integrity Check skip rule](configuration.md#browser-integrity-check) for the deployment's hostname and the `/u/` and `/c/` path prefixes. This allows unsubscribe requests and tracked click redirects from email clients and link scanners to reach Postbox.
 
+## Configure country tracking
+
+Set `POSTBOX_GEOIP` (or `--geoip`) to a readable GeoLite2 Country or GeoIP2 Country/City MMDB file and restart Postbox. Country lookup uses the client IP resolved through `POSTBOX_TRUSTED_PROXIES`, so configure the proxy chain as described above. Private or unknown IPs have no country and do not create country report rows.
+
+Compose uses `/var/lib/postbox/GeoLite2-Country.mmdb` inside the `postbox-data` volume. Copy your MMDB there or add a read-only bind mount for your local file at that container path. Ensure UID `65532` can read it. A file on the host is only available to the container when copied into its volume or mounted.
+
+Website links in sent HTML use `/c/` redirects and count as clicks. The “view online” link uses `/w/` and does not itself count as a click. Opening that browser version can load the tracking pixel and record an open. Country rows are recorded for new opens and clicks whose IP resolves in the database; enabling GeoIP does not backfill earlier activity.
+
 ## Manage access
 
 Password login requires an authenticator code when TOTP is enabled. Enrolment starts with password confirmation and finishes after a valid code; removal requires the password and current code. Changing a password or TOTP factor revokes existing sessions.
