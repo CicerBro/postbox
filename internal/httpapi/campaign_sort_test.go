@@ -14,12 +14,14 @@ func TestCampaignTableSortingAndPagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Older drafts still precede newer scheduled and sent campaigns.
+	// Drafts come first, then scheduled campaigns by send date, even when
+	// the next campaign to send has the oldest creation date and lowest ID.
 	for _, row := range []struct {
 		subject, status string
 		created         int
 		scheduled       any
 	}{
+		{"Epsilon scheduled", "scheduled", 0, 50},
 		{"Zulu draft", "draft", 1, nil},
 		{"Alpha sent", "sent", 4, nil},
 		{"Beta scheduled", "scheduled", 3, 100},
@@ -50,8 +52,12 @@ func TestCampaignTableSortingAndPagination(t *testing.T) {
 	}
 	first := read("offset=0&limit=2")
 	second := read("offset=2&limit=2")
-	if len(first) != 2 || len(second) != 2 || first[0].Subject != "Delta draft" || first[1].Subject != "Zulu draft" || second[0].Subject != "Alpha sent" {
+	if len(first) != 2 || len(second) != 2 || first[0].Subject != "Delta draft" || first[1].Subject != "Zulu draft" || second[0].Subject != "Epsilon scheduled" || second[1].Subject != "Beta scheduled" {
 		t.Fatalf("priority pages: %v %v", first, second)
+	}
+	last := read("offset=4&limit=2")
+	if len(last) != 1 || last[0].Subject != "Alpha sent" {
+		t.Fatalf("sent campaigns follow scheduled campaigns: %v", last)
 	}
 	sorted := read("offset=1&limit=2&sort=subject&direction=asc")
 	if len(sorted) != 2 || sorted[0].Subject != "Beta scheduled" || sorted[1].Subject != "Delta draft" {
@@ -63,7 +69,7 @@ func TestCampaignTableSortingAndPagination(t *testing.T) {
 	}
 	// Unknown sort names never enter SQL; legacy cursors remain ordered by ID.
 	fallback := read("offset=0&sort=invalid")
-	if len(fallback) != 4 || fallback[0].Subject != "Delta draft" {
+	if len(fallback) != 5 || fallback[0].Subject != "Delta draft" {
 		t.Fatalf("fallback: %v", fallback)
 	}
 	legacy := read("after=1&limit=2")
@@ -78,5 +84,9 @@ func TestCampaignTableSortingAndPagination(t *testing.T) {
 	summary = read("offset=0&limit=2&summary=true")
 	if len(summary) != 2 || summary[0].Subject != "Delta draft" || summary[1].Subject != "Zulu draft" {
 		t.Fatalf("summary priority page: %v", summary)
+	}
+	summary = read("offset=2&limit=3&sort=priority&direction=desc&summary=true")
+	if len(summary) != 3 || summary[0].Subject != "Epsilon scheduled" || summary[1].Subject != "Beta scheduled" || summary[2].Subject != "Alpha sent" {
+		t.Fatalf("summary scheduled and sent order: %v", summary)
 	}
 }
