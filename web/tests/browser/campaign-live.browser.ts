@@ -86,6 +86,13 @@ for (const mobile of [false, true]) {
     state.status = "sent";
     await page.clock.fastForward(5000);
     await expect(row.locator("td").nth(3)).toContainText("Nov 14, 2023");
+    const deleteButton = row.getByRole("button", { name: "Delete campaign October newsletter" });
+    const scheduledClone = page.getByRole("row").filter({ hasText: "Next newsletter" }).getByRole("button", { name: "Clone campaign Next newsletter" });
+    const deleteBox = await deleteButton.boundingBox();
+    const cloneBox = await scheduledClone.boundingBox();
+    expect(deleteBox).not.toBeNull();
+    expect(cloneBox).not.toBeNull();
+    expect(Math.abs((deleteBox!.x + deleteBox!.width) - (cloneBox!.x + cloneBox!.width))).toBeLessThan(1);
     await expect(row).not.toContainText("Newsletter content");
     await expect(page.getByRole("columnheader", { name: /Created/ })).toHaveCount(0);
     await expect(page.getByRole("progressbar")).toHaveCount(0);
