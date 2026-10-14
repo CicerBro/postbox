@@ -746,6 +746,11 @@ func (i *importer) listBaseline(list int64) error {
 	if e := i.exec("INSERT INTO list_counters(list_id) VALUES(?) ON CONFLICT DO NOTHING", list); e != nil {
 		return e
 	}
+	if e := i.exec(`INSERT INTO list_active_history(list_id,at,active)
+SELECT list_id,?,active FROM list_counters WHERE list_id=?
+ON CONFLICT(list_id,at) DO UPDATE SET active=excluded.active`, i.now, list); e != nil {
+		return e
+	}
 	return i.exec(`INSERT INTO list_daily_stats(list_id,day,active)
 SELECT list_id,?,active FROM list_counters WHERE list_id=?
 ON CONFLICT(list_id,day) DO UPDATE SET active=excluded.active`, i.now/86400000*86400000, list)

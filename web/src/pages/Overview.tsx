@@ -52,11 +52,17 @@ interface Overview {
   change: Record<string, number | null>;
   growth: {
     day: number;
+    end: number;
+    approximate?: boolean;
     active: number;
     subscribed: number;
     unsubscribed: number;
   }[];
-  hourly_comparison: { hour: number; today: number; yesterday: number }[];
+  hourly_comparison: {
+    hour: number; today: number; yesterday: number;
+    today_start: number | null; today_end: number | null;
+    yesterday_start: number | null; yesterday_end: number | null;
+  }[];
 }
 function Chart({
   a,
@@ -185,9 +191,9 @@ export function OverviewPage({ brandId }: { brandId: number }) {
     }
   };
   const query = useQuery({
-    queryKey: ["overview", brandId, days],
+    queryKey: ["overview", brandId, days, timeZone],
     queryFn: ({ signal }) =>
-      api<Overview>(`/overview?days=${days}`, { brandId, signal }),
+      api<Overview>(`/overview?days=${days}&timezone=${encodeURIComponent(timeZone)}`, { brandId, signal }),
     refetchInterval: 30000,
   });
   const heading = (
@@ -249,24 +255,14 @@ export function OverviewPage({ brandId }: { brandId: number }) {
     ["Complaints", "complaints_percent", "complaints_points", ShieldAlert],
   ] as const;
   const growth = data.growth ?? [];
-  const dayIntervalLabel = (timestamp: number) => {
+  const intervalLabel = (start: number | null, end: number | null) => {
+    if (start === null || end === null) return "Hour skipped by daylight saving time";
     const options: Intl.DateTimeFormatOptions = {
       month: "short", day: "numeric", year: "numeric",
       hour: "2-digit", minute: "2-digit", timeZoneName: "short",
     };
-    return `${formatDateTime(timestamp, options)} to ${formatDateTime(timestamp + 86400000, options)}`;
+    return `${formatDateTime(start, options)} to ${formatDateTime(end, options)}`;
   };
-  const today = new Date(data.period.end);
-  const todayStart = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  // The API compares UTC calendar days. Convert their actual hour timestamps
-  // for display, while retaining those aggregation windows.
-  const hourTimestamp = (hour: number, previous = false) =>
-    todayStart + hour * 3600000 - (previous ? 86400000 : 0);
-  const hourLabel = (hour: number, previous = false) =>
-    formatDateTime(hourTimestamp(hour, previous), {
-      year: "numeric", month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit", timeZoneName: "short",
-    });
   return (
     <>
       {heading}
@@ -320,8 +316,11 @@ export function OverviewPage({ brandId }: { brandId: number }) {
               <Users size={16} className="muted" />
             </div>
             <p className="muted">
-              Active list memberships · UTC-day intervals displayed in {timeZone}
+              Active list memberships · Daily totals in {timeZone}
             </p>
+            {growth.some((x) => x.approximate) && (
+              <p className="muted text-sm">Older history is approximate because only daily snapshots were recorded.</p>
+            )}
             <div className="chart-legend">
               <span>Last 30 days</span>
               <span>Previous 30 days</span>
@@ -333,8 +332,8 @@ export function OverviewPage({ brandId }: { brandId: number }) {
               a={growth.slice(30).map((x) => x.active)}
               b={growth.slice(0, 30).map((x) => x.active)}
               labels={["Day 1", "Day 15", "Day 30"]}
-              bucketLabels={growth.slice(30).map((x) => dayIntervalLabel(x.day))}
-              comparisonLabels={growth.slice(0, 30).map((x) => dayIntervalLabel(x.day))}
+              bucketLabels={growth.slice(30).map((x) => intervalLabel(x.day, x.end))}
+              comparisonLabels={growth.slice(0, 30).map((x) => intervalLabel(x.day, x.end))}
               seriesNames={["Last 30 days", "Previous 30 days"]}
             />
           </CardContent>
@@ -345,21 +344,24 @@ export function OverviewPage({ brandId }: { brandId: number }) {
               <CardTitle>Sending activity</CardTitle>
               <Activity size={16} className="muted" />
             </div>
-            <p className="muted">Times shown in {timeZone} · current and previous UTC day</p>
+            <p className="muted">Today and yesterday in {timeZone}</p>
             <div className="chart-legend">
-              <span>Current UTC day</span>
-              <span>Previous UTC day</span>
+              <span>Today</span>
+              <span>Yesterday</span>
             </div>
           </CardHeader>
           <CardContent>
             <Chart
-              name={`Hourly sent emails for the current and previous UTC day, displayed in ${timeZone}`}
+              name={`Hourly sent emails for today and yesterday in ${timeZone}`}
               a={data.hourly_comparison.map((x) => x.today)}
               b={data.hourly_comparison.map((x) => x.yesterday)}
-              labels={[0, 6, 12, 18, 23].map((hour) => formatTime(hourTimestamp(hour)))}
-              bucketLabels={data.hourly_comparison.map((x) => hourLabel(x.hour))}
-              comparisonLabels={data.hourly_comparison.map((x) => hourLabel(x.hour, true))}
-              seriesNames={["Current UTC day", "Previous UTC day"]}
+              labels={[0, 6, 12, 18, 23].map((hour) => {
+                const timestamp = data.hourly_comparison[hour]?.today_start;
+                return timestamp == null ? `${String(hour).padStart(2, "0")}:00` : formatTime(timestamp);
+              })}
+              bucketLabels={data.hourly_comparison.map((x) => intervalLabel(x.today_start, x.today_end))}
+              comparisonLabels={data.hourly_comparison.map((x) => intervalLabel(x.yesterday_start, x.yesterday_end))}
+              seriesNames={["Today", "Yesterday"]}
             />
           </CardContent>
         </Card>

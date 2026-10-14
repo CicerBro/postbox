@@ -234,6 +234,19 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	location := time.UTC
+	if raw, exists := r.URL.Query()["timezone"]; exists {
+		if len(raw) != 1 || raw[0] == "" {
+			respond(w, 400, map[string]string{"error": "timezone must be a valid IANA timezone"})
+			return
+		}
+		var err error
+		location, err = time.LoadLocation(raw[0])
+		if err != nil || raw[0] == "Local" {
+			respond(w, 400, map[string]string{"error": "timezone must be a valid IANA timezone"})
+			return
+		}
+	}
 	now := time.Now().UTC()
 	end := now.UnixMilli()
 	start := now.AddDate(0, 0, -days).UnixMilli()
@@ -278,48 +291,14 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 		"bounced_points":    overviewPoints(current.BouncedPercent, previous.BouncedPercent),
 		"complaints_points": overviewPoints(current.ComplaintsPercent, previous.ComplaintsPercent),
 	}
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	growthStart := today.AddDate(0, 0, -59)
-	growthRows, e := queryRows(r.Context(), a.db.Reader, "SELECT d.day,SUM(d.active) active,SUM(d.subscribed) subscribed,SUM(d.unsubscribed) unsubscribed FROM lists l JOIN list_daily_stats d ON d.list_id=l.id WHERE l.brand_id=? AND d.day>=? AND d.day<? GROUP BY d.day ORDER BY d.day", id, growthStart.UnixMilli(), today.AddDate(0, 0, 1).UnixMilli())
+	growth, hours, comparison, e := a.overviewCharts(r.Context(), id, now, location)
 	if e != nil {
 		result(w, nil, e)
 		return
-	}
-	byDay := map[int64]map[string]any{}
-	for _, row := range growthRows {
-		byDay[row["day"].(int64)] = row
-	}
-	growth := make([]map[string]any, 0, 60)
-	for i := 0; i < 60; i++ {
-		day := growthStart.AddDate(0, 0, i).UnixMilli()
-		row := byDay[day]
-		if row == nil {
-			row = map[string]any{"day": day, "active": int64(0), "subscribed": int64(0), "unsubscribed": int64(0)}
-		}
-		growth = append(growth, row)
-	}
-	hourStart := today.AddDate(0, 0, -1)
-	hourRows, e := queryRows(r.Context(), a.db.Reader, "SELECT hour,sent FROM send_hourly WHERE brand_id=? AND hour>=? AND hour<? ORDER BY hour", id, hourStart.UnixMilli(), today.AddDate(0, 0, 1).UnixMilli())
-	if e != nil {
-		result(w, nil, e)
-		return
-	}
-	byHour := map[int64]int64{}
-	for _, row := range hourRows {
-		byHour[row["hour"].(int64)] = row["sent"].(int64)
-	}
-	hours := make([]map[string]any, 0, 48)
-	comparison := make([]map[string]any, 0, 24)
-	for i := 0; i < 48; i++ {
-		hour := hourStart.Add(time.Duration(i) * time.Hour).UnixMilli()
-		hours = append(hours, map[string]any{"hour": hour, "sent": byHour[hour]})
-	}
-	for i := 0; i < 24; i++ {
-		comparison = append(comparison, map[string]any{"hour": i, "today": hours[i+24]["sent"], "yesterday": hours[i]["sent"]})
 	}
 	var periodDays, currentStart, comparisonStart any = days, start, previousStart
 	if allHistory {
 		periodDays, currentStart, comparisonStart = nil, nil, nil
 	}
-	result(w, map[string]any{"stats": stats, "period": map[string]any{"days": periodDays, "basis": "campaign_start", "current_start": currentStart, "previous_start": comparisonStart, "end": end, "timezone": "UTC"}, "current": current, "previous": previous, "change": change, "growth": growth, "hourly": hours, "hourly_comparison": comparison}, nil)
+	result(w, map[string]any{"stats": stats, "period": map[string]any{"days": periodDays, "basis": "campaign_start", "current_start": currentStart, "previous_start": comparisonStart, "end": end, "timezone": "UTC", "chart_timezone": location.String()}, "current": current, "previous": previous, "change": change, "growth": growth, "hourly": hours, "hourly_comparison": comparison}, nil)
 }

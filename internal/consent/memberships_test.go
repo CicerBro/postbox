@@ -67,6 +67,9 @@ func TestUnsubscribeMembershipsMaintainsCountersAndInvalidatesTokens(t *testing.
 			if err = db.Reader.QueryRow("SELECT active,unsubscribed,bounced,complained FROM list_daily_stats WHERE list_id=1 AND day=86400000").Scan(&active, &unsubscribed, &bounced, &complained); err != nil || active != 0 || unsubscribed != 1 || bounced != wantBounce || complained != wantComplaint {
 				t.Fatalf("daily=%d %d %d %d err=%v", active, unsubscribed, bounced, complained, err)
 			}
+			if err = db.Reader.QueryRow("SELECT active,unsubscribed FROM list_active_history WHERE list_id=1 AND at=86400000").Scan(&active, &unsubscribed); err != nil || active != 0 || unsubscribed != 1 {
+				t.Fatalf("timestamped history=%d %d err=%v", active, unsubscribed, err)
+			}
 			var remaining int
 			if err = db.Reader.QueryRow("SELECT count(*) FROM list_subscribers WHERE status!='unsubscribed' OR confirmation_started_at IS NOT NULL").Scan(&remaining); err != nil || remaining != 0 {
 				t.Fatalf("memberships remain active/pending=%d err=%v", remaining, err)

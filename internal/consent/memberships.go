@@ -56,6 +56,11 @@ func UpdateCountersTx(ctx context.Context, c *sql.Conn, listID, delta, subscribe
 	if _, err := c.ExecContext(ctx, `INSERT INTO list_counters(list_id,active,subscribed,unsubscribed,bounced,complained) VALUES(?,max(0,?),?,?,?,?) ON CONFLICT(list_id) DO UPDATE SET active=max(0,active+?),subscribed=subscribed+excluded.subscribed,unsubscribed=unsubscribed+excluded.unsubscribed,bounced=bounced+excluded.bounced,complained=complained+excluded.complained`, listID, delta, subscribed, unsubscribed, bounced, complained, delta); err != nil {
 		return err
 	}
+	if _, err := c.ExecContext(ctx, `INSERT INTO list_active_history(list_id,at,active,subscribed,unsubscribed)
+SELECT list_id,?,active,?,? FROM list_counters WHERE list_id=?
+ON CONFLICT(list_id,at) DO UPDATE SET active=excluded.active,subscribed=subscribed+excluded.subscribed,unsubscribed=unsubscribed+excluded.unsubscribed`, at, subscribed, unsubscribed, listID); err != nil {
+		return err
+	}
 	_, err := c.ExecContext(ctx, `INSERT INTO list_daily_stats(list_id,day,active,subscribed,unsubscribed,bounced,complained) SELECT ?,?,active,?,?,?,? FROM list_counters WHERE list_id=? ON CONFLICT(list_id,day) DO UPDATE SET active=excluded.active,subscribed=subscribed+excluded.subscribed,unsubscribed=unsubscribed+excluded.unsubscribed,bounced=bounced+excluded.bounced,complained=complained+excluded.complained`, listID, at/86400000*86400000, subscribed, unsubscribed, bounced, complained, listID)
 	return err
 }

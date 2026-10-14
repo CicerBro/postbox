@@ -95,7 +95,8 @@ func (a *API) documentRoute(pattern string) {
 	}
 	if method == "GET" && path == "/api/v1/overview" {
 		op["parameters"] = append(parameters, map[string]any{"name": "days", "in": "query", "description": "Campaign start comparison window in days, or all for the entire history without a previous-period comparison. Defaults to 30; numeric windows compare the preceding window of the same duration.", "schema": map[string]any{"default": 30, "oneOf": []any{map[string]any{"type": "integer", "minimum": 1, "maximum": 365}, map[string]any{"type": "string", "enum": []string{"all"}}}}})
-		op["description"] = "KPIs use campaign_stats attributed to started_at, falling back to finished_at then created_at for imported history. Rates use sent as denominator and are null when sent is zero. Changes are percentage points, except sent_percent (relative percentage, null with zero previous sent). All-time stats remain available. Growth contains 60 UTC calendar days including today. Hourly contains 48 UTC calendar buckets for yesterday and today, with zero-filled missing buckets including future hours today."
+		op["parameters"] = append(op["parameters"].([]map[string]any), map[string]any{"name": "timezone", "in": "query", "description": "IANA timezone for chart calendar days and hours. Defaults to UTC. Campaign KPI windows remain UTC.", "schema": map[string]any{"type": "string", "default": "UTC"}})
+		op["description"] = "KPIs use campaign_stats attributed to started_at, falling back to finished_at then created_at for imported history. Rates use sent as denominator and are null when sent is zero. Changes are percentage points, except sent_percent (relative percentage, null with zero previous sent). All-time stats remain available. Growth contains 60 local calendar days including today, with explicit day/end instants. Older UTC snapshots are marked approximate. Hourly covers yesterday and today in the requested timezone. Hourly comparison uses 24 local clock-hour slots with explicit interval instants: repeated DST hours are combined and skipped hours have null interval instants. Missing and future hours have zero counts."
 		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Brand overview counters and comparisons", "content": map[string]any{"application/json": map[string]any{"schema": overviewResponseSchema()}}}
 	}
 
@@ -349,11 +350,11 @@ func overviewResponseSchema() map[string]any {
 	}
 	return object(map[string]any{
 		"stats":   array(map[string]any{"sent": integer, "delivered": integer, "opened": integer, "clicked": integer, "bounced": integer, "complaints": integer}),
-		"period":  object(map[string]any{"days": nullableInteger, "basis": map[string]any{"type": "string", "enum": []string{"campaign_start"}}, "timezone": map[string]any{"type": "string", "enum": []string{"UTC"}}, "current_start": nullableInteger, "previous_start": nullableInteger, "end": integer}),
+		"period":  object(map[string]any{"days": nullableInteger, "basis": map[string]any{"type": "string", "enum": []string{"campaign_start"}}, "timezone": map[string]any{"type": "string", "enum": []string{"UTC"}}, "chart_timezone": map[string]any{"type": "string"}, "current_start": nullableInteger, "previous_start": nullableInteger, "end": integer}),
 		"current": object(kpi), "previous": object(kpi), "change": object(change),
-		"growth":            array(map[string]any{"day": integer, "active": integer, "subscribed": integer, "unsubscribed": integer}),
+		"growth":            array(map[string]any{"day": integer, "end": integer, "active": integer, "subscribed": integer, "unsubscribed": integer, "approximate": map[string]any{"type": "boolean"}}),
 		"hourly":            array(map[string]any{"hour": integer, "sent": integer}),
-		"hourly_comparison": array(map[string]any{"hour": integer, "today": integer, "yesterday": integer}),
+		"hourly_comparison": array(map[string]any{"hour": integer, "today": integer, "yesterday": integer, "today_start": nullableInteger, "today_end": nullableInteger, "yesterday_start": nullableInteger, "yesterday_end": nullableInteger}),
 	})
 }
 

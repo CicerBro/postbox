@@ -137,6 +137,9 @@ func TestSESReceiptsReconcileAcceptance(t *testing.T) {
 				if err := db.Reader.QueryRow(`SELECT sent FROM send_hourly WHERE brand_id=1 AND hour=3600000`).Scan(&sent); err != nil || sent != 1 {
 					t.Fatalf("hourly sent=%d err=%v", sent, err)
 				}
+				if err := db.Reader.QueryRow(`SELECT sent FROM send_activity WHERE brand_id=1 AND at=3600000`).Scan(&sent); err != nil || sent != 1 {
+					t.Fatalf("local chart counter duplicated acceptance: sent=%d err=%v", sent, err)
+				}
 			})
 		}
 	}
