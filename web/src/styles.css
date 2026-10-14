@@ -1203,19 +1203,9 @@
   .campaign-actions-cell {
     width: 1%;
     white-space: nowrap;
-    position: sticky;
-    right: 0;
-    background: var(--background);
-    box-shadow: -8px 0 12px -12px #0008;
   }
   .campaign-status-cell {
     min-width: 110px;
-  }
-  .campaigns-table tbody tr:nth-child(even) .campaign-actions-cell {
-    background: color-mix(in srgb, var(--soft) 50%, var(--surface));
-  }
-  .campaigns-table tbody tr:hover .campaign-actions-cell {
-    background: var(--soft);
   }
   .campaign-name-cell .campaign-progress-compact {
     min-width: 190px;

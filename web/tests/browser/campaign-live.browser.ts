@@ -59,6 +59,7 @@ async function fixture(page: Page, context: BrowserContext) {
 for (const mobile of [false, true]) {
   test(`campaign table shows delivery metrics and refreshes on ${mobile ? "mobile" : "desktop"}`, async ({ page, context }, testInfo) => {
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    else await page.addInitScript(() => localStorage.setItem("postbox-theme", "dark"));
     await page.clock.install();
     const state = await fixture(page, context);
     await page.goto("/campaigns");
