@@ -76,6 +76,10 @@
   font-family: Inter, sans-serif;
   font-synthesis: none;
 }
+
+.row-subtitle {
+  color: var(--muted-foreground);
+}
 @font-face {
   font-family: Inter;
   font-style: normal;
@@ -1212,13 +1216,6 @@
     border-color: transparent;
     background: transparent;
     box-shadow: none;
-  }
-  .campaign-row-actions .campaign-report-action {
-    padding: 5px 8px;
-    gap: 6px;
-  }
-  .campaign-row-actions .button.campaign-report-action:hover {
-    background: var(--secondary);
   }
   .campaign-row-actions .campaign-delete-action {
     width: 32px;

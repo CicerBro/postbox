@@ -153,7 +153,7 @@ test("draft and sent campaigns can be duplicated from the campaign list", async 
   const state = await fixture(context);
   await page.goto("/campaigns");
   for (const [status, copyID] of [["sent", 8], ["draft", 9]] as const) {
-    await page.getByRole("button", { name: `Duplicate campaign Newsletter ${status}` }).click();
+    await page.getByRole("button", { name: `Clone campaign Newsletter ${status}` }).click();
     await expect(page).toHaveURL(new RegExp(`/campaigns/${copyID}$`));
     await expect(page.getByRole("heading", { name: `Newsletter ${status}` })).toBeVisible();
     await page.goto("/campaigns");

@@ -8,7 +8,7 @@ import { useApp } from "../lib/app-context";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Plus, Search, ArrowUpRight, Copy, Mail, Trash2 } from "lucide-react";
+import { Plus, Search, Copy, Mail, Trash2 } from "lucide-react";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { CampaignProgress } from "../components/CampaignProgress";
 import { type CampaignCounters } from "../lib/campaign-progress";
@@ -213,23 +213,13 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                           variant="ghost"
                           size="sm"
                           disabled={duplicate.isPending}
-                          aria-label={`Duplicate campaign ${c.subject}`}
+                          aria-label={`Clone campaign ${c.subject}`}
                           onClick={() => {
                             duplicate.reset();
                             duplicate.mutate(c);
                           }}
                         >
-                          <Copy size={14} /> Duplicate
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="campaign-report-action"
-                          asChild
-                        >
-                          <Link to={`/campaigns/${c.id}/report`}>
-                            {isLiveCampaign(c.status) ? "View live" : "Report"} <ArrowUpRight size={14} />
-                          </Link>
+                          <Copy size={14} /> Clone
                         </Button>
                         {session.admin &&
                           ["draft", "sent", "cancelled"].includes(c.status) && (
