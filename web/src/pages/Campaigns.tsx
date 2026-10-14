@@ -1,7 +1,7 @@
 import { useDateTime } from "../lib/date-time";
 import { StatusMessage } from "../components/StatusMessage";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "../lib/app-context";
 import {
@@ -15,7 +15,7 @@ import {
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Plus, Search, ArrowUpRight, Mail, Trash2 } from "lucide-react";
+import { Plus, Search, ArrowUpRight, Copy, Mail, Trash2 } from "lucide-react";
 import { SortableTableHead } from "../components/SortableTableHead";
 import {
   StatusBadge,
@@ -32,10 +32,22 @@ type CampaignSummary = Pick<
 
 export function CampaignsPage({ brandId }: { brandId: number }) {
   const { formatDateTime } = useDateTime();
+  const navigate = useNavigate();
   const { session } = useApp();
   const client = useQueryClient();
   const [deleting, setDeleting] = useState<CampaignSummary | null>(null);
   const [notice, setNotice] = useState("");
+  const duplicate = useMutation({
+    mutationFn: (campaign: CampaignSummary) =>
+      api<{ id: number }>(`/campaigns/${campaign.id}/duplicate`, {
+        method: "POST",
+        brandId,
+      }),
+    onSuccess: ({ id }) => {
+      client.invalidateQueries({ queryKey: ["campaigns", brandId] });
+      navigate(`/campaigns/${id}`);
+    },
+  });
   const deletion = useMutation({
     mutationFn: (campaign: CampaignSummary) =>
       api(`/campaigns/${campaign.id}`, { method: "DELETE", brandId }),
@@ -129,7 +141,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
           </button>
         ))}
       </div>
-      <ErrorMessage error={query.error} />
+      <ErrorMessage error={query.error ?? duplicate.error} />
       <StatusMessage>{notice}</StatusMessage>
       {query.isPending ? (
         <p role="status">Loading campaigns…</p>
@@ -193,6 +205,18 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                     </td>
                     <td className="campaign-actions-cell">
                       <div className="campaign-row-actions">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={duplicate.isPending}
+                          aria-label={`Duplicate campaign ${c.subject}`}
+                          onClick={() => {
+                            duplicate.reset();
+                            duplicate.mutate(c);
+                          }}
+                        >
+                          <Copy size={14} /> Duplicate
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"

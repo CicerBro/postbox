@@ -19,6 +19,7 @@ async function fixture(context: BrowserContext, admin = true) {
       scheduled_at: null,
     })),
     deletes: [] as number[],
+    duplicates: [] as number[],
     failure: false,
   };
   await context.route("**/api/v1/**", async (route) => {
@@ -33,6 +34,27 @@ async function fixture(context: BrowserContext, admin = true) {
       body = [{ id: 1, name: "Acme", from_email: "sender@example.org" }];
     else if (path === "/sending") body = { enabled: false };
     else if (path === "/campaigns") body = state.rows;
+    else if (request.method() === "POST" && path.endsWith("/duplicate")) {
+      expect(url.searchParams.get("brand_id")).toBe("1");
+      expect(request.headers()["x-csrf-token"]).toBe("csrf");
+      const id = Number(path.split("/").at(-2));
+      const source = state.rows.find((row) => row.id === id);
+      expect(source).toBeDefined();
+      state.duplicates.push(id);
+      const copy = { ...source!, id: state.rows.length + 1, status: "draft", scheduled_at: null };
+      state.rows.push(copy);
+      body = { id: copy.id };
+    }
+    else if (path.startsWith("/campaigns/") && request.method() === "GET") {
+      const id = Number(path.split("/").at(-1));
+      body = state.rows.filter((row) => row.id === id).map((row) => ({
+        ...row,
+        html: "<p>Hello</p>",
+        text: "Hello",
+        inline_css: true,
+        created_by: 1,
+      }));
+    }
     else if (request.method() === "DELETE" && path.startsWith("/campaigns/")) {
       expect(url.searchParams.get("brand_id")).toBe("1");
       expect(request.headers()["x-csrf-token"]).toBe("csrf");
@@ -125,4 +147,24 @@ test("campaign list deletion is admin-only", async ({ page, context }) => {
   await expect(
     page.getByRole("button", { name: /Delete campaign/ }),
   ).toHaveCount(0);
+});
+
+test("draft and sent campaigns can be duplicated from the campaign list", async ({ page, context }) => {
+  const state = await fixture(context);
+  await page.goto("/campaigns");
+  for (const [status, copyID] of [["sent", 8], ["draft", 9]] as const) {
+    await page.getByRole("button", { name: `Duplicate campaign Newsletter ${status}` }).click();
+    await expect(page).toHaveURL(new RegExp(`/campaigns/${copyID}$`));
+    await expect(page.getByRole("heading", { name: `Newsletter ${status}` })).toBeVisible();
+    await page.goto("/campaigns");
+  }
+  expect(state.duplicates).toEqual([2, 1]);
+});
+
+test("sent campaign report offers duplication", async ({ page, context }) => {
+  const state = await fixture(context);
+  await page.goto("/campaigns/2/report");
+  await page.getByRole("button", { name: "Duplicate", exact: true }).click();
+  await expect(page).toHaveURL(/\/campaigns\/8$/);
+  expect(state.duplicates).toEqual([2]);
 });

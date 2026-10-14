@@ -191,7 +191,8 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
               </Button>
               <Button
                 variant="outline"
-                disabled={busy}
+                disabled={busy || save.isPending || (editable && dirty)}
+                title={editable && dirty ? "Save changes before duplicating" : undefined}
                 onClick={() => action("duplicate")}
               >
                 Duplicate

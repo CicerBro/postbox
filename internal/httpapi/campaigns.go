@@ -227,15 +227,16 @@ func (a *API) campaignAction(w http.ResponseWriter, r *http.Request) {
 	case has(action, "duplicate"):
 		var newID int64
 		err = a.db.Immediate(r.Context(), func(c *sql.Conn) error {
-			res, e := c.ExecContext(r.Context(), "INSERT INTO campaigns(brand_id,uuid,status,subject,html,text,inline_css,created_at,updated_at,created_by) SELECT brand_id,?,'draft',subject,html,text,inline_css,?,?,NULLIF(?,0) FROM campaigns WHERE id=?", uuid.NewString(), time.Now().UnixMilli(), time.Now().UnixMilli(), r.Context().Value(identityKey{}).(*identity).UserID, id)
-			if e != nil {
+			now := time.Now().UnixMilli()
+			res, e := c.ExecContext(r.Context(), "INSERT INTO campaigns(brand_id,uuid,status,subject,html,text,inline_css,created_at,updated_at,created_by) SELECT brand_id,?,'draft',subject,html,text,inline_css,?,?,NULLIF(?,0) FROM campaigns WHERE id=? AND brand_id=?", uuid.NewString(), now, now, i.UserID, id, brand)
+			if e = requireChanged(res, e); e != nil {
 				return e
 			}
 			newID, e = res.LastInsertId()
 			if e != nil {
 				return e
 			}
-			_, e = c.ExecContext(r.Context(), "INSERT INTO campaign_targets SELECT ?,target_type,target_id,mode FROM campaign_targets WHERE campaign_id=?", newID, id)
+			_, e = c.ExecContext(r.Context(), "INSERT INTO campaign_targets(campaign_id,target_type,target_id,mode) SELECT ?,target_type,target_id,mode FROM campaign_targets WHERE campaign_id=?", newID, id)
 			return e
 		})
 		result(w, map[string]int64{"id": newID}, err)

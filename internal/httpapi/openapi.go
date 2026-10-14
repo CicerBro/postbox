@@ -80,6 +80,11 @@ func (a *API) documentRoute(pattern string) {
 	if method != "GET" && method != "DELETE" {
 		op["requestBody"] = map[string]any{"required": true, "content": map[string]any{"application/json": map[string]any{"schema": requestSchema(path)}}}
 	}
+	if method == "POST" && path == "/api/v1/campaigns/{id}/duplicate" {
+		delete(op, "requestBody")
+		op["description"] = "Copy the saved subject, HTML, text version, CSS setting, and audience targets of any campaign into a new draft. The new draft has its own ID and does not inherit schedule or delivery history."
+		op["responses"].(map[string]any)["200"] = map[string]any{"description": "New draft campaign", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"id"}, "properties": map[string]any{"id": map[string]any{"type": "integer"}}}}}}
+	}
 	if method != "GET" && path != "/api/v1/auth/login" && !strings.HasPrefix(path, "/subscribe/") && !strings.HasPrefix(path, "/confirm/") {
 		op["parameters"] = append(parameters, map[string]any{"name": "X-CSRF-Token", "in": "header", "required": false, "description": "Required for mutations authenticated by the session cookie. Returned by login or session endpoint; Scalar adds it automatically for the signed-in user.", "schema": map[string]any{"type": "string"}})
 	}

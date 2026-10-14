@@ -1,7 +1,7 @@
 import { useDateTime } from "../lib/date-time";
 import { onSessionExpired } from "../lib/session-lifecycle";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, download } from "../lib/api";
 import { SelectField } from "../components/ui/select";
@@ -27,6 +27,7 @@ import {
   CircleAlert,
   ArrowLeft,
   Activity,
+  Copy,
 } from "lucide-react";
 import {
   Card,
@@ -85,6 +86,7 @@ export function CampaignReportPage({ brandId }: { brandId: number }) {
 }
 function ReportView({ brandId, id }: { brandId: number; id: number }) {
   const { formatDateTime } = useDateTime();
+  const navigate = useNavigate();
   const countrySort = useTableSort<"country" | "opens" | "clicks">("opens", "desc");
   const client = useQueryClient(),
     [status, setStatus] = useState(""),
@@ -93,6 +95,8 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     [stream, setStream] = useState("Connecting live updates"),
     [exportError, setExportError] = useState<unknown>(null),
     [exporting, setExporting] = useState(false),
+    [duplicating, setDuplicating] = useState(false),
+    [duplicateError, setDuplicateError] = useState<unknown>(null),
     [previewWidth, setPreviewWidth] = useState<"desktop" | "mobile">("desktop");
   const valid = Number.isSafeInteger(id) && id > 0 && brandId > 0;
   const campaign = useQuery({
@@ -168,6 +172,22 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
       setExporting(false);
     }
   }
+  async function duplicateCampaign() {
+    setDuplicating(true);
+    setDuplicateError(null);
+    try {
+      const copy = await api<{ id: number }>(`/campaigns/${id}/duplicate`, {
+        method: "POST",
+        brandId,
+      });
+      client.invalidateQueries({ queryKey: ["campaigns", brandId] });
+      navigate(`/campaigns/${copy.id}`);
+    } catch (e) {
+      setDuplicateError(e);
+    } finally {
+      setDuplicating(false);
+    }
+  }
   if (!valid) return <ErrorMessage error={new Error("Invalid campaign ID")} />;
   const stats = report.data?.stats?.[0];
   const metrics: [string, string][] = [
@@ -228,13 +248,14 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
         </div>
         <div className="flex flex-wrap gap-2">
         {campaign.data?.[0] && !isFinishedCampaign(campaign.data[0].status) && <Button variant="outline" asChild><Link to={`/campaigns/${id}`}>Manage campaign</Link></Button>}
+        {campaign.data?.[0] && <Button variant="outline" disabled={duplicating} onClick={duplicateCampaign}><Copy size={16} /> {duplicating ? "Duplicating…" : "Duplicate"}</Button>}
         <Button variant="outline" disabled={exporting} onClick={exportCSV}>
           <Download size={16} />{" "}
           {exporting ? "Exporting…" : "Export recipients CSV"}
         </Button>
         </div>
       </div>
-      <ErrorMessage error={campaign.error ?? report.error ?? exportError} />
+      <ErrorMessage error={campaign.error ?? report.error ?? exportError ?? duplicateError} />
       {report.data?.delivery && (
         <Card><CardContent className="pt-5">
           <dl className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
