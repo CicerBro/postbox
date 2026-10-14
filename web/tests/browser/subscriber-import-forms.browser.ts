@@ -21,6 +21,28 @@ async function subscriberFixture(context: BrowserContext) {
   return writes;
 }
 
+test("new subscriber can be added to a list without recording consent", async ({ page, context }) => {
+  await subscriberFixture(context);
+  const payloads: Record<string, unknown>[] = [];
+  await page.route((url) => url.pathname === "/api/v1/subscribers", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    payloads.push(route.request().postDataJSON());
+    await route.fulfill({ json: { id: 1, email: "ada@example.org" } });
+  });
+  await page.goto("/subscribers");
+  await page.getByRole("button", { name: "New subscriber" }).click();
+  const dialog = page.getByRole("dialog", { name: "New subscriber" });
+  await dialog.getByRole("textbox", { name: "Email" }).fill("ada@example.org");
+  await dialog.getByRole("checkbox", { name: /Weekly news/ }).check();
+  await expect(dialog.getByRole("checkbox", { name: /Record newly obtained GDPR consent/ })).not.toBeChecked();
+  const save = dialog.getByRole("button", { name: "Save profile" });
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  expect(payloads).toHaveLength(1);
+  expect(payloads[0]).toMatchObject({ email: "ada@example.org", list_ids: [42], consent: false });
+});
+
 test("pasted CSV shares mapping, preview and confirmed import with file uploads", async ({ page, context }) => {
   const writes = await subscriberFixture(context);
   await page.goto("/subscribers");

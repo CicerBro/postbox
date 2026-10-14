@@ -351,8 +351,8 @@ export function SubscriberProfile({
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                Record explicit consent above before subscribing. Double opt-in
-                memberships require confirmation.
+                Recording consent above is optional. Double opt-in memberships
+                require confirmation.
               </p>
             </fieldset>
           )}
@@ -362,8 +362,7 @@ export function SubscriberProfile({
               disabled={
                 !canWrite ||
                 action.isPending ||
-                !email.trim() ||
-                (!subscriber && creationLists.length > 0 && !consent)
+                !email.trim()
               }
               onClick={save}
             >
