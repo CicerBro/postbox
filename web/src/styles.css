@@ -1203,12 +1203,70 @@
   .campaign-actions-cell {
     width: 1%;
     white-space: nowrap;
+    position: sticky;
+    right: 0;
+    background: var(--background);
+    box-shadow: -8px 0 12px -12px #0008;
+  }
+  .campaign-status-cell {
+    min-width: 110px;
+  }
+  .campaigns-table tbody tr:nth-child(even) .campaign-actions-cell {
+    background: color-mix(in srgb, var(--soft) 50%, var(--surface));
+  }
+  .campaigns-table tbody tr:hover .campaign-actions-cell {
+    background: var(--soft);
+  }
+  .campaign-name-cell .campaign-progress-compact {
+    min-width: 190px;
+    max-width: 210px;
+  }
+  .campaigns-table th:first-child,
+  .campaign-name-cell {
+    min-width: 250px;
+  }
+  .campaigns-table th {
+    white-space: nowrap;
+  }
+  .campaigns-table thead th button {
+    column-gap: 12px;
+  }
+  .campaigns-table th:nth-child(3),
+  .campaigns-table td:nth-child(3),
+  .campaigns-table th:nth-child(5),
+  .campaigns-table td:nth-child(5),
+  .campaigns-table th:nth-child(6),
+  .campaigns-table td:nth-child(6) {
+    width: 1%;
+    white-space: nowrap;
+  }
+  .campaign-name-cell .campaign-progress {
+    margin-top: 8px;
+  }
+  .campaign-head-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .campaign-head-input {
+    margin-top: 4px;
+    width: 100%;
+  }
+  .campaign-head-controls > .button {
+    min-width: 32px;
+    min-height: 32px;
+    height: 32px;
+    width: 32px;
   }
   .campaign-row-actions {
     display: flex;
     align-items: center;
     gap: 8px;
-    min-width: 128px;
+    min-width: 72px;
+  }
+  .campaign-row-actions .button-icon {
+    width: 32px;
+    padding: 7px;
   }
   .campaign-row-actions .button.button-ghost {
     height: 32px;

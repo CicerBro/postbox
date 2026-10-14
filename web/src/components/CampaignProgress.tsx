@@ -44,7 +44,7 @@ export function CampaignProgress({ stats, status, observedAt, compact = false, f
         <div>
           {!compact && <p className="text-3xl font-semibold tabular-nums">{Math.floor(progress.percent)}%</p>}
           <p className={compact ? "text-sm font-medium tabular-nums" : "row-subtitle mt-1 tabular-nums"}>
-            {number(progress.processed)} / {number(progress.recipients)} processed
+            {compact ? `${number(progress.pending)} remaining` : `${number(progress.processed)} / ${number(progress.recipients)} processed`}
           </p>
         </div>
         {compact ? <span className="row-subtitle tabular-nums">{Math.floor(progress.percent)}%</span> : (
@@ -54,9 +54,7 @@ export function CampaignProgress({ stats, status, observedAt, compact = false, f
       <div className="campaign-progress-track" role="progressbar" aria-label="Recipients processed" aria-valuenow={Math.floor(progress.percent)} aria-valuemin={0} aria-valuemax={100}>
         <div style={{ width: `${progress.percent}%` }} />
       </div>
-      {compact ? (
-        <p className="row-subtitle tabular-nums">{number(progress.pending)} pending · {estimate}</p>
-      ) : (
+      {!compact && (
         <dl className="campaign-progress-counters">
           {([ ["Sent", progress.sent], ["Pending", progress.pending], ["Failed", progress.failed], ["Skipped", progress.skipped], ...(progress.unknown ? [["Unknown", progress.unknown] as const] : []) ] as const).map(([label, value]) => (
             <div key={label}><dt className="row-subtitle">{label}</dt><dd className={`mt-1 text-xl font-semibold tabular-nums ${label === "Failed" && value > 0 ? "text-destructive" : ""}`}>{number(value)}</dd></div>

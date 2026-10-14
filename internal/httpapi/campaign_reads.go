@@ -16,8 +16,8 @@ func (a *API) campaignRows(r *http.Request, brand, id int64) ([]map[string]any, 
 	from := "campaigns c"
 	if summary {
 		// Durable counters use a primary-key lookup, never a recipient scan.
-		projection = "c.id,c.subject,c.status,c.created_at,c.scheduled_at,c.html,s.recipients,s.sent,s.failed,s.skipped,s.unknown"
-		from += " LEFT JOIN campaign_stats s ON s.campaign_id=c.id AND c.status IN ('preparing','sending','paused')"
+		projection = "c.id,c.subject,c.status,c.created_at,c.scheduled_at,c.finished_at,c.html,s.recipients,s.sent,s.failed,s.skipped,s.unknown,s.opens_unique,s.clicks_unique"
+		from += " LEFT JOIN campaign_stats s ON s.campaign_id=c.id"
 	}
 	after, limit := page(r)
 	q := "SELECT " + projection + " FROM " + from + " WHERE c.brand_id=? AND c.id>? ORDER BY c.id LIMIT ?"
@@ -82,21 +82,29 @@ func (a *API) queryCampaignSummaries(ctx context.Context, query string, args ...
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, created int64
-		var scheduled sql.NullInt64
+		var scheduled, finished sql.NullInt64
 		var subject, status, content string
-		var recipients, sent, failed, skipped, unknown sql.NullInt64
-		if err := rows.Scan(&id, &subject, &status, &created, &scheduled, &content, &recipients, &sent, &failed, &skipped, &unknown); err != nil {
+		var recipients, sent, failed, skipped, unknown, opensUnique, clicksUnique sql.NullInt64
+		if err := rows.Scan(&id, &subject, &status, &created, &scheduled, &finished, &content, &recipients, &sent, &failed, &skipped, &unknown, &opensUnique, &clicksUnique); err != nil {
 			return nil, err
 		}
 		var scheduledAt any
 		if scheduled.Valid {
 			scheduledAt = scheduled.Int64
 		}
+		var finishedAt any
+		if finished.Valid {
+			finishedAt = finished.Int64
+		}
 		var progress any
-		if recipients.Valid {
+		if recipients.Valid && (status == "preparing" || status == "sending" || status == "paused") {
 			progress = map[string]int64{"recipients": recipients.Int64, "sent": sent.Int64, "failed": failed.Int64, "skipped": skipped.Int64, "unknown": unknown.Int64}
 		}
-		out = append(out, map[string]any{"id": id, "subject": subject, "status": status, "created_at": created, "scheduled_at": scheduledAt, "excerpt": campaignExcerpt(content), "progress": progress})
+		var stats any
+		if recipients.Valid {
+			stats = map[string]int64{"recipients": recipients.Int64, "sent": sent.Int64, "opens_unique": opensUnique.Int64, "clicks_unique": clicksUnique.Int64}
+		}
+		out = append(out, map[string]any{"id": id, "subject": subject, "status": status, "created_at": created, "scheduled_at": scheduledAt, "finished_at": finishedAt, "excerpt": campaignExcerpt(content), "progress": progress, "stats": stats})
 	}
 	return out, rows.Err()
 }

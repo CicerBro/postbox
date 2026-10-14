@@ -90,3 +90,46 @@ func TestCampaignTableSortingAndPagination(t *testing.T) {
 		t.Fatalf("summary scheduled and sent order: %v", summary)
 	}
 }
+
+func TestCampaignSummaryIncludesFinishedDeliveryMetrics(t *testing.T) {
+	_, mux, db, cookie, _ := setup(t)
+	brand, err := subscribers.New(db).CreateBrand(context.Background(), subscribers.Brand{Name: "Brand", FromEmail: "sender@example.org"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, campaign := range []struct {
+		id, status string
+		finished   any
+	}{
+		{"scheduled", "scheduled", nil},
+		{"sent", "sent", int64(1700000000000)},
+	} {
+		_, err := db.Writer.Exec("INSERT INTO campaigns(brand_id,uuid,status,subject,html,created_at,updated_at,scheduled_at,finished_at) VALUES(?,?,?,?,?,1,1,?,?)", brand.ID, campaign.id, campaign.status, campaign.id, "<p>Hello</p>", int64(1700000010000), campaign.finished)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Writer.Exec("INSERT INTO campaign_stats(campaign_id,recipients,sent,opens_unique,clicks_unique) SELECT id,1200,1180,400,75 FROM campaigns WHERE uuid='sent'"); err != nil {
+		t.Fatal(err)
+	}
+	w := request(mux, "GET", fmt.Sprintf("/api/v1/campaigns?brand_id=%d&offset=0&summary=true", brand.ID), "", &cookie, "")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var rows []struct {
+		Status     string `json:"status"`
+		FinishedAt *int64 `json:"finished_at"`
+		Stats      *struct {
+			Recipients   int64 `json:"recipients"`
+			Sent         int64 `json:"sent"`
+			OpensUnique  int64 `json:"opens_unique"`
+			ClicksUnique int64 `json:"clicks_unique"`
+		} `json:"stats"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].Status != "scheduled" || rows[0].Stats != nil || rows[0].FinishedAt != nil || rows[1].Status != "sent" || rows[1].FinishedAt == nil || *rows[1].FinishedAt != 1700000000000 || rows[1].Stats == nil || rows[1].Stats.Recipients != 1200 || rows[1].Stats.Sent != 1180 || rows[1].Stats.OpensUnique != 400 || rows[1].Stats.ClicksUnique != 75 {
+		t.Fatalf("unexpected campaign summaries: %+v", rows)
+	}
+}

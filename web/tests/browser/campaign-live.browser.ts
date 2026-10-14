@@ -2,8 +2,8 @@ import { expect, test, type Page, type BrowserContext } from "@playwright/test";
 
 async function fixture(page: Page, context: BrowserContext) {
   const state = {
-    status: "sending", admin: true, owner: 1, reads: 0, failPause: false, failReport: false,
-    stats: { recipients: 100, sent: 50, failed: 5, skipped: 3, unknown: 2 },
+    status: "sending", admin: true, owner: 1, reads: 0, lastSearch: "", failPause: false, failReport: false,
+    stats: { recipients: 100, sent: 50, failed: 5, skipped: 3, unknown: 2, opens_unique: 12, clicks_unique: 4 },
     actions: [] as string[],
   };
   await page.addInitScript(() => {
@@ -27,7 +27,7 @@ async function fixture(page: Page, context: BrowserContext) {
   await context.route("**/api/v1/**", async route => {
     const request = route.request(), url = new URL(request.url());
     const path = url.pathname.replace("/api/v1", "");
-    const campaign = { id: 7, subject: "October newsletter", html: "<p>Newsletter content</p>", text: "", inline_css: true, status: state.status, created_by: state.owner, created_at: 1700000000000, scheduled_at: null };
+    const campaign = { id: 7, subject: "October newsletter", html: "<p>Newsletter content</p>", text: "", inline_css: true, status: state.status, created_by: state.owner, created_at: 1700000000000, scheduled_at: null, finished_at: state.status === "sent" ? 1700000005000 : null };
     let body: unknown = [], status = 200;
     if (path === "/auth/session") body = { user_id: 1, admin: state.admin, csrf_token: "live-token" };
     else if (path === "/brands") body = [{ id: 1, name: "Acme", from_email: "a@example.org" }];
@@ -35,7 +35,8 @@ async function fixture(page: Page, context: BrowserContext) {
     else if (path === "/campaigns") {
       state.reads++;
       expect(url.searchParams.get("summary")).toBe("true");
-      body = [{ ...campaign, excerpt: "Newsletter content", progress: state.stats }, { id: 8, subject: "Next newsletter", status: "draft", excerpt: "Draft content", created_at: 1700000000000, scheduled_at: null, progress: null }];
+      state.lastSearch = url.searchParams.get("search") ?? "";
+      body = [{ ...campaign, excerpt: "Newsletter content", progress: state.stats, stats: state.stats }, { id: 8, subject: "Next newsletter", status: "scheduled", excerpt: "Draft content", created_at: 1700000000000, scheduled_at: 1700000010000, finished_at: null, progress: null, stats: null }].filter(c => c.subject.toLowerCase().includes(state.lastSearch.toLowerCase()));
     } else if (path === "/campaigns/7") body = [campaign];
     else if (path === "/campaigns/7/report") {
       status = state.failReport ? 503 : 200;
@@ -56,32 +57,46 @@ async function fixture(page: Page, context: BrowserContext) {
 }
 
 for (const mobile of [false, true]) {
-  test(`campaign table swaps dates for live progress and refreshes on ${mobile ? "mobile" : "desktop"}`, async ({ page, context }, testInfo) => {
+  test(`campaign table shows delivery metrics and refreshes on ${mobile ? "mobile" : "desktop"}`, async ({ page, context }, testInfo) => {
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.clock.install();
     const state = await fixture(page, context);
     await page.goto("/campaigns");
-    await expect(page.getByRole("columnheader", { name: /Schedule \/ delivery/ })).toBeVisible();
+    await expect(page.getByRole("row").first().getByRole("columnheader").nth(0)).toContainText("Campaign");
+    await expect(page.getByRole("row").first().getByRole("columnheader").nth(1)).toContainText("Status");
+    await expect(page.getByRole("row").first().getByRole("columnheader").nth(2)).toHaveText("Recipients");
+    await expect(page.getByRole("row").first().getByRole("columnheader").nth(4)).toHaveText("Opens");
+    await expect(page.getByRole("row").first().getByRole("columnheader").nth(5)).toHaveText("Clicks");
     const row = page.getByRole("row").filter({ has: page.getByRole("link", { name: "October newsletter", exact: true }) });
-    await expect(row).toContainText("60 / 100 processed");
-    await expect(row).toContainText("40 pending");
-    await expect(row.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "60");
+    await expect(row).toContainText("40 remaining");
+    await expect(row).not.toContainText("60 / 100 processed");
+    await expect(row.locator("td").first().getByRole("progressbar")).toHaveAttribute("aria-valuenow", "60");
+    await expect(row.locator("td").nth(1)).toContainText("Sending");
     await expect(row.getByRole("link", { name: "October newsletter" })).toHaveAttribute("href", "/campaigns/7/report");
-    await expect(row.getByRole("link", { name: "View live" })).toBeVisible();
-    await expect(page.getByRole("row").filter({ hasText: "Next newsletter" })).toContainText("Created");
+    await expect(row).toContainText("12");
+    await expect(row).toContainText("4");
+    await expect(page.getByRole("row").filter({ hasText: "Next newsletter" })).toContainText("Scheduled");
     if (mobile) expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("campaign-live-table.png"), fullPage: true });
     expect(state.reads).toBe(1);
     state.stats.sent = 70;
     await page.clock.fastForward(5000);
-    await expect(row).toContainText("80 / 100 processed");
-    await expect(row).toContainText("20 pending");
-    await expect(row).toContainText(/~[56]s left/);
+    await expect(row).toContainText("20 remaining");
     state.status = "sent";
     await page.clock.fastForward(5000);
-    await expect(page.getByRole("columnheader", { name: /Created/ })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: /Scheduled/ })).toBeVisible();
+    await expect(row.locator("td").nth(3)).toContainText("Nov 14, 2023");
+    await expect(row).not.toContainText("Newsletter content");
+    await expect(page.getByRole("columnheader", { name: /Created/ })).toHaveCount(0);
     await expect(page.getByRole("progressbar")).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("campaign-sent-table.png"), fullPage: true });
+    await page.getByRole("button", { name: "Search campaigns" }).click();
+    const search = page.getByRole("textbox", { name: "Search campaigns" });
+    await expect(search).toBeFocused();
+    await search.pressSequentially("October");
+    await expect(page.getByRole("row").filter({ hasText: "Next newsletter" })).toHaveCount(0);
+    expect(state.lastSearch).toBe("October");
+    await page.getByRole("button", { name: "Close campaign search" }).click();
+    await expect(page.getByRole("row").filter({ hasText: "Next newsletter" })).toBeVisible();
   });
 }
 
