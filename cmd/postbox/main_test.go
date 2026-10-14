@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -191,6 +193,15 @@ func TestServeProcess(t *testing.T) {
 }
 
 func TestServeHealthAndGracefulShutdown(t *testing.T) {
+	testServeShutdown(t, false)
+}
+
+func TestServeShutdownWithActiveReport(t *testing.T) {
+	testServeShutdown(t, true)
+}
+
+func testServeShutdown(t *testing.T, activeReport bool) {
+	t.Helper()
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/v2/email/account" {
@@ -212,6 +223,28 @@ func TestServeHealthAndGracefulShutdown(t *testing.T) {
 	address := listener.Addr().String()
 	listener.Close()
 	dir := t.TempDir()
+	if activeReport {
+		db, err := store.Open(filepath.Join(dir, "serve.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, query := range []string{
+			`INSERT INTO brands(id,name,from_name,from_email,created_at) VALUES(1,'Stream','','stream@example.org',1)`,
+			`INSERT INTO campaigns(id,brand_id,uuid,status,subject,html,created_at,updated_at) VALUES(1,1,'stream','sent','Stream','<p>Stream</p>',1,1)`,
+			`INSERT INTO campaign_stats(campaign_id) VALUES(1)`,
+		} {
+			if _, err := db.Writer.Exec(query); err != nil {
+				db.Close()
+				t.Fatal(err)
+			}
+		}
+		hash := sha256.Sum256([]byte("shutdown.secret"))
+		_, err = db.Writer.Exec(`INSERT INTO api_keys(brand_id,name,prefix,secret_hash,scopes,created_at) VALUES(1,'Shutdown','shutdown',?,'["read"]',1)`, hash[:])
+		db.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	var output bytes.Buffer
 	child := exec.Command(os.Args[0], "-test.run=^TestServeProcess$")
 	child.Env = append(os.Environ(), "POSTBOX_TEST_SERVE_CHILD=1", "POSTBOX_DB="+filepath.Join(dir, "serve.db"), "POSTBOX_SECRET_FILE="+filepath.Join(dir, "tracking.secret"), "POSTBOX_BACKUP_DIR="+filepath.Join(dir, "backups"), "POSTBOX_LISTEN="+address, "POSTBOX_BASE_URL=http://localhost:"+strings.Split(address, ":")[1], "POSTBOX_DEVELOPMENT=true", "POSTBOX_SECURE_COOKIES=false", "POSTBOX_AWS_REGION=eu-west-1", "AWS_ACCESS_KEY_ID=", "AWS_SECRET_ACCESS_KEY=", "AWS_SESSION_TOKEN=", "AWS_EC2_METADATA_DISABLED=true", "AWS_ENDPOINT_URL="+fake.URL, "POSTBOX_NOTIFICATION_TO=", "POSTBOX_SHUTDOWN_TIMEOUT=5s")
@@ -245,6 +278,27 @@ func TestServeHealthAndGracefulShutdown(t *testing.T) {
 		child.Wait()
 		t.Fatalf("server never healthy: %s", output.String())
 	}
+	if activeReport {
+		request, err := http.NewRequest("GET", "http://"+address+"/api/v1/campaigns/1/events?brand_id=1", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Authorization", "Bearer shutdown.secret")
+		response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("stream status: %d", response.StatusCode)
+		}
+		line, err := bufio.NewReader(response.Body).ReadString('\n')
+		if err != nil || line != "event: stats\n" {
+			t.Fatalf("stream event: %q %v", line, err)
+		}
+		// Keep the live response open until after the child exits.
+	}
+	shutdownStarted := time.Now()
 	if err := child.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)
 	}
@@ -259,6 +313,9 @@ func TestServeHealthAndGracefulShutdown(t *testing.T) {
 		child.Process.Kill()
 		<-done
 		t.Fatalf("shutdown exceeded deadline: %s", output.String())
+	}
+	if activeReport && time.Since(shutdownStarted) >= 3*time.Second {
+		t.Fatalf("active report delayed shutdown: %s\n%s", time.Since(shutdownStarted), output.String())
 	}
 	db, err := store.Open(filepath.Join(dir, "serve.db"))
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -196,7 +197,15 @@ func serve(db *store.DB, c config.Config) error {
 		fmt.Fprintf(w, "postbox_tracking_dropped_opens %d\n", tracker.DroppedOpens.Load())
 	})
 	mux.Handle("/", web.Handler())
-	server := &http.Server{Addr: c.Listen, Handler: requestLog(mux), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 0, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 1 << 20}
+	// Cancel request contexts on termination so live report streams finish before
+	// Shutdown waits for handlers. Tracking keeps its separate context until the
+	// HTTP handlers have stopped, then flushes its queued events.
+	server := &http.Server{
+		Addr: c.Listen, Handler: requestLog(mux),
+		BaseContext:       func(net.Listener) context.Context { return ctx },
+		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second,
+		WriteTimeout: 0, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 1 << 20,
+	}
 	errorsCh := make(chan error, 5)
 	done := make(chan struct{}, 4)
 	workers := 3

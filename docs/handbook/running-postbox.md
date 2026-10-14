@@ -57,6 +57,45 @@ Postbox derives passkey trust from the configured origin, rather than request he
 
 By default Postbox trusts no proxy headers. Set `POSTBOX_TRUSTED_PROXIES` to the specific IP addresses or CIDRs of proxies you control. A same-host example is `127.0.0.1,::1`; a container may instead see a bridge or gateway address. Avoid broad client networks and prevent clients from bypassing the proxy.
 
+### nginx on the host, Postbox in Docker
+
+nginx can log the correct visitor IP while Postbox still sees the proxy address. Cloudflare real-IP handling changes nginx's client address; nginx opens a separate connection to Postbox. With nginx on the host and Postbox behind Compose's published `127.0.0.1:8080` port, the container may see the Docker network gateway as the connecting peer. Trust that address in Postbox even though nginx itself is not containerised.
+
+Forward nginx's resolved visitor address in the Postbox proxy configuration:
+
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-For $remote_addr;
+```
+
+This assumes nginx's Cloudflare real-IP configuration already trusts the appropriate Cloudflare proxies. Postbox reads `X-Forwarded-For`; it does not use `CF-Connecting-IP` or `X-Real-IP` directly.
+
+Find the container's network gateway:
+
+```sh
+docker inspect "$(docker compose ps -q postbox)" --format '{{range .NetworkSettings.Networks}}gateway={{.Gateway}}{{println}}{{end}}'
+```
+
+Add that exact address to `POSTBOX_TRUSTED_PROXIES` in the server's `.env`, alongside any needed loopback addresses. For a gateway of `172.20.0.1`:
+
+```dotenv
+POSTBOX_TRUSTED_PROXIES=127.0.0.1,::1,172.20.0.1
+```
+
+Use your gateway value; Docker network addresses vary between deployments and can change when networks are recreated. The loopback values in `.env.example` alone may not cover the host-to-container connection.
+
+Recreate the container after changing `.env`:
+
+```sh
+docker compose up -d --force-recreate postbox
+```
+
+`docker compose restart` retains the container's old environment. Editing `.env.example` also does not change the deployed `.env`. Check just the effective tracking settings without displaying other environment values:
+
+```sh
+docker inspect "$(docker compose ps -q postbox)" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^POSTBOX_(GEOIP|TRUSTED_PROXIES)='
+```
+
 Each trusted proxy must overwrite incoming `X-Forwarded-For` at the first ingress or append the actual peer when retaining a chain. Postbox reads the chain from right to left and stops at the nearest untrusted IP. `Forwarded` and `X-Real-IP` are ignored. Invalid entries or an oversized chain fall back to the socket peer.
 
 If Cloudflare proxies the instance, configure a [Browser Integrity Check skip rule](configuration.md#browser-integrity-check) for the deployment's hostname and the `/u/` and `/c/` path prefixes. This allows unsubscribe requests and tracked click redirects from email clients and link scanners to reach Postbox.
@@ -68,6 +107,20 @@ Set `POSTBOX_GEOIP` (or `--geoip`) to a readable GeoLite2 Country or GeoIP2 Coun
 Compose uses `/var/lib/postbox/GeoLite2-Country.mmdb` inside the `postbox-data` volume. Copy your MMDB there or add a read-only bind mount for your local file at that container path. Ensure UID `65532` can read it. A file on the host is only available to the container when copied into its volume or mounted.
 
 Website links in sent HTML use `/c/` redirects and count as clicks. The “view online” link uses `/w/` and does not itself count as a click. Opening that browser version can load the tracking pixel and record an open. Country rows are recorded for new opens and clicks whose IP resolves in the database; enabling GeoIP does not backfill earlier activity.
+
+### Clicks work but the country report is empty
+
+Click counters are saved even when country lookup returns no result. Check that the running container has the expected `POSTBOX_GEOIP` and `POSTBOX_TRUSTED_PROXIES` values, the MMDB is readable at the container path, and nginx forwards the resolved visitor IP. In the host-nginx setup above, trusting only loopback can make GeoIP look up Docker's private gateway instead of the visitor's public address.
+
+After applying the settings, click a website link in a sent email and refresh the campaign report. Use a new event: previous activity cannot be backfilled because its source IP is not retained.
+
+## Restart and shutdown timing
+
+`POSTBOX_SHUTDOWN_TIMEOUT` defaults to `60s`; Compose allows `75s` before forcibly stopping the container. These are maximum waiting periods, not intentional delays. A recreate that consistently takes around 60 seconds can mean the old process spends its full shutdown budget waiting for work to finish before the replacement starts.
+
+Campaign report pages keep a live HTTP connection open for statistics updates. Older builds did not cancel that request when receiving `SIGTERM`, so an open report could hold shutdown until the 60-second timeout. If recreating is fast with report tabs closed but slow while they are open, this connection is holding shutdown open.
+
+Postbox now cancels request contexts on termination, closes the live report streams, and flushes queued tracking events before exiting. Until you deploy a build with this fix, close Postbox report tabs before recreating the container. Keep the supervisor's stop grace period longer than Postbox's shutdown timeout so pending work has time to finish.
 
 ## Manage access
 
