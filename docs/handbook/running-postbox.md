@@ -124,6 +124,8 @@ Postbox now cancels request contexts on termination, closes the live report stre
 
 ## Manage access
 
+Administrators can customize the sign-in tagline under **System Settings > Deployment** (`/admin/deployment`). Use **Show tagline** to turn it on or off and **Tagline text** to enter up to 500 characters of plain text, then select **Save tagline**. HTML and Markdown appear literally. Hiding the tagline keeps the saved text. Changes apply without restarting Postbox.
+
 Password login requires an authenticator code when TOTP is enabled. Enrolment starts with password confirmation and finishes after a valid code; removal requires the password and current code. Changing a password or TOTP factor revokes existing sessions.
 
 Passkeys use device verification such as a PIN or biometrics. Adding or removing one requires password confirmation and the existing TOTP code when enabled. Removing a passkey revokes the user's sessions and pending passkey ceremonies.

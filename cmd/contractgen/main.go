@@ -21,6 +21,7 @@ type contract struct {
 }
 
 var contracts = []contract{
+	{"internal/httpapi/tagline_settings.go", "TaglineSettings"},
 	{"internal/httpapi/auth.go", "SessionResponse"},
 	{"internal/httpapi/preferences.go", "PreferencesResponse"},
 	{"internal/httpapi/auth.go", "LoginResponse"},

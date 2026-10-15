@@ -1,17 +1,18 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Mail, KeyRound, ShieldCheck, ArrowRight } from "lucide-react";
 import { api } from "../lib/api";
-import type { LoginResponse, TOTPChallengeResponse } from "../lib/generated-contracts";
+import type { LoginResponse, TOTPChallengeResponse, TaglineSettings } from "../lib/generated-contracts";
 import { requestOptions, credentialJSON } from "../lib/webauthn";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Turnstile } from "../components/Turnstile";
+type AuthConfig = { turnstile_required: boolean; turnstile_site_key: string; tagline: TaglineSettings };
 export function Login({ onLogin, expired = false }: { onLogin: () => Promise<void>; expired?: boolean }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [totp, setTotp] = useState(false);
   const [totpRequired, setTotpRequired] = useState(false);
-  const [authConfig, setAuthConfig] = useState<{ turnstile_required: boolean; turnstile_site_key: string } | null>(null);
+  const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
   const [configError, setConfigError] = useState("");
   const [configRetry, setConfigRetry] = useState(0);
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -19,7 +20,7 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
   useEffect(() => {
     const controller = new AbortController();
     setConfigError("");
-    api<{ turnstile_required: boolean; turnstile_site_key: string }>("/auth/config", { signal: controller.signal }).then(config => {
+    api<AuthConfig>("/auth/config", { signal: controller.signal }).then(config => {
       if (typeof config.turnstile_required !== "boolean" || typeof config.turnstile_site_key !== "string" || (config.turnstile_required && !config.turnstile_site_key)) {
         throw new Error("Sign-in verification is not configured correctly.");
       }
@@ -182,10 +183,12 @@ export function Login({ onLogin, expired = false }: { onLogin: () => Promise<voi
             </>
           )}
       </div>
-      <p className="login-footer">
-        <ShieldCheck size={13} /> Self-hosted. Your audience, under your
-        control.
-      </p>
+      {authConfig?.tagline?.enabled && authConfig.tagline.text && (
+        <p className="login-footer max-w-lg">
+          <ShieldCheck size={13} className="shrink-0" aria-hidden="true" />
+          <span className="min-w-0 whitespace-pre-wrap break-words">{authConfig.tagline.text}</span>
+        </p>
+      )}
     </main>
   );
 }

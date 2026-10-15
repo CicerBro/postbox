@@ -10,6 +10,7 @@ import { Users } from "../components/settings/Users";
 import { Jobs, JobRetention } from "../components/settings/Jobs";
 import { AmazonSES } from "../components/settings/AmazonSES";
 import { PublicSubscriptions } from "../components/settings/PublicSubscriptions";
+import { Tagline } from "../components/settings/Tagline";
 import { ProfilePreferences } from "../components/settings/ProfilePreferences";
 import { TimezonePreferences } from "../components/settings/TimezonePreferences";
 import {
@@ -175,7 +176,10 @@ export function SettingsPage({
             <Suppressions scope="global" />
           )}
           {area === "admin" && section === "deployment" && (
-            <DeploymentSettings />
+            <>
+              <Tagline />
+              <DeploymentSettings />
+            </>
           )}
         </div>
       </div>

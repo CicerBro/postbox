@@ -50,8 +50,8 @@ func (a *API) documentRoute(pattern string) {
 	}
 	if path == "/api/v1/auth/config" {
 		op["parameters"] = []map[string]any{}
-		op["description"] = "Public sign-in configuration. Returns turnstile_required and the public turnstile_site_key; never returns the secret."
-		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Sign-in verification configuration", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"turnstile_required", "turnstile_site_key"}, "properties": map[string]any{"turnstile_required": map[string]any{"type": "boolean"}, "turnstile_site_key": map[string]any{"type": "string"}}}}}}
+		op["description"] = "Public sign-in configuration. Returns turnstile_required, the public turnstile_site_key and the plain-text tagline settings; never returns the secret."
+		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Sign-in configuration", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"turnstile_required", "turnstile_site_key", "tagline"}, "properties": map[string]any{"turnstile_required": map[string]any{"type": "boolean"}, "turnstile_site_key": map[string]any{"type": "string"}, "tagline": taglineSettingsSchema()}}}}}
 	}
 	if path == "/api/v1/openapi.json" {
 		op["security"] = []map[string]any{{"cookieAuth": []string{}}}
@@ -155,6 +155,7 @@ func (a *API) documentRoute(pattern string) {
 	documentAWSSettings(method, path, op)
 	documentAWSIdentity(method, path, op)
 	documentSubscriptionSettings(method, path, op)
+	documentTaglineSettings(method, path, op)
 	documentJobSettings(method, path, op)
 	documentPreferences(method, path, op)
 	methods[strings.ToLower(method)] = op

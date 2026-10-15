@@ -1,4 +1,4 @@
-import"./RequestError-DCSfkLb3.js";import"./status-badge-B6gSTcYL.js";var e=`<!DOCTYPE html>
+import"./RequestError-DCSfkLb3.js";import"./status-badge-DWei3EUt.js";var e=`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">

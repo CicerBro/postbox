@@ -15,9 +15,15 @@ func (a *API) authTurnstileRequired() bool {
 
 func (a *API) authConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
+	tagline, err := a.loadTaglineSettings(r.Context())
+	if err != nil {
+		fail(w, http.StatusInternalServerError, errors.New("sign-in configuration unavailable"))
+		return
+	}
 	respond(w, http.StatusOK, map[string]any{
 		"turnstile_required": a.authTurnstileRequired(),
 		"turnstile_site_key": a.cfg.TurnstileSiteKey,
+		"tagline":            tagline,
 	})
 }
 

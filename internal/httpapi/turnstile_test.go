@@ -122,7 +122,7 @@ func TestAuthTurnstileConfigAndPasskeyBegin(t *testing.T) {
 		t.Fatal("unsafe auth config", w.Body.String())
 	}
 	var config map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &config); err != nil || config["turnstile_required"] != true || config["turnstile_site_key"] != "public-key" || len(config) != 2 {
+	if err := json.Unmarshal(w.Body.Bytes(), &config); err != nil || config["turnstile_required"] != true || config["turnstile_site_key"] != "public-key" || config["tagline"] == nil || len(config) != 3 {
 		t.Fatal("invalid auth config", config)
 	}
 	w = request(mux, "POST", "/api/v1/auth/passkeys/login/begin", `{}`, nil, "")
