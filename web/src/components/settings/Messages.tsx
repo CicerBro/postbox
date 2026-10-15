@@ -6,7 +6,7 @@ import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
 import { ChevronDown } from "lucide-react";
 import { Switch } from "../ui/switch";
-import { EmailEditor } from "../EmailEditor";
+import { EmailEditor } from "../LazyEmailEditor";
 import { Textarea } from "../ui/textarea";
 import { Section, Message, useAction } from "./Common";
 type Email = { subject: string; html: string; text?: string };

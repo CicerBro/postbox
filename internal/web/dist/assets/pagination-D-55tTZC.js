@@ -1,1 +1,0 @@
-import{i as e}from"./button-EYRx6QlG.js";async function t(t,n,r){let i=[],a=0;for(;;){let o=await e(`${t}${t.includes(`?`)?`&`:`?`}limit=500&after=${a}`,{brandId:n,signal:r});if(i.push(...o??[]),!o||o.length<500)return i;let s=o.at(-1).id;if(!Number.isSafeInteger(s)||s<=a)throw Error(`Invalid pagination cursor`);a=s}}export{t};

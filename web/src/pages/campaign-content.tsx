@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
-import { EmailEditor } from "../components/EmailEditor";
+import { EmailEditor } from "../components/LazyEmailEditor";
 import type { Named, Target, Template } from "./campaign-shared";
 
 type ContentProps = {

@@ -147,3 +147,25 @@ test("settings messages use the shared forbidden-error alert", async ({ page, co
   await page.goto("/brands/1/settings/general");
   await expect(page.getByRole("alert")).toContainText("Access denied (403): Example denied request");
 });
+
+test("templates and account settings only download the editor when opened", async ({ page, context }) => {
+  await fixture(context);
+  const editorRequests: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname === "/src/components/EmailEditor.tsx") editorRequests.push(request.url());
+  });
+  await page.goto("/account/preferences");
+  await expect(page.getByRole("heading", { name: "My account", exact: true })).toBeVisible();
+  await page.goto("/templates");
+  await expect(page.getByRole("button", { name: "Edit template Weekly", exact: true })).toBeVisible();
+  expect(editorRequests).toHaveLength(0);
+  let release: () => void = () => {};
+  const hold = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/src/components/EmailEditor.tsx*", async route => { await hold; await route.continue(); });
+  await page.getByRole("button", { name: "New template", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Loading email editor…");
+  await expect(page.getByRole("heading", { name: "Templates", exact: true })).toBeVisible();
+  release();
+  await expect(page.getByRole("button", { name: "Visual editor", exact: true })).toBeVisible();
+  expect(editorRequests).toHaveLength(1);
+});
