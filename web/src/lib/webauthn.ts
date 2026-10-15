@@ -62,6 +62,3 @@ export function credentialJSON(credential: PublicKeyCredential) {
     },
   };
 }
-export const parseCreationOptions = creationOptions;
-export const parseRequestOptions = requestOptions;
-export const serializeCredential = credentialJSON;

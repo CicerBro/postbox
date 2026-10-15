@@ -1,5 +1,4 @@
 import { Badge } from "../components/ui/badge";
-import { api } from "../lib/api";
 export type Campaign = {
   id: number;
   subject: string;
@@ -28,8 +27,6 @@ export const initialHTML =
   '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<style>body { font-family: Arial, sans-serif; }</style>\n</head>\n<body>\n<p>Hello {{ name | "there" }},</p>\n<p>Your newsletter goes here.</p>\n<p><a href="{{ unsubscribe }}">Unsubscribe</a> · <a href="{{ webversion }}">View online</a></p>\n</body>\n</html>';
 export const tableClass =
   "w-full text-sm [&_th]:text-left [&_th]:font-medium [&_th]:p-3 [&_td]:p-3 [&_tr]:border-b";
-export const selectClass =
-  "rounded-md border bg-background px-3 py-2 text-sm w-full";
 export { errorText, ErrorMessage } from "../components/RequestError";
 export { allPages as allRows } from "../lib/pagination";
 export const number = (n: number) => new Intl.NumberFormat().format(n);

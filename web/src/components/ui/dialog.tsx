@@ -4,8 +4,6 @@ import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
 export type DialogWidth = "sm" | "md" | "lg" | "xl";
 export const Dialog = DialogPrimitive.Root;
-export const DialogTrigger = DialogPrimitive.Trigger;
-export const DialogClose = DialogPrimitive.Close;
 export const DialogDescription = DialogPrimitive.Description;
 export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,

@@ -103,7 +103,6 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
     placeholderData: (previousData, previousQuery) => previousQuery?.queryKey[1] === brandId ? previousData : undefined,
     refetchInterval: query => query.state.data?.some(c => isLiveCampaign(c.status)) ? 5000 : 30000,
   });
-  const hasLiveCampaign = query.data?.some(c => isLiveCampaign(c.status));
   function sortBy(column: string) {
     setDirection(sort === column && direction === "asc" ? "desc" : "asc");
     setSort(column);

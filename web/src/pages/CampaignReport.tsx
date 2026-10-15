@@ -16,13 +16,11 @@ import {
 } from "../components/chart-tooltip";
 import {
   Download,
-  Users,
   Mail,
   UserMinus,
   ShieldAlert,
   Monitor,
   Smartphone,
-  CheckCircle2,
   Eye,
   MousePointerClick,
   CircleAlert,

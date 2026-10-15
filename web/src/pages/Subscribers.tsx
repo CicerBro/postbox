@@ -18,7 +18,6 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Link, useSearchParams } from "react-router-dom";
 import { Suppressions } from "../components/settings/Suppressions";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
@@ -37,8 +36,6 @@ import {
   type Subscriber,
   ErrorMessage,
   Field,
-  fieldValue,
-  parseFields,
   tableClass,
   useSubscriberAction,
   useCanWriteSubscribers,
