@@ -168,4 +168,40 @@ test("templates and account settings only download the editor when opened", asyn
   release();
   await expect(page.getByRole("button", { name: "Visual editor", exact: true })).toBeVisible();
   expect(editorRequests).toHaveLength(1);
+  await page.getByRole("button", { name: "Close editor", exact: true }).click();
+  await page.getByRole("button", { name: "New template", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Visual editor", exact: true })).toBeVisible();
+  await expect(page.getByText("Loading email editor…", { exact: true })).toHaveCount(0);
+  expect(editorRequests).toHaveLength(1);
+});
+
+test("closing during an editor download safely preserves the loaded module", async ({ page, context }) => {
+  await fixture(context);
+  let release: () => void = () => {};
+  const hold = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/src/components/EmailEditor.tsx*", async route => { await hold; await route.continue(); });
+  await page.goto("/templates");
+  await page.getByRole("button", { name: "New template", exact: true }).click();
+  await expect(page.getByText("Loading email editor…", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close editor", exact: true }).click();
+  release();
+  await expect(page.getByText("Loading email editor…", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit template Weekly", exact: true }).click();
+  await expect(page.locator(".cm-editor")).toContainText("Hello");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("failed editor downloads leave the page usable and offer reload", async ({ page, context }) => {
+  await fixture(context);
+  await page.route("**/src/components/EmailEditor.tsx*", route => route.abort());
+  await page.goto("/templates");
+  await page.getByRole("button", { name: "New template", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Could not load the email editor.");
+  await expect(page.getByRole("button", { name: "Reload page", exact: true })).toBeVisible();
+  await page.unroute("**/src/components/EmailEditor.tsx*");
+  await page.getByRole("button", { name: "Reload page", exact: true }).click();
+  await page.getByRole("button", { name: "New template", exact: true }).click();
+  await expect(page.locator(".cm-editor")).toBeVisible();
+  await page.getByRole("button", { name: "Close editor", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Edit template Weekly", exact: true })).toBeVisible();
 });
