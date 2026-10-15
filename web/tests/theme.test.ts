@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
 const bootstrap = readFileSync(
-  new URL("../public/theme-init.js", import.meta.url),
+  new URL("../src/theme-init.js", import.meta.url),
   "utf8",
 );
 function firstPaint(

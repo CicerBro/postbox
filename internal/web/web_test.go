@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"postbox/internal/htmlpolicy"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -60,6 +61,44 @@ func TestStaticCaching(t *testing.T) {
 		}
 		if strings.HasSuffix(entry.Name(), ".js") && !strings.Contains(w.Header().Get("Content-Type"), "javascript") {
 			t.Fatal("wrong JavaScript MIME")
+		}
+	}
+}
+
+func TestVersionedAppAssets(t *testing.T) {
+	html, err := assets.ReadFile("dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{}
+	for _, pattern := range []string{
+		`<script src="(/assets/theme-init-[^"]+\.js)"></script>`,
+		`href="(/assets/favicon-[^"]+\.ico)"`,
+		`href="(/assets/favicon-[^"]+\.svg)"`,
+		`href="(/assets/index-[^"]+\.css)"`,
+	} {
+		match := regexp.MustCompile(pattern).FindSubmatch(html)
+		if match == nil {
+			t.Fatalf("missing versioned asset: %s", pattern)
+		}
+		paths = append(paths, string(match[1]))
+	}
+	css, err := assets.ReadFile("dist" + paths[len(paths)-1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	font := regexp.MustCompile(`/assets/inter-latin-opsz-normal-[^\s)"']+\.woff2`).Find(css)
+	if font == nil {
+		t.Fatal("stylesheet must reference a versioned font")
+	}
+	paths = append(paths, string(font))
+	for _, assetPath := range paths {
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			w := httptest.NewRecorder()
+			Handler().ServeHTTP(w, httptest.NewRequest(method, assetPath, nil))
+			if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+				t.Fatalf("%s %s: status %d, headers %v", method, assetPath, w.Code, w.Header())
+			}
 		}
 	}
 }
