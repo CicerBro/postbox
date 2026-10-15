@@ -1,3 +1,4 @@
+import { useBrandPermission } from "../lib/use-brand-permission";
 import { Field } from "../components/ui/field";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { SortableTableHead } from "../components/SortableTableHead";
@@ -297,6 +298,7 @@ function segmentRuleSummary(rules: Rule | string): string {
 }
 function SegmentsWorkspace({ brandId }: { brandId: number }) {
   const sorting = useTableSort<"name" | "rules">("name");
+  const canWrite = useBrandPermission(brandId, "write");
   const [searchParams, setSearchParams] = useSearchParams();
   const [editing, setEditing] = useState<Segment | null>(null);
   const [search, setSearch] = useState("");
@@ -346,7 +348,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
     setLocalError(undefined);
   }, [brandId]);
   useEffect(() => {
-    if (!editing || !brandId) return;
+    if (!editing || !brandId || !canWrite) return;
     const abort = new AbortController();
     let live = true;
     const timer = setTimeout(() => {
@@ -369,7 +371,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
       clearTimeout(timer);
       abort.abort();
     };
-  }, [previewKey, editing, brandId, rule]);
+  }, [previewKey, editing, brandId, rule, canWrite]);
   const edit = (s?: Segment) => {
     action.reset();
     setLocalError(undefined);
@@ -389,13 +391,13 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
     }
   };
   useEffect(() => {
-    if (searchParams.get("new")) {
+    if (canWrite && searchParams.get("new")) {
       edit();
       const next = new URLSearchParams(searchParams);
       next.delete("new");
       setSearchParams(next, { replace: true });
     }
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, canWrite]);
   return (
     <div className="space-y-6">
       <div className="page-header flex flex-wrap items-end justify-between gap-2">
@@ -406,7 +408,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
             fields.
           </p>
         </div>
-        <Button onClick={() => edit()}>
+        <Button disabled={!canWrite} onClick={() => edit()}>
           <Plus size={16} />
           New segment
         </Button>
@@ -501,6 +503,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
                           size="icon"
                           variant="ghost"
                           className="action-edit"
+                          disabled={!canWrite}
                           aria-label={`Edit segment ${s.name}`}
                           title="Edit segment"
                           onClick={() => edit(s)}
@@ -511,6 +514,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
                           size="icon"
                           variant="ghost"
                           className="campaign-delete-action"
+                          disabled={!canWrite}
                           aria-label={`Delete segment ${s.name}`}
                           title="Delete segment"
                           onClick={() => {
@@ -570,6 +574,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
             </Button>
             <Button
               disabled={
+                !canWrite ||
                 !name.trim() ||
                 action.isPending ||
                 preview.key !== previewKey ||
@@ -605,6 +610,7 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
           </>
         }
         error={action.error}
+        confirmDisabled={!canWrite}
         pending={action.isPending}
         pendingLabel="Deleting…"
         confirmLabel="Delete segment"

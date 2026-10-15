@@ -29,6 +29,7 @@ export type CampaignConfirmation =
   | null;
 type DeliveryProps = {
   editable: boolean;
+  canWrite: boolean;
   busy: boolean;
   dirty: boolean;
   canSend: boolean;
@@ -49,6 +50,7 @@ type DeliveryProps = {
 };
 export function CampaignDelivery({
   editable,
+  canWrite,
   busy,
   dirty,
   canSend,
@@ -118,7 +120,7 @@ export function CampaignDelivery({
         {["sending", "preparing"].includes(status) && (
           <Button
             variant="outline"
-            disabled={busy}
+            disabled={!canWrite || busy}
             onClick={() => action("pause")}
           >
             Pause sending
@@ -132,7 +134,7 @@ export function CampaignDelivery({
         {["scheduled", "preparing", "sending", "paused"].includes(status) && (
           <Button
             variant="destructive"
-            disabled={busy}
+            disabled={!canWrite || busy}
             onClick={() => setConfirm("cancel")}
           >
             Cancel campaign

@@ -1,3 +1,4 @@
+import { useBrandPermission } from "../lib/use-brand-permission";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useDateTime } from "../lib/date-time";
 import { StatusMessage } from "../components/StatusMessage";
@@ -35,6 +36,7 @@ type CampaignSummary = Pick<
 export function CampaignsPage({ brandId }: { brandId: number }) {
   const { formatDateTime } = useDateTime();
   const navigate = useNavigate();
+  const canWrite = useBrandPermission(brandId, "write");
   const { session } = useApp();
   const client = useQueryClient();
   const [deleting, setDeleting] = useState<CampaignSummary | null>(null);
@@ -135,10 +137,8 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
             Create newsletters and follow each delivery.
           </p>
         </div>
-        <Button asChild>
-          <Link to="/campaigns/new">
-            <Plus size={16} /> New campaign
-          </Link>
+        <Button disabled={!canWrite} onClick={() => navigate("/campaigns/new")}>
+          <Plus size={16} /> New campaign
         </Button>
       </div>
       <div className="page-tabs" aria-label="Filter campaigns">
@@ -248,7 +248,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          disabled={duplicate.isPending}
+                          disabled={!canWrite || duplicate.isPending}
                           aria-label={`Clone campaign ${c.subject}`}
                           onClick={() => {
                             duplicate.reset();

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
-import { useApp } from "../../lib/app-context";
+import { useBrandPermission } from "../../lib/use-brand-permission";
 import type { Subscriber as ContractSubscriber } from "../../lib/generated-contracts";
 
 export type SubscriberList = {
@@ -63,13 +63,7 @@ export function useSubscribersQuery<T>(
   });
 }
 export function useCanWriteSubscribers(brandId: number) {
-  const { session, brands } = useApp();
-  return (
-    session.admin ||
-    !!brands
-      .find((brand) => brand.id === brandId)
-      ?.permissions?.includes("write")
-  );
+  return useBrandPermission(brandId, "write");
 }
 export function useSubscriberAction<T = unknown>(brandId: number) {
   const client = useQueryClient();

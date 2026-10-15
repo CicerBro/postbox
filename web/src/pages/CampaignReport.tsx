@@ -1,3 +1,4 @@
+import { useBrandPermission } from "../lib/use-brand-permission";
 import { useDateTime } from "../lib/date-time";
 import { onSessionExpired } from "../lib/session-lifecycle";
 import { useEffect, useMemo, useState } from "react";
@@ -81,6 +82,8 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
   const { formatDateTime } = useDateTime();
   const navigate = useNavigate();
   const { session } = useApp();
+  const canWrite = useBrandPermission(brandId, "write");
+  const canSend = useBrandPermission(brandId, "send");
   const countrySort = useTableSort<"country" | "opens" | "clicks">("opens", "desc");
   const client = useQueryClient(),
     [stream, setStream] = useState("Connecting live updates"),
@@ -208,7 +211,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
   const stats = report.data?.stats?.[0];
   const campaignStatus = campaign.data?.[0]?.status;
   const live = isLiveCampaign(campaignStatus);
-  const canResume = session.admin || campaign.data?.[0]?.created_by === session.user_id;
+  const canResume = canSend && (session.admin || campaign.data?.[0]?.created_by === session.user_id);
   const metrics: [string, string][] = [
     ["recipients", "Recipients"],
     ["sent", "Sent"],
@@ -266,9 +269,9 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           </p>}
         </div>
         <div className="flex flex-wrap gap-2">
-        {campaign.data?.[0]?.status === "cancelled" && report.data?.can_reactivate && <Button disabled={reactivating} onClick={reactivateCampaign}>{reactivating ? "Returning to draft…" : "Return to draft"}</Button>}
+        {campaign.data?.[0]?.status === "cancelled" && report.data?.can_reactivate && <Button disabled={!canWrite || reactivating} onClick={reactivateCampaign}>{reactivating ? "Returning to draft…" : "Return to draft"}</Button>}
         {campaign.data?.[0] && !isFinishedCampaign(campaign.data[0].status) && <Button variant="outline" asChild><Link to={`/campaigns/${id}?manage=true`}>Manage campaign</Link></Button>}
-        {campaign.data?.[0] && <Button variant="outline" disabled={duplicating} onClick={duplicateCampaign}><Copy size={16} /> {duplicating ? "Duplicating…" : "Duplicate"}</Button>}
+        {campaign.data?.[0] && <Button variant="outline" disabled={!canWrite || duplicating} onClick={duplicateCampaign}><Copy size={16} /> {duplicating ? "Duplicating…" : "Duplicate"}</Button>}
         <Button variant="outline" disabled={exporting} onClick={exportCSV}>
           <Download size={16} />{" "}
           {exporting ? "Exporting…" : "Export recipients CSV"}
@@ -283,7 +286,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
         </div>
         <CampaignProgress stats={stats} status={campaignStatus!} observedAt={report.dataUpdatedAt} fresh={!report.isError} />
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button variant="outline" disabled={deliveryAction.isPending || (campaignStatus === "paused" && !canResume)} onClick={() => deliveryAction.mutate(campaignStatus === "paused" ? "resume" : "pause")}>
+          <Button variant="outline" disabled={deliveryAction.isPending || (campaignStatus === "paused" ? !canResume : !canWrite)} onClick={() => deliveryAction.mutate(campaignStatus === "paused" ? "resume" : "pause")}>
             {deliveryAction.isPending ? "Updating…" : campaignStatus === "paused" ? "Resume sending" : "Pause sending"}
           </Button>
         </div>

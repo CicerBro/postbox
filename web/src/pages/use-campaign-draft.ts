@@ -1,3 +1,4 @@
+import { useBrandPermission } from "../lib/use-brand-permission";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,6 +32,8 @@ export function useCampaignDraft(brandId: number, routeID: number) {
   const navigate = useNavigate(),
     client = useQueryClient(),
     { session } = useApp();
+  const canWrite = useBrandPermission(brandId, "write");
+  const hasSendPermission = useBrandPermission(brandId, "send");
   const [draftID, setDraftID] = useState(routeID),
     [draft, setDraft] = useState<Draft>({
       subject: "",
@@ -138,9 +141,9 @@ export function useCampaignDraft(brandId: number, routeID: number) {
     hydrated.current = true;
   }, [campaign.data, targetQuery.data, recoveryKey]);
   const status = campaign.data?.[0]?.status ?? "draft",
-    editable = status === "draft",
+    editable = canWrite && status === "draft",
     owner = campaign.data?.[0]?.created_by;
-  const canSend = session.admin || !routeID || owner === session.user_id;
+  const canSend = hasSendPermission && (session.admin || !routeID || owner === session.user_id);
   const save = useMutation({
     mutationFn: async () => {
       if (!subject.trim() || !html.trim())

@@ -1,3 +1,4 @@
+import { useBrandPermission } from "../lib/use-brand-permission";
 import { useDateTime, zonedDateTimeToTimestamp } from "../lib/date-time";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -17,6 +18,8 @@ import type { Checklist } from "./campaign-checklist";
 
 export function CampaignDetailPage({ brandId }: { brandId: number }) {
   const { id } = useParams();
+  const canWrite = useBrandPermission(brandId, "write");
+  if (!id && !canWrite) return <p role="status">Brand write access is required to create a campaign.</p>;
   return (
     <CampaignDetail
       key={`${brandId}:${id ?? "new"}`}
@@ -27,6 +30,7 @@ export function CampaignDetailPage({ brandId }: { brandId: number }) {
 }
 function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
   const { timeZone } = useDateTime();
+  const canWrite = useBrandPermission(brandId, "write");
   const [params] = useSearchParams();
   const routeID = id && id !== "new" ? Number(id) : 0;
   const navigate = useNavigate(),
@@ -193,7 +197,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
               </Button>
               <Button
                 variant="outline"
-                disabled={busy || save.isPending || (editable && dirty)}
+                disabled={!canWrite || busy || save.isPending || (editable && dirty)}
                 title={editable && dirty ? "Save changes before duplicating" : undefined}
                 onClick={() => action("duplicate")}
               >
@@ -217,15 +221,16 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
       </div>
       <ErrorMessage error={error ?? choices.error} />
       <StatusMessage variant={noticeVariant}>{notice}</StatusMessage>
-      {!canSend && (
+      {!canSend && canWrite && (
         <p className="text-sm text-muted-foreground">
-          Duplicate this campaign to send it from your account.
+          Sending requires brand Send access and campaign ownership, or administrator access.
         </p>
       )}
       <CampaignContent
         {...{
           brandId,
           draftID,
+          canWrite,
           editable,
           subject,
           html,
@@ -248,6 +253,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
         <CampaignDelivery
           {...{
             editable,
+            canWrite,
             busy,
             dirty,
             canSend,

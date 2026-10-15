@@ -1,3 +1,4 @@
+import { useBrandPermission } from "../lib/use-brand-permission";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useDateTime } from "../lib/date-time";
 import { StatusMessage } from "../components/StatusMessage";
@@ -31,6 +32,7 @@ export function TemplatesPage({ brandId }: { brandId: number }) {
 }
 function TemplateLibrary({ brandId }: { brandId: number }) {
   const { formatDateTime } = useDateTime();
+  const canWrite = useBrandPermission(brandId, "write");
   const sorting = useTableSort<"name" | "size" | "updated">("name");
   const [params, setParams] = useSearchParams();
   const client = useQueryClient(),
@@ -46,14 +48,14 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
     [notice, setNotice] = useState(""),
     [search, setSearch] = useState("");
   useEffect(() => {
-    if (params.get("new") === "1") {
+    if (canWrite && params.get("new") === "1") {
       setEditing(null);
       setError(null);
       const next = new URLSearchParams(params);
       next.delete("new");
       setParams(next, { replace: true });
     }
-  }, [params, setParams]);
+  }, [params, setParams, canWrite]);
   const query = useQuery({
     queryKey: ["templates", brandId, after],
     queryFn: () =>
@@ -129,7 +131,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
             Reusable full HTML documents for this brand.
           </p>
         </div>
-        <Button onClick={() => edit(null)}>
+        <Button disabled={!canWrite} onClick={() => edit(null)}>
           <Plus size={16} /> New template
         </Button>
       </div>
@@ -138,20 +140,21 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
       {editing !== undefined && (
         <Card>
           <CardHeader>
-            <CardTitle>{editing ? "Edit template" : "New template"}</CardTitle>
+            <CardTitle>{editing ? canWrite ? "Edit template" : "View template" : "New template"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <label className="block text-sm">
               Name
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <Input readOnly={!canWrite} value={name} onChange={(e) => setName(e.target.value)} />
             </label>
-            <EmailEditor brandId={brandId} value={html} onChange={setHtml} />
+            <EmailEditor readOnly={!canWrite} previewMode={canWrite ? "rendered" : "source"} brandId={brandId} value={html} onChange={setHtml} />
             <details>
               <summary className="cursor-pointer text-sm">
                 Plain-text override (optional)
               </summary>
               <Textarea
                 aria-label="Template plain text"
+                readOnly={!canWrite}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 className="mt-2"
@@ -162,7 +165,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
               </p>
             </details>
             <div className="flex gap-2">
-              <Button disabled={busy} onClick={save}>
+              <Button disabled={!canWrite || busy} onClick={save}>
                 {busy ? "Saving…" : "Save template"}
               </Button>
               <Button
@@ -246,8 +249,8 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                             variant="ghost"
                             size="icon"
                             className="action-edit"
-                            aria-label={`Edit template ${t.name}`}
-                            title="Edit template"
+                            aria-label={`${canWrite ? "Edit" : "View"} template ${t.name}`}
+                            title={canWrite ? "Edit template" : "View template"}
                             onClick={() => edit(t)}
                           >
                             <Pencil size={16} aria-hidden="true" />
@@ -256,6 +259,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
                             variant="ghost"
                             size="icon"
                             className="campaign-delete-action"
+                            disabled={!canWrite}
                             aria-label={`Delete template ${t.name}`}
                             title="Delete template"
                             onClick={() => {
@@ -327,6 +331,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
           </>
         }
         error={error}
+        confirmDisabled={!canWrite}
         pending={busy}
         pendingLabel="Deleting…"
         confirmLabel="Delete template"

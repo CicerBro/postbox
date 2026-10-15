@@ -16,6 +16,7 @@ import type { Named, Target, Template } from "./campaign-shared";
 type ContentProps = {
   brandId: number;
   draftID: number;
+  canWrite: boolean;
   editable: boolean;
   subject: string;
   html: string;
@@ -31,6 +32,7 @@ type ContentProps = {
 export function CampaignContent({
   brandId,
   draftID,
+  canWrite,
   editable,
   subject,
   html,
@@ -108,6 +110,7 @@ export function CampaignContent({
           value={html}
           onChange={setHtml}
           readOnly={!editable}
+          previewMode={canWrite ? "rendered" : "source"}
           inlineCSS={inline}
           subject={subject}
           campaignId={draftID}
