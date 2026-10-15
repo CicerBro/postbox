@@ -32,6 +32,69 @@ async function fixture(context: BrowserContext, admin = true) {
   return state;
 }
 
+for (const [path, retryLabel, emptyLabel, item] of [
+  ["/templates", "Retry loading templates", "Your next campaign starts here", "Weekly"],
+  ["/segments", "Retry loading segments", "Create your first segment", "Engaged"],
+]) {
+  test(`${path} distinguishes a failed request from an empty collection and retries`, async ({ page, context }) => {
+    const state = await fixture(context);
+    state.failure = path;
+    await page.goto(path);
+    await expect(page.getByRole("alert")).toContainText("Example denied request");
+    await expect(page.getByText(emptyLabel, { exact: true })).toHaveCount(0);
+    state.failure = "";
+    await page.getByRole("button", { name: retryLabel }).click();
+    await expect(page.getByRole("cell").filter({ hasText: item }).first()).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  });
+}
+
+test("filtered empty states span the entire segments and lists tables", async ({ page, context }) => {
+  await fixture(context);
+  for (const [path, searchLabel, message] of [
+    ["/segments", "Search segments", "No segments match your search."],
+    ["/subscribers?tab=lists", "Search lists", "No lists match your search."],
+  ]) {
+    await page.goto(path);
+    await page.getByRole("textbox", { name: searchLabel, exact: true }).fill("no-match");
+    const cell = page.getByRole("cell").filter({ hasText: message });
+    await expect(cell).toBeVisible();
+    const dimensions = await cell.evaluate(element => ({
+      display: getComputedStyle(element).display,
+      width: element.getBoundingClientRect().width,
+      table: element.closest("table")!.getBoundingClientRect().width,
+    }));
+    expect(dimensions.display).toBe("table-cell");
+    expect(dimensions.width).toBeCloseTo(dimensions.table, 0);
+  }
+});
+
+test("subscriber tabs support roving focus, disabled tabs, panels, and URL navigation", async ({ page, context }) => {
+  await fixture(context, false);
+  await page.goto("/subscribers");
+  await expect(page.locator('[role="tab"][tabindex="0"]')).toHaveCount(1);
+  expect(await page.getByRole("tab").evaluateAll(tabs => tabs.every(tab =>
+    document.getElementById(tab.getAttribute("aria-controls")!)?.getAttribute("aria-labelledby") === tab.id,
+  ))).toBe(true);
+  await page.getByRole("tab", { name: "Import / export", exact: true }).click();
+  await page.keyboard.press("ArrowRight");
+  const fields = page.getByRole("tab", { name: "Custom fields", exact: true });
+  await expect(fields).toBeFocused();
+  await expect(fields).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(/tab=fields/);
+  await expect(page.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", await fields.getAttribute("id") as string);
+  await page.keyboard.press("End");
+  await expect(page.getByRole("tab", { name: "Suppressions", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Subscribers", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("tab", { name: "Suppressions", exact: true })).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(page.getByRole("tab", { name: "Subscribers", exact: true })).toBeFocused();
+  await page.goBack();
+  await expect(page.getByRole("tab", { name: "Suppressions", exact: true })).toHaveAttribute("aria-selected", "true");
+});
+
 test("shared fields use one gap and mobile filters fill their column", async ({ page, context }) => {
   await fixture(context);
   await page.setViewportSize({ width: 390, height: 844 });

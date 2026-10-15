@@ -29,7 +29,7 @@ test("subscriber columns and row actions", async ({ page, context }) => {
   });
   await page.goto("/subscribers");
   const table = page.locator("table");
-  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Email", "Last activity", "Created at", "Action"]);
+  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Email", "Last activity", "Created at", "Actions"]);
   await expect(table.locator(".avatar")).toHaveCount(0);
   await expect(table.getByText("complaint", { exact: true })).toBeVisible();
   await expect(table.locator('time[datetime="2023-11-14T22:13:20.000Z"]')).toBeVisible();

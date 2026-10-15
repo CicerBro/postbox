@@ -24,7 +24,7 @@ test('campaign table requests summaries and segment rules use paginated content-
     await route.fulfill({ json: body });
   });
   await page.goto('/campaigns');
-  await expect(page.getByText('Visible newsletter body', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Visible campaign', exact: true })).toBeVisible();
   await page.goto('/segments');
   await page.getByRole('button', { name: 'New segment', exact: true }).click();
   const dialog = page.getByRole('dialog');

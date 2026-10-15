@@ -1,4 +1,5 @@
 import { useTableSort } from "../lib/use-table-sort";
+import { PageTabs } from "../components/ui/page-tabs";
 import { Field } from "../components/ui/field";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useDateTime } from "../lib/date-time";
@@ -547,8 +548,8 @@ function Lists({
             <tbody>
               {!visibleLists.length && (
                 <tr>
-                  <td colSpan={8} className="empty-panel">
-                    No lists match your search.
+                  <td colSpan={8}>
+                    <div className="empty-panel">No lists match your search.</div>
                   </td>
                 </tr>
               )}
@@ -874,29 +875,20 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
           New subscriber
         </Button>
       </div>
-      <div className="page-tabs" role="tablist" aria-label="Subscriber tools">
-        {[
-          ["subscribers", "Subscribers"],
-          ["lists", "Lists"],
-          ["import", "Import / export"],
-          ["bulk", "Mass actions"],
-          ["fields", "Custom fields"],
-          ["housekeeping", "Housekeeping"],
-          ["suppressions", "Suppressions"],
-        ].map(([value, label]) => (
-          <Button
-            key={value}
-            role="tab"
-            aria-selected={tab === value}
-            variant={tab === value ? "default" : "ghost"}
-            size="sm"
-            disabled={!canWrite && ["bulk", "housekeeping"].includes(value)}
-            onClick={() => setTab(value)}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
+      <PageTabs
+        value={tab}
+        onValueChange={setTab}
+        label="Subscriber tools"
+        items={[
+          { value: "subscribers", label: "Subscribers" },
+          { value: "lists", label: "Lists" },
+          { value: "import", label: "Import / export" },
+          { value: "bulk", label: "Mass actions", disabled: !canWrite },
+          { value: "fields", label: "Custom fields" },
+          { value: "housekeeping", label: "Housekeeping", disabled: !canWrite },
+          { value: "suppressions", label: "Suppressions" },
+        ]}
+      >
       <ErrorMessage error={lists.error || fields.error} />
       {tab === "subscribers" && (
         <section className="space-y-4">
@@ -963,7 +955,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                       </th>
                     </tr>
                     <tr>
-                      <th className="min-w-48 px-2 pb-2" scope="col">
+                      <td className="min-w-48 px-2 pb-2">
                         <Input
                           aria-label="Search subscriber names"
                           placeholder="Search names"
@@ -973,8 +965,8 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                             resetPage();
                           }}
                         />
-                      </th>
-                      <th className="min-w-56 px-2 pb-2" scope="col">
+                      </td>
+                      <td className="min-w-56 px-2 pb-2">
                         <Input
                           aria-label="Search subscriber emails"
                           placeholder="Search emails"
@@ -984,8 +976,8 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
                             resetPage();
                           }}
                         />
-                      </th>
-                      <th colSpan={3} />
+                      </td>
+                      <td colSpan={3} />
                     </tr>
                   </thead>
                   <tbody>
@@ -1183,6 +1175,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
       {tab === "suppressions" && (
         <Suppressions brandId={brandId} scope="brand" />
       )}
+      </PageTabs>
       {profile !== undefined && (
         <SubscriberProfile
           key={`${profile?.id || "new"}-${profileAction}`}

@@ -429,12 +429,18 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Badge variant="outline">
-            {segments.data?.length || 0} saved segments
-          </Badge>
+          {segments.isSuccess && <Badge variant="outline">
+            {segments.data.length} saved segments
+          </Badge>}
         </div>
         {segments.isPending ? (
           <p role="status">Loading segments…</p>
+        ) : segments.isError ? (
+          <div className="p-4">
+            <Button variant="outline" disabled={segments.isFetching} onClick={() => segments.refetch()}>
+              Retry loading segments
+            </Button>
+          </div>
         ) : !segments.data?.length ? (
           <div className="empty-panel rounded-lg p-10 text-center text-muted-foreground">
             <Filter size={28} className="mx-auto mb-3" />
@@ -459,8 +465,8 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
               <tbody>
                 {!visibleSegments.length && (
                   <tr>
-                    <td colSpan={3} className="empty-panel">
-                      No segments match your search.
+                    <td colSpan={3}>
+                      <div className="empty-panel">No segments match your search.</div>
                     </td>
                   </tr>
                 )}
@@ -522,11 +528,11 @@ function SegmentsWorkspace({ brandId }: { brandId: number }) {
             </table>
           </div>
         )}
-        <div className="table-footer text-xs text-muted-foreground">
+        {segments.isSuccess && <div className="table-footer text-xs text-muted-foreground">
           {visibleSegments.length}{" "}
           {visibleSegments.length === 1 ? "segment" : "segments"} shown.
           Matching subscribers are counted when you edit a segment.
-        </div>
+        </div>}
       </div>
       <Dialog
         open={!!editing}

@@ -178,6 +178,10 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
       )}
       {query.isPending ? (
         <p role="status">Loading templates…</p>
+      ) : query.isError ? (
+        <Button variant="outline" disabled={query.isFetching} onClick={() => query.refetch()}>
+          Retry loading templates
+        </Button>
       ) : (
         <div className="table-card">
           <div className="table-toolbar">
@@ -291,7 +295,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
         <span className="row-subtitle mr-auto">Page {history.length + 1}</span>
         <Button
           variant="outline"
-          disabled={!history.length}
+          disabled={!history.length || query.isFetching}
           onClick={() => {
             setAfter(history.at(-1) ?? 0);
             setHistory(history.slice(0, -1));
@@ -301,7 +305,7 @@ function TemplateLibrary({ brandId }: { brandId: number }) {
         </Button>
         <Button
           variant="outline"
-          disabled={query.data?.length !== 50}
+          disabled={query.isError || query.isFetching || query.data?.length !== 50}
           onClick={() => {
             setHistory([...history, after]);
             setAfter(query.data!.at(-1)!.id);
