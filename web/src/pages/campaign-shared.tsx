@@ -1,4 +1,3 @@
-import { Badge } from "../components/ui/badge";
 export type Campaign = {
   id: number;
   subject: string;
@@ -41,23 +40,7 @@ export const isFinishedCampaign = (status: string | undefined) =>
 export const isLiveCampaign = (status: string | undefined) =>
   status === "preparing" || status === "sending" || status === "paused";
 
-export function StatusBadge({ status }: { status: string }) {
-  const tone = ["sent", "delivered", "completed", "finished"].includes(status)
-    ? "success"
-    : ["failed", "cancelled", "canceled"].includes(status)
-      ? "danger"
-      : ["paused", "unknown", "scheduled"].includes(status)
-        ? "warning"
-        : ["sending", "preparing", "claimed"].includes(status)
-          ? "info"
-          : "neutral";
-  return (
-    <Badge variant="outline" className={`status-badge status-${tone}`}>
-      <span className="status-dot" aria-hidden="true" />
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </Badge>
-  );
-}
+export { StatusBadge } from "../components/ui/status-badge";
 export function contentExcerpt(html: string) {
   return (html ?? "")
     .replace(/<head[\s\S]*?<\/head>/gi, " ")

@@ -1,3 +1,4 @@
+import { InputField } from "../components/ui/field";
 import { useConfirmDialog } from "../components/ui/confirm-dialog";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { useTableSort } from "../lib/use-table-sort";
@@ -19,7 +20,6 @@ import {
 } from "../components/ui/dialog";
 import {
   Section,
-  Field,
   Message,
   useAction,
   Secret,
@@ -278,7 +278,7 @@ function CreateKeyDialog({
             if (scopes.length && !create.isPending) create.mutate();
           }}
         >
-          <Field
+          <InputField
             label="Key name"
             placeholder="e.g. Website integration"
             value={name}

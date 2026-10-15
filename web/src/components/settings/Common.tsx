@@ -1,10 +1,9 @@
 import { DateTime } from "../../lib/date-time";
 import { useId, useState, type ReactNode } from "react";
-import { CircleAlert, Copy, KeyRound } from "lucide-react";
+import { Copy, KeyRound } from "lucide-react";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
-import { Input } from "../ui/input";
-import { Alert, AlertDescription } from "../ui/alert";
+import { ErrorMessage } from "../RequestError";
 import { StatusMessage } from "../StatusMessage";
 export function Section({
   title,
@@ -34,17 +33,6 @@ export function Section({
     </section>
   );
 }
-export function Field({
-  label,
-  ...props
-}: React.ComponentProps<typeof Input> & { label: string }) {
-  return (
-    <label className="block space-y-2 text-sm">
-      <span className="font-medium">{label}</span>
-      <Input {...props} />
-    </label>
-  );
-}
 export function Message({
   error,
   message,
@@ -53,12 +41,7 @@ export function Message({
   message?: string;
 }) {
   return error ? (
-    <Alert
-      className="border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
-    >
-      <CircleAlert size={16} className="mt-1 shrink-0" aria-hidden="true" />
-      <AlertDescription>{error instanceof Error ? error.message : String(error)}</AlertDescription>
-    </Alert>
+    <ErrorMessage error={error} presentation="alert" />
   ) : message ? (
     <StatusMessage>{message}</StatusMessage>
   ) : null;

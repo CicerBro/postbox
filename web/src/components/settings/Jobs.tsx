@@ -1,3 +1,4 @@
+import { InputField } from "../ui/field";
 import { SortableTableHead } from "../SortableTableHead";
 import { useTableSort } from "../../lib/use-table-sort";
 import { useState } from "react";
@@ -5,7 +6,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { Button } from "../ui/button";
 import { SelectField } from "../ui/select";
-import { Section, Message, Field, useAction, date } from "./Common";
+import { Section, Message, useAction, date } from "./Common";
 type Job = {
   id: number;
   queue: string;
@@ -152,7 +153,7 @@ export function JobRetention() {
           }, "Failed job retention saved.");
         }}
       >
-        <Field
+        <InputField
           label="Failed job retention (days)"
           className="w-full"
           type="number"

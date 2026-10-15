@@ -1,3 +1,4 @@
+import { InputField } from "../ui/field";
 import { useDateTime } from "../../lib/date-time";
 import { useEffect, useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -6,7 +7,7 @@ import { api, ApiError } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
 import { SelectField } from "../ui/select";
-import { Field, Message, Section, useAction } from "./Common";
+import { Message, Section, useAction } from "./Common";
 
 type DNSRecord = { type: string; name: string; value: string; priority?: number };
 type SESIdentity = {
@@ -61,7 +62,7 @@ export function SESDomain({ brandId }: { brandId: number }) {
             setSelected((input ?? senderDomain).trim().toLowerCase().replace(/\.$/, ""));
           }}>
             <div className="min-w-0 flex-1">
-              <Field label="Domain to verify" placeholder="example.com" required maxLength={253}
+              <InputField label="Domain to verify" placeholder="example.com" required maxLength={253}
                 value={input ?? senderDomain} onChange={(e) => setInput(e.target.value)} />
             </div>
             <Button variant="outline">View domain</Button>
@@ -167,7 +168,7 @@ function DomainIdentity({ brandId, domain, connectionVersion, region }: { brandI
           }, mailFrom.trim() ? "MAIL FROM settings saved. Publish its MX and SPF records, then refresh the status." : "Custom MAIL FROM disabled. SES will use its default MAIL FROM domain.");
         }}>
           <h4 className="font-medium">Custom MAIL FROM domain</h4>
-          <Field label="MAIL FROM subdomain" placeholder={`bounce.${identity.identity}`} maxLength={253} value={mailFrom} disabled={action.busy} onChange={(e) => setMailFrom(e.target.value)} />
+          <InputField label="MAIL FROM subdomain" placeholder={`bounce.${identity.identity}`} maxLength={253} value={mailFrom} disabled={action.busy} onChange={(e) => setMailFrom(e.target.value)} />
           <p className="text-sm text-muted-foreground">Use a subdomain of {identity.identity}. Leave blank to use the default SES MAIL FROM domain.</p>
           <div className="space-y-2">
             <label htmlFor={fieldId} className="text-sm font-medium">If the MX record cannot be verified</label>

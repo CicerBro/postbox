@@ -167,7 +167,10 @@
   label > .input {
     margin-top: 8px;
   }
-  label.grid > .input {
+  label.grid > .input,
+  .form-field > .input,
+  .form-field > .textarea,
+  .form-field > .select-trigger {
     margin-top: 0;
   }
   .muted {
@@ -495,69 +498,35 @@
   .status-badge {
     font-size: 12px;
   }
-  .status-success,
-  .status-subscribed,
-  .status-active,
-  .status-sent,
-  .status-verified,
-  .status-enabled {
+  .status-success {
     background: #10b98110;
     color: #07835d;
     border-color: #10b98125;
   }
-  .status-warning,
-  .status-pending,
-  .status-queued,
-  .status-scheduled,
-  .status-paused {
+  .status-warning {
     background: #f59e0b10;
     color: #ab6708;
     border-color: #f59e0b25;
   }
-  .status-danger,
-  .status-bounced,
-  .status-complained,
-  .status-failed,
-  .status-unsubscribed {
+  .status-danger {
     background: #ef444410;
     color: #c73535;
     border-color: #ef444425;
   }
-  .status-info,
-  .status-sending,
-  .status-processing {
+  .status-info {
     background: #3b82f610;
     color: #2b69c9;
     border-color: #3b82f625;
   }
-  .status-neutral,
-  .status-draft {
+  .status-neutral {
     background: var(--soft);
     color: var(--muted);
     border-color: var(--border);
   }
-  .dark .status-success,
-  .dark .status-subscribed,
-  .dark .status-active,
-  .dark .status-sent,
-  .dark .status-verified {
-    color: #5ee3b6;
-  }
-  .dark .status-warning,
-  .dark .status-pending,
-  .dark .status-scheduled {
-    color: #f6c76c;
-  }
-  .dark .status-danger,
-  .dark .status-failed,
-  .dark .status-bounced,
-  .dark .status-unsubscribed {
-    color: #ff9191;
-  }
-  .dark .status-info,
-  .dark .status-sending {
-    color: #8cbbff;
-  }
+  .dark .status-success { color: #5ee3b6; }
+  .dark .status-warning { color: #f6c76c; }
+  .dark .status-danger { color: #ff9191; }
+  .dark .status-info { color: #8cbbff; }
   .kpi-delta {
     display: inline-block;
     margin-right: 4px;
@@ -629,16 +598,6 @@
     background: currentColor;
     flex-shrink: 0;
   }
-  .status-unconfirmed {
-    background: #f59e0b10;
-    color: #ab6708;
-    border-color: #f59e0b25;
-  }
-  .status-blocklisted {
-    background: #ef444410;
-    color: #c73535;
-    border-color: #ef444425;
-  }
   .section-heading:has(.card-title) {
     margin-bottom: 0;
   }
@@ -654,12 +613,6 @@
     color: #5ee3b6;
   }
   .dark .kpi-delta.negative {
-    color: #ff9191;
-  }
-  .dark .status-unconfirmed {
-    color: #f6c76c;
-  }
-  .dark .status-blocklisted {
     color: #ff9191;
   }
   .navigation-sheet .sidebar-bottom {

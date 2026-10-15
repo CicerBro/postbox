@@ -1,3 +1,4 @@
+import { InputField } from "../ui/field";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
@@ -11,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import { Section, Field, Message, useAction } from "./Common";
+import { Section, Message, useAction } from "./Common";
 type Identity = {
   name: string;
   from_name: string;
@@ -139,7 +140,7 @@ export function BrandIdentity({
                       : !["configuration_set", "tracking_domain"].includes(key),
                   )
                   .map(([key, label]) => (
-                    <Field
+                    <InputField
                       key={key}
                       label={label}
                       type={
@@ -210,7 +211,7 @@ export function BrandIdentity({
                   This cannot be undone.
                 </DialogDescription>
               </DialogHeader>
-              <Field
+              <InputField
                 label={`Type ${q.data[0].name} to confirm`}
                 value={confirmation}
                 disabled={deletion.isPending}

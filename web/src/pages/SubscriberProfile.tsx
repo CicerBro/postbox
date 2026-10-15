@@ -1,3 +1,5 @@
+import { StatusBadge } from "../components/ui/status-badge";
+import { Field } from "../components/ui/field";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useDateTime } from "../lib/date-time";
 import { SelectField } from "../components/ui/select";
@@ -16,13 +18,11 @@ import {
   DialogFooter,
 } from "../components/ui/dialog";
 import {
-  SubscriberStatusBadge,
   subscriberInitials,
   type SubscriberList,
   type CustomField,
   type Subscriber,
   ErrorMessage,
-  Field,
   fieldValue,
   parseFields,
   tableClass,
@@ -197,7 +197,7 @@ export function SubscriberProfile({
                 </p>
                 <p className="row-subtitle">{subscriber.email}</p>
               </div>
-              <SubscriberStatusBadge status={subscriber.status} />
+              <StatusBadge status={subscriber.status} />
             </div>
           )}
           {!canWrite && (
@@ -400,7 +400,7 @@ export function SubscriberProfile({
                             `List ${m.list_id}`}
                         </td>
                         <td>
-                          <SubscriberStatusBadge status={m.status} />
+                          <StatusBadge status={m.status} />
                         </td>
                         <td>
                           {canWrite && m.status !== "unsubscribed" && (

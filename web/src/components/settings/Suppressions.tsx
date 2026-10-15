@@ -1,3 +1,4 @@
+import { InputField } from "../ui/field";
 import { useConfirmDialog } from "../ui/confirm-dialog";
 import { SortableTableHead } from "../SortableTableHead";
 import { useTableSort } from "../../lib/use-table-sort";
@@ -17,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import { Section, Field, Message, useAction } from "./Common";
+import { Section, Message, useAction } from "./Common";
 type Suppression = {
   id: number;
   brand_id: number | null;
@@ -135,7 +136,7 @@ export function Suppressions({
                 ]}
               />
             </label>
-            <Field
+            <InputField
               label={kind === "email" ? "Email address" : "Domain"}
               type={kind === "email" ? "email" : "text"}
               pattern={
@@ -156,7 +157,7 @@ export function Suppressions({
       )}
       <Message {...a} />
       <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
-        <Field
+        <InputField
           label="Search suppressions"
           type="search"
           placeholder="Search email, domain or reason"
@@ -439,7 +440,7 @@ function EditSuppression({
               ]}
             />
           </label>
-          <Field
+          <InputField
             label={kind === "email" ? "Email address" : "Domain"}
             type={kind === "email" ? "email" : "text"}
             pattern={

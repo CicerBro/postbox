@@ -1,3 +1,4 @@
+import { InputField } from "../ui/field";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useState } from "react";
 import { MoreHorizontal, Plus, Webhook } from "lucide-react";
@@ -20,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import { Section, Field, Message, useAction, Secret } from "./Common";
+import { Section, Message, useAction, Secret } from "./Common";
 
 type Hook = {
   id: number;
@@ -90,7 +91,7 @@ function WebhookEditor({
           }}
         >
           <div className="space-y-2">
-            <Field
+            <InputField
               label="Destination URL"
               placeholder="https://your-app.com/webhooks/postbox"
               type="url"

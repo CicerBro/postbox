@@ -1,3 +1,4 @@
+import { InputField } from "../ui/field";
 import { useConfirmDialog } from "../ui/confirm-dialog";
 import { useEffect, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -11,7 +12,7 @@ import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
 import { SelectField } from "../ui/select";
-import { Section, Field, Message, useAction, Checks, strings } from "./Common";
+import { Section, Message, useAction, Checks, strings } from "./Common";
 type User = {
   id: number;
   email: string;
@@ -190,21 +191,21 @@ function UserEditor({
           );
         }}
       >
-        <Field
+        <InputField
           label="Display name"
           value={displayName}
           maxLength={100}
           placeholder="Defaults to email"
           onChange={(e) => setDisplayName(e.target.value)}
         />
-        <Field
+        <InputField
           label="Email"
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <Field
+        <InputField
           label={
             user ? "New password (leave blank to retain)" : "Initial password"
           }
@@ -249,7 +250,7 @@ function UserEditor({
                 Reset this user’s authenticator if they have lost access.
                 Confirm your own administrator password.
               </p>
-              <Field
+              <InputField
                 label="Your current password"
                 type="password"
                 autoComplete="current-password"
@@ -430,7 +431,7 @@ function BrandAccess({ userId }: { userId: number }) {
           selected={permissions}
           onChange={setPermissions}
         />
-        <Field
+        <InputField
           label="Daily send limit (blank for unlimited)"
           type="number"
           min={0}

@@ -4,7 +4,7 @@ export function Badge({
   className,
   variant,
   ...props
-}: HTMLAttributes<HTMLSpanElement> & { variant?: string }) {
+}: HTMLAttributes<HTMLSpanElement> & { variant?: "success" | "warning" | "destructive" | "secondary" | "info" | "outline" }) {
   const tones: Record<string, string> = {
     success: "status-success",
     warning: "status-warning",

@@ -1,3 +1,4 @@
+import { Field } from "../ui/field";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useDateTime } from "../../lib/date-time";
 import { StatusMessage } from "../StatusMessage";
@@ -20,7 +21,6 @@ import {
   type SubscriberList,
   type CustomField,
   ErrorMessage,
-  Field,
   parseCSV,
   tableClass,
   useSubscriberAction,

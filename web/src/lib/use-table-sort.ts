@@ -1,9 +1,9 @@
 import { useState } from "react";
 
-type SortValue = string | number | null | undefined;
+type SortValue = string | number | boolean | null | undefined;
 
-export function useTableSort<K extends string>(initialColumn: K, initialDirection: "asc" | "desc" = "asc") {
-  const [column, setColumn] = useState<K>(initialColumn);
+export function useTableSort<K extends string>(initialColumn: K | null, initialDirection: "asc" | "desc" = "asc") {
+  const [column, setColumn] = useState<K | null>(initialColumn);
   const [direction, setDirection] = useState<"asc" | "desc">(initialDirection);
   function header(key: K) {
     return {
@@ -16,6 +16,7 @@ export function useTableSort<K extends string>(initialColumn: K, initialDirectio
     };
   }
   function sort<T>(rows: readonly T[], value: (row: T, key: K) => SortValue): T[] {
+    if (column === null) return [...rows];
     return [...rows].sort((a, b) => {
       const left = value(a, column);
       const right = value(b, column);

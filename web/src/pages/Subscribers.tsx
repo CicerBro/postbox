@@ -1,3 +1,5 @@
+import { useTableSort } from "../lib/use-table-sort";
+import { Field } from "../components/ui/field";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useDateTime } from "../lib/date-time";
 import { SortableTableHead } from "../components/SortableTableHead";
@@ -35,7 +37,6 @@ import {
   type CustomField,
   type Subscriber,
   ErrorMessage,
-  Field,
   tableClass,
   useSubscriberAction,
   useCanWriteSubscribers,
@@ -52,37 +53,6 @@ import {
 import { SubscriberProfile } from "./SubscriberProfile";
 const statuses = ["active", "bounced", "complained", "blocklisted"];
 
-function useTableSort<T>(rows: T[]) {
-  const [column, setColumn] = useState<keyof T | null>(null);
-  const [direction, setDirection] = useState<"asc" | "desc">("asc");
-  const sorted =
-    column === null
-      ? rows
-      : [...rows].sort((a, b) => {
-          const av = a[column] ?? "";
-          const bv = b[column] ?? "";
-          const comparison =
-            typeof av === "number" && typeof bv === "number"
-              ? av - bv
-              : String(av).localeCompare(String(bv), undefined, {
-                  numeric: true,
-                });
-          return direction === "asc" ? comparison : -comparison;
-        });
-  const head = (label: string, key: keyof T) => (
-    <SortableTableHead
-      label={label}
-      active={column === key}
-      direction={direction}
-      onSort={() => {
-        setDirection(column === key && direction === "asc" ? "desc" : "asc");
-        setColumn(key);
-      }}
-    />
-  );
-  return { sorted, head };
-}
-
 function CustomFields({
   brandId,
   fields,
@@ -92,7 +62,8 @@ function CustomFields({
 }) {
   const canWrite = useCanWriteSubscribers(brandId);
   const [editing, setEditing] = useState<CustomField | null>(null);
-  const { sorted: sortedFields, head } = useTableSort(fields);
+  const sorting = useTableSort<keyof CustomField>(null);
+  const sortedFields = sorting.sort(fields, (field, key) => field[key]);
   const action = useSubscriberAction(brandId);
   const blank = {
     id: 0,
@@ -130,10 +101,10 @@ function CustomFields({
           <table className={tableClass}>
             <thead>
               <tr>
-                {head("Label", "label")}
-                {head("Key", "key")}
-                {head("Type", "type")}
-                {head("Filterable", "is_filterable")}
+                <SortableTableHead label="Label" {...sorting.header("label")} />
+                <SortableTableHead label="Key" {...sorting.header("key")} />
+                <SortableTableHead label="Type" {...sorting.header("type")} />
+                <SortableTableHead label="Filterable" {...sorting.header("is_filterable")} />
                 <th></th>
               </tr>
             </thead>
@@ -497,7 +468,8 @@ function Lists({
 }) {
   const canWrite = useCanWriteSubscribers(brandId);
   const [listSearch, setListSearch] = useState("");
-  const { sorted: sortedLists, head } = useTableSort(lists);
+  const sorting = useTableSort<keyof SubscriberList>(null);
+  const sortedLists = sorting.sort(lists, (list, key) => list[key]);
   const visibleLists = sortedLists.filter((list) =>
     list.name.toLowerCase().includes(listSearch.trim().toLowerCase()),
   );
@@ -562,13 +534,13 @@ function Lists({
           <table className={tableClass}>
             <thead>
               <tr>
-                {head("Name", "name")}
-                {head("Opt-in", "opt_in")}
-                {head("Active", "active")}
-                {head("Subscribed", "subscribed")}
-                {head("Unsubscribed", "unsubscribed")}
-                {head("Bounced", "bounced")}
-                {head("Complained", "complained")}
+                <SortableTableHead label="Name" {...sorting.header("name")} />
+                <SortableTableHead label="Opt-in" {...sorting.header("opt_in")} />
+                <SortableTableHead label="Active" {...sorting.header("active")} />
+                <SortableTableHead label="Subscribed" {...sorting.header("subscribed")} />
+                <SortableTableHead label="Unsubscribed" {...sorting.header("unsubscribed")} />
+                <SortableTableHead label="Bounced" {...sorting.header("bounced")} />
+                <SortableTableHead label="Complained" {...sorting.header("complained")} />
                 <th>Actions</th>
               </tr>
             </thead>
@@ -929,7 +901,7 @@ function SubscribersWorkspace({ brandId }: { brandId: number }) {
       {tab === "subscribers" && (
         <section className="space-y-4">
           <div className="table-card">
-            <div className="table-toolbar toolbar grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="table-toolbar toolbar grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="List">
                 <SelectField
                   value={String(list)}

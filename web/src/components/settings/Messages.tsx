@@ -1,3 +1,4 @@
+import { InputField } from "../ui/field";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
@@ -7,7 +8,7 @@ import { ChevronDown } from "lucide-react";
 import { Switch } from "../ui/switch";
 import { EmailEditor } from "../EmailEditor";
 import { Textarea } from "../ui/textarea";
-import { Section, Field, Message, useAction } from "./Common";
+import { Section, Message, useAction } from "./Common";
 type Email = { subject: string; html: string; text?: string };
 type Settings = {
   thankyou_html?: string;
@@ -169,7 +170,7 @@ export function Messages({ brandId }: { brandId: number }) {
                   {expanded.includes(k) && (
                     <div className="space-y-4 pt-2">
                       {k.endsWith("_email") && (
-                        <Field
+                        <InputField
                           label="Subject"
                           required
                           disabled={!canWrite || !active || a.busy}

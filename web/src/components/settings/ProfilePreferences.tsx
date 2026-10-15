@@ -1,10 +1,11 @@
+import { InputField } from "../ui/field";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useApp, type Session } from "../../lib/app-context";
 import type { PreferencesResponse } from "../../lib/generated-contracts";
 import { api } from "../../lib/api";
 import { Button } from "../ui/button";
-import { Section, Field, Message, useAction } from "./Common";
+import { Section, Message, useAction } from "./Common";
 
 export function ProfilePreferences() {
   const { session } = useApp();
@@ -33,7 +34,7 @@ export function ProfilePreferences() {
           }, "Display name saved.");
         }}
       >
-        <Field
+        <InputField
           label="Display name"
           autoComplete="nickname"
           maxLength={100}

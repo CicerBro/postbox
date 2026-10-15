@@ -1,3 +1,4 @@
+import { InputField } from "../ui/field";
 import { useConfirmDialog } from "../ui/confirm-dialog";
 import { useState } from "react";
 import { ShieldCheck, Fingerprint, Smartphone, Plus } from "lucide-react";
@@ -8,7 +9,7 @@ import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
 import { creationOptions, credentialJSON } from "../../lib/webauthn";
 import { Button } from "../ui/button";
-import { Section, Field, Message, useAction, date } from "./Common";
+import { Section, Message, useAction, date } from "./Common";
 type Passkey = {
   id: number;
   name: string;
@@ -80,7 +81,7 @@ export function Security() {
         Removing a factor signs out all sessions.
       </p>
       <div className="grid gap-4 xl:grid-cols-2">
-        <Field
+        <InputField
           label="Current password"
           type="password"
           autoComplete="new-password"
@@ -88,7 +89,7 @@ export function Security() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <Field
+        <InputField
           label={
             enrollment
               ? "Code from your new authenticator"
@@ -202,7 +203,7 @@ export function Security() {
           <p className="text-sm text-muted-foreground">
             Use your device or a security key for a faster, secure sign-in.
           </p>
-          <Field
+          <InputField
             label="New passkey name (optional)"
             value={name}
             onChange={(e) => setName(e.target.value)}

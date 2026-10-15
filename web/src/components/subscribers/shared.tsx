@@ -1,8 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
-import type { ReactNode } from "react";
-import { Badge } from "../ui/badge";
 import type { Subscriber as ContractSubscriber } from "../../lib/generated-contracts";
 
 export type SubscriberList = {
@@ -43,14 +41,6 @@ export type Subscriber = Omit<
 > & { fields: ContractSubscriber["fields"] | string };
 export const tableClass =
   "w-full text-sm [&_th]:text-left [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:py-2 [&_th]:h-10 [&_th]:py-2 [&_tr]:border-b [&_tbody_tr:last-child]:border-0 [&_td]:px-3 [&_th]:px-3";
-export function SubscriberStatusBadge({ status }: { status: string }) {
-  return (
-    <Badge variant="outline" className={`status-badge status-${status}`}>
-      <span className="status-dot" />
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </Badge>
-  );
-}
 export function subscriberInitials(name: string, email: string) {
   const words = (name.trim() || email).split(/\s+/);
   return (
@@ -60,20 +50,6 @@ export function subscriberInitials(name: string, email: string) {
   ).toUpperCase();
 }
 export { ErrorMessage } from "../RequestError";
-export function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <label className="grid gap-2 text-sm font-medium">
-      {label}
-      {children}
-    </label>
-  );
-}
 export function useSubscribersQuery<T>(
   brandId: number,
   resource: string,

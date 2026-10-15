@@ -1,3 +1,4 @@
+import { Field } from "../components/ui/field";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { useTableSort } from "../lib/use-table-sort";
@@ -22,7 +23,6 @@ import {
   type SubscriberList,
   type CustomField,
   ErrorMessage,
-  Field,
   tableClass,
   useSubscriberAction,
 } from "../components/subscribers/shared";

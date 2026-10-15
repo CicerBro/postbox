@@ -1,3 +1,4 @@
+import { InputField } from "../ui/field";
 import { useDateTime } from "../../lib/date-time";
 import { sesRegions, type SESSendingStatus } from "../../lib/aws-ses";
 import { useEffect, useId, useState } from "react";
@@ -7,7 +8,7 @@ import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { SelectField } from "../ui/select";
-import { Field, Message, Section, useAction } from "./Common";
+import { Message, Section, useAction } from "./Common";
 
 type Settings = {
   mode: "static";
@@ -105,15 +106,15 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                       ? "Access keys are saved. Leave these fields blank to keep them, or enter both keys to replace them."
                       : "Enter an AWS access key ID and secret access key. Use IAM access keys, not SES SMTP credentials."}
                   </p>
-                  <Field label="Access key ID" type="password" autoComplete="new-password" value={accessKey}
+                  <InputField label="Access key ID" type="password" autoComplete="new-password" value={accessKey}
                     placeholder={q.data.has_credentials ? "••••••••" : undefined}
                     required={!q.data.has_credentials || !!secretKey}
                     disabled={action.busy} onChange={(e) => setAccessKey(e.target.value)} />
-                  <Field label="Secret access key" type="password" autoComplete="new-password" value={secretKey}
+                  <InputField label="Secret access key" type="password" autoComplete="new-password" value={secretKey}
                     placeholder={q.data.has_credentials ? "••••••••" : undefined}
                     required={!q.data.has_credentials || !!accessKey}
                     disabled={action.busy} onChange={(e) => setSecretKey(e.target.value)} />
-                  <Field label="Session token (optional)" type="password" autoComplete="new-password" value={token}
+                  <InputField label="Session token (optional)" type="password" autoComplete="new-password" value={token}
                     placeholder={q.data.has_session_token && !clearToken ? "••••••••" : undefined}
                     disabled={action.busy || clearToken} onChange={(e) => setToken(e.target.value)} />
                   <p className="text-sm text-muted-foreground">
@@ -128,7 +129,7 @@ export function AmazonSES({ brandId }: { brandId: number }) {
                 <div className="space-y-4">
                   <h3 className="text-sm font-medium">SES events</h3>
                   <p className="text-sm text-muted-foreground">Leave the topic ARN blank to create a topic during setup, or enter an existing Standard topic owned by this AWS account in the selected region.</p>
-                  <Field label="SNS topic ARN" type="text" value={topicArn}
+                  <InputField label="SNS topic ARN" type="text" value={topicArn}
                     disabled={action.busy} onChange={(e) => setTopicArn(e.target.value)} />
                 </div>
                 <Button disabled={action.busy || !region}>Save Amazon SES settings</Button>
