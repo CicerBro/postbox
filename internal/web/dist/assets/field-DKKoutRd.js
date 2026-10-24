@@ -1,1 +1,0 @@
-import{H as e}from"./button-Cm_SVsh3.js";import{y as t}from"./index-NfMogIeb.js";var n=e();function r({label:e,children:t}){return(0,n.jsxs)(`label`,{className:`form-field grid min-w-0 w-full gap-2 text-sm font-medium`,children:[(0,n.jsx)(`span`,{children:e}),t]})}function i({label:e,...i}){return(0,n.jsx)(r,{label:e,children:(0,n.jsx)(t,{...i})})}export{i as n,r as t};
