@@ -33,6 +33,17 @@ type CampaignSummary = Pick<
   stats?: { recipients: number; sent: number; opens_unique: number; clicks_unique: number } | null;
 };
 
+function engagement(count: number, total: number) {
+  return (
+    <>
+      {number(count)}
+      {total > 0 && (
+        <span className="text-xs text-muted-foreground"> ({((count / total) * 100).toFixed(1)}%)</span>
+      )}
+    </>
+  );
+}
+
 export function CampaignsPage({ brandId }: { brandId: number }) {
   const { formatDateTime } = useDateTime();
   const navigate = useNavigate();
@@ -211,9 +222,9 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                   </th>
                   {sortHeader("Status", "status")}
                   <th>Recipients</th>
-                  <th>Sent</th>
                   <th>Opens</th>
                   <th>Clicks</th>
+                  <th>Sent</th>
                   <th>
                     <span className="sr-only">Actions</span>
                   </th>
@@ -240,9 +251,9 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                       <StatusBadge status={c.status} />
                     </td>
                     <td className="tabular-nums">{c.stats ? number(c.stats.recipients) : "—"}</td>
+                    <td className="tabular-nums">{c.stats ? engagement(c.stats.opens_unique, c.stats.sent || c.stats.recipients) : "—"}</td>
+                    <td className="tabular-nums">{c.stats ? engagement(c.stats.clicks_unique, c.stats.sent || c.stats.recipients) : "—"}</td>
                     <td className="tabular-nums whitespace-nowrap">{c.status === "sent" && c.finished_at != null ? formatDateTime(c.finished_at) : "—"}</td>
-                    <td className="tabular-nums">{c.stats ? number(c.stats.opens_unique) : "—"}</td>
-                    <td className="tabular-nums">{c.stats ? number(c.stats.clicks_unique) : "—"}</td>
                     <td className="campaign-actions-cell">
                       <div className="campaign-row-actions">
                         <Button

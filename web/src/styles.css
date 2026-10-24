@@ -1057,6 +1057,8 @@
   }
   .campaigns-table th:nth-child(3),
   .campaigns-table td:nth-child(3),
+  .campaigns-table th:nth-child(4),
+  .campaigns-table td:nth-child(4),
   .campaigns-table th:nth-child(5),
   .campaigns-table td:nth-child(5),
   .campaigns-table th:nth-child(6),
