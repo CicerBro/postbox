@@ -288,21 +288,48 @@ func TestProductionDynamicPagePlans(t *testing.T) {
 	emailQuery := sourceSQL(t, "../subscribers/service.go", "GetByEmail", "SELECT ", nil)
 	columns := strings.TrimSuffix(strings.TrimPrefix(emailQuery, "SELECT "), " FROM subscribers WHERE brand_id=? AND email=?")
 	for _, list := range []bool{false, true} {
-		t.Run(fmt.Sprintf("list_export_%t", list), func(t *testing.T) {
-			cols := columns
-			args := []any{1, 40}
-			if list {
-				replacement := sourceSQL(t, "../subscribers/csv.go", "ExportCSV", "fields,CASE", nil)
-				cols = strings.Replace(cols, "fields,status,", replacement, 1)
-				args = append([]any{1}, args...)
-			}
-			q := sourceSQL(t, "../subscribers/csv.go", "ExportCSV", "SELECT ", map[string]string{"columns": cols})
-			if list {
-				q += sourceSQL(t, "../subscribers/csv.go", "ExportCSV", " AND EXISTS", nil)
-				args = append(args, 1)
-			}
-			q += sourceSQL(t, "../subscribers/csv.go", "ExportCSV", " ORDER BY id", nil)
-			assertProductionPlan(t, db.Reader, q, args...)
-		})
+		for _, status := range []string{"", "active", "bounced", "complained", "blocklisted", "subscribed", "unsubscribed", "unconfirmed"} {
+			t.Run(fmt.Sprintf("list_export_%t_%s", list, status), func(t *testing.T) {
+				const file, function = "../subscribers/csv.go", "ExportCSVFiltered"
+				projection := "CASE WHEN status!='active' THEN status WHEN marketing_unsubscribed_at IS NOT NULL THEN 'unsubscribed' ELSE status END"
+				args := []any{}
+				if list {
+					projection = "CASE WHEN status!='active' THEN status WHEN marketing_unsubscribed_at IS NOT NULL THEN 'unsubscribed' ELSE (SELECT"
+					args = append(args, 1)
+				} else if status == "subscribed" || status == "unsubscribed" || status == "unconfirmed" {
+					projection = "CASE WHEN status!='active' THEN status ELSE ? END"
+					args = append(args, status)
+				}
+				projection = sourceSQL(t, file, function, projection, nil)
+				cols := strings.Replace(columns, "fields,status,", "fields,"+projection+",", 1)
+				q := sourceSQL(t, file, function, "SELECT "+cols, map[string]string{"columns": cols})
+				args = append(args, 1, 40)
+				membership := sourceSQL(t, file, function, "SELECT 1 FROM list_subscribers", nil)
+				if list {
+					membership += sourceSQL(t, file, function, " AND ls.list_id=", nil)
+					q += sourceSQL(t, file, function, " AND EXISTS(", map[string]string{"membership": membership})
+					args = append(args, 1)
+				}
+				switch status {
+				case "subscribed", "unconfirmed":
+					q += sourceSQL(t, file, function, " AND status='active'", map[string]string{"membership": membership})
+					if list {
+						args = append(args, 1)
+					}
+					args = append(args, status)
+				case "unsubscribed":
+					q += sourceSQL(t, file, function, " AND (marketing_unsubscribed_at", map[string]string{"membership": membership})
+					if list {
+						args = append(args, 1)
+					}
+				case "":
+				default:
+					q += sourceSQL(t, file, function, " AND status=?", nil)
+					args = append(args, status)
+				}
+				q += sourceSQL(t, file, function, " ORDER BY id", nil)
+				assertProductionPlan(t, db.Reader, q, args...)
+			})
+		}
 	}
 }

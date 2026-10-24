@@ -107,3 +107,52 @@ for (const width of [1280, 390]) {
     await expect(dialog).toHaveCount(0);
   });
 }
+
+for (const width of [1280, 390]) {
+  test(`subscriber CSV export filters status and list at ${width}px`, async ({ page, context }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await subscriberFixture(context);
+    const exports: URL[] = [];
+    await page.route("**/api/v1/subscribers/export?**", async (route) => {
+      exports.push(new URL(route.request().url()));
+      await route.fulfill({
+        contentType: "text/csv",
+        body: "email,name,status,fields,created_at,gdpr_consent_at\nperson@example.org,Person,complained,{},1,\n",
+      });
+    });
+    await page.goto("/subscribers");
+    await page.getByRole("tab", { name: "Import / export", exact: true }).click();
+    const status = page.getByRole("combobox", { name: "Export status", exact: true });
+    const list = page.getByRole("combobox", { name: "Export list", exact: true });
+    await expect(status).toHaveText("All statuses");
+    const downloadCSV = async () => {
+      const downloading = page.waitForEvent("download");
+      await page.getByRole("button", { name: "Download CSV", exact: true }).click();
+      const download = await downloading;
+      expect(download.suggestedFilename()).toBe("subscribers.csv");
+      expect(await download.failure()).toBeNull();
+      expect(exports.at(-1)!.searchParams.get("brand_id")).toBe("1");
+    };
+    await downloadCSV();
+    expect(exports.at(-1)!.searchParams.has("status")).toBe(false);
+    expect(exports.at(-1)!.searchParams.has("list_id")).toBe(false);
+    for (const label of ["Complained", "Bounced", "Unsubscribed"]) {
+      await status.click();
+      await page.getByRole("option", { name: label, exact: true }).click();
+      await downloadCSV();
+      expect(exports.at(-1)!.searchParams.get("status")).toBe(label.toLowerCase());
+    }
+    await list.click();
+    await page.getByRole("option", { name: "Weekly news", exact: true }).click();
+    await downloadCSV();
+    expect(exports.at(-1)!.searchParams.get("list_id")).toBe("42");
+    expect(exports.at(-1)!.searchParams.get("status")).toBe("unsubscribed");
+    await status.click();
+    await page.getByRole("option", { name: "All statuses", exact: true }).click();
+    await downloadCSV();
+    expect(exports.at(-1)!.searchParams.has("status")).toBe(false);
+    expect(exports.at(-1)!.searchParams.get("list_id")).toBe("42");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath(`subscriber-export-${width}.png`), fullPage: true });
+  });
+}

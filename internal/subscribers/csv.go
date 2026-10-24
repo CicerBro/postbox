@@ -239,23 +239,69 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader, opt ImportOpt
 	}
 	return result, e
 }
+
+// ExportCSV retains the unfiltered export used by background jobs.
 func (s *Service) ExportCSV(ctx context.Context, w io.Writer, brandID, listID int64) error {
+	return s.ExportCSVFiltered(ctx, w, brandID, listID, "")
+}
+
+// ExportCSVFiltered filters delivery status or subscription state before paging.
+// Without a list, subscription states match any membership in the brand.
+// Unsubscribed also includes brand-wide marketing opt-outs.
+func (s *Service) ExportCSVFiltered(ctx context.Context, w io.Writer, brandID, listID int64, status string) error {
+	switch status {
+	case "", "active", "bounced", "complained", "blocklisted", "subscribed", "unsubscribed", "unconfirmed":
+	default:
+		return errors.New("status must be active, bounced, complained, blocklisted, subscribed, unsubscribed or unconfirmed")
+	}
+	if listID < 0 {
+		return errors.New("list_id must be a positive integer")
+	}
+	if listID != 0 {
+		var exists int
+		if err := s.db.Reader.QueryRowContext(ctx, "SELECT 1 FROM lists WHERE brand_id=? AND id=?", brandID, listID).Scan(&exists); err != nil {
+			return err
+		}
+	}
 	writer := csvexport.NewWriter(w)
 	if e := writer.Write([]string{"email", "name", "status", "fields", "created_at", "gdpr_consent_at"}); e != nil {
 		return e
 	}
 	var after int64
 	for {
-		columns := subscriberColumns
-		args := []any{brandID, after}
+		// Keep delivery suppression visible while preserving marketing opt-outs.
+		effectiveStatus := "CASE WHEN status!='active' THEN status WHEN marketing_unsubscribed_at IS NOT NULL THEN 'unsubscribed' ELSE status END"
+		args := []any{}
 		if listID != 0 {
-			columns = strings.Replace(columns, "fields,status,", "fields,CASE WHEN status='active' THEN (SELECT ls.status FROM list_subscribers ls WHERE ls.list_id=? AND ls.subscriber_id=subscribers.id) ELSE status END,", 1)
-			args = append([]any{listID}, args...)
-		}
-		q := "SELECT " + columns + " FROM subscribers WHERE brand_id=? AND id>?"
-		if listID != 0 {
-			q += " AND EXISTS(SELECT 1 FROM list_subscribers ls WHERE ls.list_id=? AND ls.subscriber_id=subscribers.id)"
+			effectiveStatus = "CASE WHEN status!='active' THEN status WHEN marketing_unsubscribed_at IS NOT NULL THEN 'unsubscribed' ELSE (SELECT ls.status FROM list_subscribers ls WHERE ls.list_id=? AND ls.subscriber_id=subscribers.id) END"
 			args = append(args, listID)
+		} else if status == "subscribed" || status == "unsubscribed" || status == "unconfirmed" {
+			effectiveStatus = "CASE WHEN status!='active' THEN status ELSE ? END"
+			args = append(args, status)
+		}
+		columns := strings.Replace(subscriberColumns, "fields,status,", "fields,"+effectiveStatus+",", 1)
+		q := "SELECT " + columns + " FROM subscribers WHERE brand_id=? AND id>?"
+		args = append(args, brandID, after)
+		membership := "SELECT 1 FROM list_subscribers ls WHERE ls.subscriber_id=subscribers.id"
+		memberArgs := []any{}
+		if listID != 0 {
+			membership += " AND ls.list_id=?"
+			memberArgs = append(memberArgs, listID)
+			q += " AND EXISTS(" + membership + ")"
+			args = append(args, listID)
+		}
+		switch status {
+		case "subscribed", "unconfirmed":
+			q += " AND status='active' AND marketing_unsubscribed_at IS NULL AND EXISTS(" + membership + " AND ls.status=?)"
+			args = append(args, memberArgs...)
+			args = append(args, status)
+		case "unsubscribed":
+			q += " AND (marketing_unsubscribed_at IS NOT NULL OR EXISTS(" + membership + " AND ls.status='unsubscribed'))"
+			args = append(args, memberArgs...)
+		case "":
+		default:
+			q += " AND status=?"
+			args = append(args, status)
 		}
 		q += " ORDER BY id LIMIT 1000"
 		rows, e := s.db.Reader.QueryContext(ctx, q, args...)

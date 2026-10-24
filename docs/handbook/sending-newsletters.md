@@ -60,6 +60,10 @@ The dispatch ledger survives subscriber deletion and recreation. It protects aga
 
 ## Export data and receive notifications
 
+In **Subscribers & lists → Import / export**, choose all brand subscribers or a list, select a status, then click **Download CSV**. Statuses include active delivery, subscribed, unsubscribed, unconfirmed, bounced, complained and blocklisted. Leave **All statuses** selected for a complete export.
+
+**Unsubscribed** includes brand-wide marketing opt-outs and opt-outs from the selected list, or any list when exporting all brand subscribers. **Subscribed** and **Unconfirmed** exclude bounced, complained, blocklisted and brand-wide opted-out profiles. Each profile appears once. The CSV status preserves delivery suppression; otherwise it reflects a brand-wide opt-out, the selected list membership or the requested membership filter.
+
 Subscriber and campaign recipient CSV exports protect spreadsheet users by adding a leading apostrophe to values that could be interpreted as formulas. The rule covers `=`, `+`, `-`, `@` and their fullwidth forms after leading whitespace, control or format characters. Quoting preserves commas, line breaks and Unicode.
 
 Reimporting such a CSV retains the apostrophe as data. Use the JSON API or a database backup when you need exact values to round-trip. The database and JSON API keep the original values.

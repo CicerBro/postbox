@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"postbox/internal/subscribers"
+	"strconv"
 	"time"
 )
 
@@ -41,9 +42,25 @@ func (a *API) operations(w http.ResponseWriter, r *http.Request) {
 	s := a.subscriberService()
 	switch {
 	case has(r.URL.Path, "export"):
+		var listID int64
+		if raw := r.URL.Query().Get("list_id"); raw != "" {
+			var err error
+			listID, err = strconv.ParseInt(raw, 10, 64)
+			if err != nil || listID <= 0 {
+				fail(w, 400, errors.New("list_id must be a positive integer"))
+				return
+			}
+		}
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=subscribers.csv")
-		_ = s.ExportCSV(r.Context(), w, brand, number(r.URL.Query().Get("list_id")))
+		stream := &csvExportResponse{ResponseWriter: w}
+		if err := s.ExportCSVFiltered(r.Context(), stream, brand, listID, r.URL.Query().Get("status")); err != nil {
+			if stream.started {
+				panic(http.ErrAbortHandler)
+			}
+			w.Header().Del("Content-Disposition")
+			result(w, nil, err)
+		}
 	case has(r.URL.Path, "import"), has(r.URL.Path, "preview"):
 		var opt subscribers.ImportOptions
 		raw := r.URL.Query().Get("options")
@@ -140,4 +157,15 @@ func (a *API) templates(w http.ResponseWriter, r *http.Request) {
 		res, e := a.db.Writer.ExecContext(r.Context(), "UPDATE templates SET name=?,html=?,text=?,updated_at=? WHERE id=? AND brand_id=?", in.Name, in.HTML, in.Text, time.Now().UnixMilli(), id, brand)
 		result(w, map[string]int64{"id": id}, requireChanged(res, e))
 	}
+}
+
+// Abort failed streams instead of returning a successful, truncated CSV download.
+type csvExportResponse struct {
+	http.ResponseWriter
+	started bool
+}
+
+func (w *csvExportResponse) Write(p []byte) (int, error) {
+	w.started = true
+	return w.ResponseWriter.Write(p)
 }

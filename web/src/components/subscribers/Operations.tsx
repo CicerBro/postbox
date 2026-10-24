@@ -358,6 +358,7 @@ export function ExportSubscribers({
   lists: SubscriberList[];
 }) {
   const [list, setList] = useState(0);
+  const [status, setStatus] = useState("");
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
   return (
@@ -367,7 +368,8 @@ export function ExportSubscribers({
       </h2>
       <p className="text-sm text-muted-foreground">
         Download emails, names, statuses, custom fields and consent dates. A
-        list export includes membership opt-out status.
+        list export includes membership opt-out status. Filter by status to
+        download only the subscribers you need.
       </p>
       <div className="flex flex-wrap gap-3">
         <SelectField
@@ -380,6 +382,22 @@ export function ExportSubscribers({
             ...lists.map((l) => ({ value: String(l.id), label: l.name })),
           ]}
         />
+        <SelectField
+          aria-label="Export status"
+          className="max-w-xs"
+          value={status}
+          onValueChange={setStatus}
+          options={[
+            { value: "", label: "All statuses" },
+            { value: "active", label: "Active (delivery)" },
+            { value: "subscribed", label: "Subscribed" },
+            { value: "unsubscribed", label: "Unsubscribed" },
+            { value: "unconfirmed", label: "Unconfirmed" },
+            { value: "bounced", label: "Bounced" },
+            { value: "complained", label: "Complained" },
+            { value: "blocklisted", label: "Blocklisted" },
+          ]}
+        />
         <Button
           variant="outline"
           disabled={busy}
@@ -387,8 +405,11 @@ export function ExportSubscribers({
             setBusy(true);
             setError(undefined);
             try {
+              const params = new URLSearchParams();
+              if (list) params.set("list_id", String(list));
+              if (status) params.set("status", status);
               await download(
-                `/subscribers/export${list ? `?list_id=${list}` : ""}`,
+                `/subscribers/export${params.size ? `?${params}` : ""}`,
                 brandId,
                 "subscribers.csv",
               );
@@ -402,6 +423,11 @@ export function ExportSubscribers({
           {busy ? "Preparing download…" : "Download CSV"}
         </Button>
       </div>
+      <p className="text-sm text-muted-foreground">
+        Unsubscribed includes brand-wide opt-outs and opt-outs from
+        {list ? " the selected list" : " any list"}. Subscribed and unconfirmed
+        exclude bounced, complained, blocklisted and brand-wide opted-out profiles.
+      </p>
       <ErrorMessage error={error} />
     </section>
   );

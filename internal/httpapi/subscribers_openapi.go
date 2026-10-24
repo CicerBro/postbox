@@ -10,6 +10,12 @@ func documentSubscriberRead(method, path string, op map[string]any) {
 	if method != "GET" {
 		return
 	}
+	if path == "/api/v1/subscribers/export" {
+		op["parameters"] = append(op["parameters"].([]map[string]any),
+			map[string]any{"name": "list_id", "in": "query", "description": "Restrict to members of a list in this brand. Unknown or other-brand lists return 404.", "schema": map[string]any{"type": "integer", "minimum": 1}},
+			map[string]any{"name": "status", "in": "query", "description": "Omit to export all statuses. Active, bounced, complained and blocklisted filter delivery status. Subscribed and unconfirmed match memberships and exclude delivery-suppressed or brand-wide opted-out profiles. Unsubscribed includes brand-wide opt-outs or unsubscribed memberships. Membership filters use the selected list, or any list when list_id is omitted. Each subscriber appears once. CSV status preserves delivery suppression; otherwise it reflects the selected list, brand-wide opt-out or requested membership state.", "schema": map[string]any{"type": "string", "enum": []string{"active", "bounced", "complained", "blocklisted", "subscribed", "unsubscribed", "unconfirmed"}}},
+		)
+	}
 	if path == "/api/v1/subscribers/{id}" {
 		op["description"] = "Returns a one-element subscriber array. For compatibility, fields is the raw JSON string; marketing_unsubscribed_at is a timestamp or null."
 	}
