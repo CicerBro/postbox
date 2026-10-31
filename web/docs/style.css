@@ -25,22 +25,23 @@ button { cursor: pointer; }
 .docs-search input { width: 100%; min-width: 0; border: 0; background: none; color: var(--docs-fg); font-size: 13px; }
 .docs-sidebar section { margin: 24px 0; }
 .docs-sidebar h2, .docs-toc h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--docs-muted); font-weight: 650; margin: 0 10px 10px; }
-.docs-sidebar a { display: block; padding: 8px 10px; margin: 2px 0; font-size: 13px; line-height: 1.5; text-decoration: none; color: var(--docs-muted); border-radius: 6px; }
+.docs-sidebar h2 { font-size: 12px; }
+.docs-sidebar a { display: block; padding: 8px 10px; margin: 2px 0; font-size: 14px; line-height: 1.5; text-decoration: none; color: var(--docs-muted); border-radius: 6px; }
 .docs-sidebar a:hover { background: var(--docs-soft); color: var(--docs-fg); }
 .docs-sidebar a.selected { color: var(--docs-accent); background: var(--docs-active); font-weight: 600; }
 .docs-article { min-width: 0; padding: 48px clamp(24px, 4vw, 64px) 64px; }
 .docs-eyebrow { text-transform: uppercase; color: var(--docs-accent); letter-spacing: .1em; font-weight: 650; font-size: 11px; margin: 0 0 14px; }
 .docs-article h1 { font-size: clamp(26px, 3vw, 36px); line-height: 1.2; letter-spacing: -.025em; margin: 0 0 26px; }
-.docs-prose { font-size: 15px; line-height: 1.85; overflow-wrap: anywhere; }
+.docs-prose { font-size: 16px; line-height: 1.85; overflow-wrap: anywhere; }
 .docs-prose p { margin: 0 0 20px; }
-.docs-prose > p:first-child { font-size: 17px; line-height: 1.8; color: var(--docs-muted); margin-bottom: 28px; }
+.docs-prose > p:first-child { line-height: 1.8; color: var(--docs-muted); margin-bottom: 28px; }
 .docs-prose h2, .docs-prose h3, .docs-prose h4 { scroll-margin-top: 100px; line-height: 1.35; margin: 36px 0 16px; letter-spacing: -.015em; }
 .docs-prose h2 { font-size: 24px; }.docs-prose h3 { font-size: 19px; }
 .docs-prose ul, .docs-prose ol { padding-left: 24px; margin-bottom: 24px; }.docs-prose li { margin: 6px 0; }
 .docs-prose code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85em; padding: 3px 5px; border-radius: 4px; background: var(--docs-soft); }
 .docs-prose pre { white-space: pre; overflow-x: auto; padding: 20px; background: var(--docs-soft); border: 1px solid var(--docs-line); border-radius: 10px; line-height: 1.7; margin: 24px 0; }
 .docs-prose pre code { padding: 0; background: none; }
-.docs-prose table { display: block; overflow-x: auto; width: 100%; border-collapse: collapse; font-size: 13px; margin: 24px 0; }
+.docs-prose table { display: block; overflow-x: auto; width: 100%; border-collapse: collapse; font-size: 15px; margin: 24px 0; }
 .docs-prose td, .docs-prose th { border: 1px solid var(--docs-line); padding: 10px 14px; text-align: left; min-width: 120px; }
 .docs-prose th { background: var(--docs-soft); font-weight: 600; }.docs-prose tr:nth-child(even) { background: var(--docs-soft); }
 .docs-prose blockquote { margin: 24px 0; border-left: 3px solid var(--docs-accent); padding: 12px 20px; background: var(--docs-active); }.docs-prose blockquote p:last-child { margin: 0; }
