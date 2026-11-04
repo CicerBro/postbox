@@ -1,5 +1,5 @@
 import { useBrandPermission } from "../lib/use-brand-permission";
-import { useDateTime, zonedDateTimeToTimestamp } from "../lib/date-time";
+import { useDateTime, zonedDateTimeToTimestamp, timestampToZonedDateTime } from "../lib/date-time";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -62,10 +62,12 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
     setNotice,
     targetMode,
   } = draft;
-  const [schedule, setSchedule] = useState(""),
+  const [scheduleOverride, setSchedule] = useState<string>(),
     [testEmails, setTestEmails] = useState(""),
     [confirm, setConfirm] = useState<CampaignConfirmation>(null),
     [busy, setBusy] = useState(false);
+  const scheduledAt = campaign.data?.[0]?.scheduled_at;
+  const schedule = scheduleOverride ?? (scheduledAt ? timestampToZonedDateTime(scheduledAt, timeZone) : "");
   const [testSendError, setTestSendError] = useState<unknown>(null);
   const [testSendStatus, setTestSendStatus] = useState<
     "idle" | "sending" | "sent"
@@ -93,12 +95,14 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
         return;
       }
       if (action === "test-send") setTestSendStatus("sent");
-      else setNotice("Campaign action completed.");
+      else setNotice(action === "schedule" ? "Campaign schedule saved." : "Campaign action completed.");
       setConfirm(null);
       await client.invalidateQueries({
         queryKey: ["campaign", brandId, routeID],
       });
+      if (action === "schedule") setSchedule(undefined);
       client.invalidateQueries({ queryKey: ["campaigns", brandId] });
+      client.invalidateQueries({ queryKey: ["campaign-report", brandId, draftID] });
     } catch (e) {
       if (action === "test-send") {
         setTestSendError(e);
@@ -141,7 +145,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
       setError(new Error("Resolve the preflight errors before sending."));
       return;
     }
-    setConfirm(mode);
+    setConfirm(mode === "schedule" && status === "scheduled" ? "reschedule" : mode);
   }
   async function confirmed() {
     if (confirm === "delete") {
@@ -155,7 +159,7 @@ function CampaignDetail({ brandId, id }: { brandId: number; id?: string }) {
       } finally {
         setBusy(false);
       }
-    } else if (confirm === "schedule")
+    } else if (confirm === "schedule" || confirm === "reschedule")
       await action("schedule", {
         scheduled_at: zonedDateTimeToTimestamp(schedule, timeZone),
         timezone: timeZone,

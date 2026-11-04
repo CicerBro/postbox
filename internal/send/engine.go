@@ -251,8 +251,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	defer t.Stop()
 	for {
 		if e.enabled.Load() {
-			var id int64
-			err := e.db.Reader.QueryRowContext(ctx, `SELECT id FROM campaigns WHERE status IN ('sending','preparing') OR (status='scheduled' AND scheduled_at<=?) ORDER BY id LIMIT 1`, time.Now().UnixMilli()).Scan(&id)
+			id, err := e.nextCampaign(ctx)
 			if err == nil {
 				if err = e.RunCampaign(ctx, id); err != nil && ctx.Err() == nil {
 					e.cfg.Logger.ErrorContext(ctx, "campaign sending failed", "campaign_id", id, "error", err)
@@ -271,6 +270,22 @@ func (e *Engine) Start(ctx context.Context) error {
 		}
 	}
 }
+
+// Claim scheduled work in the same transaction that checks its date. Schedule
+// changes either win before this claim or are rejected once preparation begins.
+func (e *Engine) nextCampaign(ctx context.Context) (int64, error) {
+	var id int64
+	err := e.db.Immediate(ctx, func(conn *sql.Conn) error {
+		now := time.Now().UnixMilli()
+		if err := conn.QueryRowContext(ctx, `SELECT id FROM campaigns WHERE status IN ('sending','preparing') OR (status='scheduled' AND scheduled_at<=?) ORDER BY id LIMIT 1`, now).Scan(&id); err != nil {
+			return err
+		}
+		_, err := conn.ExecContext(ctx, `UPDATE campaigns SET status='preparing',updated_at=? WHERE id=? AND status='scheduled'`, now, id)
+		return err
+	})
+	return id, err
+}
+
 func (e *Engine) control(ctx context.Context, id int64, state string) error {
 	_, err := e.db.Writer.ExecContext(ctx, `UPDATE campaigns SET status=?,updated_at=? WHERE id=? AND status NOT IN ('sent','cancelled')`, state, time.Now().UnixMilli(), id)
 	if err != nil {

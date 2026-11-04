@@ -46,6 +46,8 @@ Before starting a campaign, review its checklist:
 
 Start the campaign or choose its scheduled delivery time. Postbox prepares an audience snapshot, then checks eligibility again before dispatch. Its sender adapts concurrency to the SES quota and measured request latency. Campaigns sharing the same AWS account and region share the rate limit.
 
+To change a scheduled delivery, open the campaign, choose a new future date and time under **Delivery**, then select **Update schedule** and confirm. The date uses your account timezone. Campaign owners with Send access and administrators can update the schedule until preparation begins.
+
 Use the live report to follow progress, acceptance, tracking and delivery outcomes. Report streams close when a session expires, a credential is revoked or access to the campaign is removed.
 
 ## Understand delivery outcomes

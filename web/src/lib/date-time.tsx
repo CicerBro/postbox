@@ -76,6 +76,15 @@ export function DateTime({ value, fallback = "Not recorded" }: { value: DateTime
   return <>{dateValue(value) ? formatDateTime(value) : fallback}</>;
 }
 
+export function timestampToZonedDateTime(value: number, timeZone: string): string {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: resolveTimeZone(timeZone), year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(value).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
 /** Interpret a datetime-local wall clock in the selected IANA timezone.
  * Reject skipped DST times; when clocks repeat, choose the earlier occurrence.
  */

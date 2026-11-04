@@ -223,13 +223,21 @@ func (a *API) campaignAction(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			at = in.ScheduledAt
-			if at < time.Now().UnixMilli() {
+			if at <= time.Now().UnixMilli() {
 				fail(w, 400, errors.New("scheduled_at must be in the future"))
 				return
 			}
 		}
-		res, e := a.db.Writer.ExecContext(r.Context(), "UPDATE campaigns SET status='scheduled',scheduled_at=?,updated_at=? WHERE brand_id=? AND id=? AND status='draft'", at, time.Now().UnixMilli(), brand, id)
-		err = requireChanged(res, e)
+		res, e := a.db.Writer.ExecContext(r.Context(), "UPDATE campaigns SET status='scheduled',scheduled_at=?,updated_at=? WHERE brand_id=? AND id=? AND (status='draft' OR (? AND status='scheduled'))", at, time.Now().UnixMilli(), brand, id, has(action, "schedule"))
+		if e == nil {
+			var changed int64
+			changed, e = res.RowsAffected()
+			if e == nil && changed == 0 {
+				fail(w, http.StatusConflict, errors.New("campaign has already started or is no longer available for scheduling"))
+				return
+			}
+		}
+		err = e
 	case has(action, "duplicate"):
 		var newID int64
 		err = a.db.Immediate(r.Context(), func(c *sql.Conn) error {

@@ -24,6 +24,7 @@ import { Preflight } from "./campaign-preflight";
 export type CampaignConfirmation =
   | "start"
   | "schedule"
+  | "reschedule"
   | "cancel"
   | "delete"
   | null;
@@ -82,40 +83,41 @@ export function CampaignDelivery({
       </CardHeader>
       <CardContent className="space-y-4">
         {editable && (
-          <>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                onClick={preflight}
-                disabled={checking || busy || dirty}
-              >
-                {checking ? "Checking…" : "Run preflight"}
-              </Button>
-              <Button
-                onClick={() => sendingConfirmation("start")}
-                disabled={busy || dirty || !canSend || checking}
-              >
-                Start sending
-              </Button>
-            </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="text-sm">
-                Schedule in {timeZone}
-                <Input
-                  type="datetime-local"
-                  value={schedule}
-                  onChange={(e) => setSchedule(e.target.value)}
-                />
-              </label>
-              <Button
-                variant="outline"
-                onClick={() => sendingConfirmation("schedule")}
-                disabled={busy || dirty || !canSend || checking}
-              >
-                Schedule
-              </Button>
-            </div>
-          </>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={preflight}
+              disabled={checking || busy || dirty}
+            >
+              {checking ? "Checking…" : "Run preflight"}
+            </Button>
+            <Button
+              onClick={() => sendingConfirmation("start")}
+              disabled={busy || dirty || !canSend || checking}
+            >
+              Start sending
+            </Button>
+          </div>
+        )}
+        {(editable || status === "scheduled") && (
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-sm">
+              Schedule in {timeZone}
+              <Input
+                type="datetime-local"
+                value={schedule}
+                disabled={busy || !canSend || checking}
+                onChange={(e) => setSchedule(e.target.value)}
+              />
+            </label>
+            <Button
+              variant="outline"
+              onClick={() => sendingConfirmation("schedule")}
+              disabled={busy || dirty || !canSend || checking}
+            >
+              {status === "scheduled" ? "Update schedule" : "Schedule"}
+            </Button>
+          </div>
         )}
         {["sending", "preparing"].includes(status) && (
           <Button
@@ -237,19 +239,23 @@ export function CampaignConfirmationDialog({
               ? "Start campaign?"
               : confirm === "schedule"
                 ? "Schedule campaign?"
-                : confirm === "delete"
-                  ? "Delete draft?"
-                  : "Cancel campaign?"}
+                : confirm === "reschedule"
+                  ? "Update campaign schedule?"
+                  : confirm === "delete"
+                    ? "Delete draft?"
+                    : "Cancel campaign?"}
           </DialogTitle>
         </DialogHeader>
         <p className="text-sm">
           {confirm === "delete"
             ? "This permanently deletes this draft and its audience selection."
-            : confirm === "cancel"
-              ? "Stop sending this campaign. Messages already accepted by SES cannot be recalled."
-              : `Send the saved campaign to ${number(checklist?.recipients ?? 0)} recipients${confirm === "schedule" ? ` at ${formatDateTime(zonedDateTimeToTimestamp(schedule, timeZone))}` : " now"}.`}
+            : confirm === "reschedule"
+              ? `Deliver this campaign at ${formatDateTime(zonedDateTimeToTimestamp(schedule, timeZone))} (${timeZone}).`
+              : confirm === "cancel"
+                ? "Stop sending this campaign. Messages already accepted by SES cannot be recalled."
+                : `Send the saved campaign to ${number(checklist?.recipients ?? 0)} recipients${confirm === "schedule" ? ` at ${formatDateTime(zonedDateTimeToTimestamp(schedule, timeZone))}` : " now"}.`}
         </p>
-        {(confirm === "start" || confirm === "schedule") &&
+        {(confirm === "start" || confirm === "schedule" || confirm === "reschedule") &&
           checklist?.checks.warnings?.map((w, i) => (
             <p key={i} className="text-sm">
               Warning: {w.message}

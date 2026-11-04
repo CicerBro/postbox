@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createDateTimeFormatter, formatDate, resolveTimeZone, zonedDateTimeToTimestamp } from "../src/lib/date-time";
+import { createDateTimeFormatter, formatDate, resolveTimeZone, timestampToZonedDateTime, zonedDateTimeToTimestamp } from "../src/lib/date-time";
 
 const calendarOptions: Intl.DateTimeFormatOptions = { year: "numeric", month: "2-digit", day: "2-digit" };
 
@@ -33,6 +33,10 @@ describe("timezone-aware dates", () => {
 });
 
 describe("campaign schedule wall clock conversion", () => {
+  test("existing dates fill local inputs in the selected timezone", () => {
+    expect(timestampToZonedDateTime(Date.parse("2026-01-01T18:45:00Z"), "Asia/Kathmandu")).toBe("2026-01-02T00:30");
+    expect(timestampToZonedDateTime(Date.parse("2026-07-01T11:00:00Z"), "Europe/London")).toBe("2026-07-01T12:00");
+  });
   test("uses the selected timezone, including fractional offsets", () => {
     expect(zonedDateTimeToTimestamp("2026-01-01T00:30", "Asia/Kathmandu")).toBe(Date.parse("2025-12-31T18:45:00Z"));
     expect(zonedDateTimeToTimestamp("2026-07-01T12:00", "Europe/London")).toBe(Date.parse("2026-07-01T11:00:00Z"));
