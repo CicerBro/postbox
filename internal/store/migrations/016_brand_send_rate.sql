@@ -1,0 +1,2 @@
+ALTER TABLE brands ADD COLUMN sends_per_minute INTEGER NOT NULL DEFAULT 0
+  CHECK (sends_per_minute BETWEEN 0 AND 60000);

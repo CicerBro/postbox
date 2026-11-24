@@ -112,7 +112,7 @@ test("navbar theme control works without duplicate appearance preferences", asyn
 });
 
 test("saving general and sending settings preserves values from the other section", async ({ page, context }) => {
-  const identity = { id: 1, name: "Acme", from_name: "Acme Team", from_email: "sender@example.org", reply_to: "reply@example.org", configuration_set: "original-set", tracking_domain: "track.example.org" };
+  const identity = { id: 1, name: "Acme", from_name: "Acme Team", from_email: "sender@example.org", reply_to: "reply@example.org", configuration_set: "original-set", tracking_domain: "track.example.org", sends_per_minute: 60 };
   const writes: Record<string, unknown>[] = [];
   await context.route("**/api/v1/**", async route => {
     const request = route.request();
@@ -123,7 +123,7 @@ test("saving general and sending settings preserves values from the other sectio
     else if (path === "/brands/1") {
       if (request.method() === "PATCH") { writes.push(request.postDataJSON()); Object.assign(identity, request.postDataJSON()); }
       body = [identity];
-    } else if (path === "/aws-settings") body = { has_credentials: false };
+    } else if (path === "/aws-settings") body = { configured: false, region: "", sns_topic_arn: "" };
     else if (path === "/sending") body = { enabled: false };
     await route.fulfill({ json: body });
   });
@@ -133,13 +133,19 @@ test("saving general and sending settings preserves values from the other sectio
   await page.getByRole("button", { name: "Save identity", exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0]).toMatchObject({ from_name: "Updated Team", configuration_set: "original-set", tracking_domain: "track.example.org" });
+  expect(writes[0]).not.toHaveProperty("sends_per_minute");
   await page.getByRole("link", { name: "Sending & domains", exact: true }).click();
   await expect(page.getByLabel("Brand name", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete brand", exact: true })).toHaveCount(0);
   await page.getByLabel("SES configuration set", { exact: true }).fill("updated-set");
+  const rate = page.getByRole("spinbutton", { name: "Brand sends per minute" });
+  await expect(rate).toHaveValue("60");
+  await rate.fill("120");
   await page.getByRole("button", { name: "Save sending configuration", exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
-  expect(writes[1]).toMatchObject({ from_name: "Updated Team", from_email: "sender@example.org", reply_to: "reply@example.org", configuration_set: "updated-set" });
+  expect(writes[1]).toMatchObject({ from_name: "Updated Team", from_email: "sender@example.org", reply_to: "reply@example.org", configuration_set: "updated-set", sends_per_minute: 120 });
+  await page.reload();
+  await expect(rate).toHaveValue("120");
   await page.getByRole("link", { name: "Danger zone", exact: true }).click();
   await expect(page.getByRole("button", { name: "Delete brand", exact: true })).toHaveCount(1);
 });

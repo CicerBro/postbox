@@ -148,6 +148,9 @@ func (e *Engine) beginAttempt(ctx context.Context, c campaign, r recipient, atte
 				return err
 			}
 		}
+		if err = reserveBrandAttempt(ctx, conn, c.brand, now); err != nil {
+			return err
+		}
 		if _, err = conn.ExecContext(ctx, `INSERT INTO send_attempts(campaign_id,subscriber_id,attempt,started_at,outcome) VALUES(?,?,?,?,'started')`, c.id, r.ID, attempt, now); err != nil {
 			return err
 		}
@@ -223,6 +226,9 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient, work
 		}
 		req := Request{From: from, To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: c.id, CampaignIdentity: c.trackingIdentity, SubscriberIdentity: r.TrackingIdentity, Attempt: attempt}
 		sendErr, dispatched := e.dispatchAttempt(claimCtx, c, r, req, workers, &out)
+		if errors.Is(sendErr, errBrandPaced) {
+			continue
+		}
 		if errors.Is(sendErr, errGmailPaced) {
 			if gmailInterval == 0 {
 				out.status = "pending"
@@ -294,6 +300,12 @@ func (e *Engine) dispatchAttempt(ctx context.Context, c campaign, r recipient, r
 		return nil, false
 	}
 	defer workers.release()
+	releaseBrand, err := e.acquireBrandPacing(ctx, c.brand)
+	if err != nil {
+		out.status = "pending"
+		return nil, false
+	}
+	defer releaseBrand()
 	if err := c.delivery.wait(ctx); err != nil || ctx.Err() != nil || !e.enabled.Load() {
 		out.status = "pending"
 		return nil, false
@@ -315,7 +327,7 @@ func (e *Engine) dispatchAttempt(ctx context.Context, c campaign, r recipient, r
 		return nil, false
 	}
 	ok, err := e.beginAttempt(ctx, c, r, req.Attempt)
-	if errors.Is(err, errGmailPaced) {
+	if errors.Is(err, errGmailPaced) || errors.Is(err, errBrandPaced) {
 		return err, false
 	}
 	if err != nil {
@@ -331,6 +343,7 @@ func (e *Engine) dispatchAttempt(ctx context.Context, c campaign, r recipient, r
 		out.status = "skipped"
 		return nil, false
 	}
+	releaseBrand()
 	out.attempt = req.Attempt
 	e.inflight.Add(1)
 	start := time.Now()
@@ -645,7 +658,7 @@ func (e *Engine) prepareCampaignRun(ctx context.Context, id int64) (campaign, er
 	if err != nil {
 		return campaign{}, err
 	}
-	c.gmailInterval = gmailInterval(gmailRate)
+	c.gmailInterval = sendInterval(gmailRate)
 	c.delivery, err = e.resolveBrand(ctx, c.brand)
 	if err != nil {
 		return campaign{}, err

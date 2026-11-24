@@ -100,7 +100,7 @@ func (e *Engine) TestCampaign(ctx context.Context, id int64, addresses []string,
 		if err != nil {
 			return err
 		}
-		if err = delivery.wait(ctx); err != nil {
+		if err = delivery.waitForSend(ctx, c.brand); err != nil {
 			return err
 		}
 		if !e.enabled.Load() {
@@ -145,7 +145,7 @@ func (e *Engine) SendNotificationChecked(ctx context.Context, r Request, check f
 	if err = delivery.setQuota(q); err != nil {
 		return "", &NotificationNotSentError{err}
 	}
-	if err = delivery.wait(ctx); err != nil {
+	if err = delivery.waitForSend(ctx, r.BrandID); err != nil {
 		return "", &NotificationNotSentError{err}
 	}
 	if !e.enabled.Load() {

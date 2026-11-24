@@ -102,7 +102,7 @@ export function GmailSendingLimit() {
         />
         <p id={helpID} className="text-sm text-muted-foreground">
           Applies to campaign sends to gmail.com and googlemail.com across all
-          brands. Set 0 to use the regular SES rate. Changes apply to active
+          brands. Set 0 to disable the Gmail cap. Changes apply to active
           campaigns now and to paused campaigns when they resume.
         </p>
         <Button

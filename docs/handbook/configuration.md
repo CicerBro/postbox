@@ -94,11 +94,17 @@ The Go default transport also reads `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`. 
 
 The image defaults to `POSTBOX_DB=/var/lib/postbox/postbox.db`, `POSTBOX_SECRET_FILE=/var/lib/postbox/tracking.secret`, `POSTBOX_BACKUP_DIR=/var/lib/postbox/backups` and `POSTBOX_LISTEN=0.0.0.0:8080`. Its working directory is `/var/lib/postbox`. Compose supplies a 75-second stop grace period.
 
+## Brand sending rate
+
+Set **Brand sends per minute** in **Brand Settings > Sending & domains**. It spaces campaign, test, and notification send attempts for that brand. Use `0` to disable the brand cap. The shared SES account and region limit still applies, and Gmail campaign recipients are also subject to the Gmail cap.
+
+The brand cap and last attempt survive restarts. Changes apply while a campaign is sending.
+
 ## Gmail campaign pacing
 
-Set **Gmail sends per minute** in **System Settings > Operations**. The cap covers campaign sends to `gmail.com` and `googlemail.com` across the deployment. Set `1` for one spaced attempt per minute or `0` to let Gmail use the standard SES rate. Other recipients continue under their regular SES limits.
+Set **Gmail sends per minute** in **System Settings > Operations**. The cap covers campaign sends to `gmail.com` and `googlemail.com` across the deployment. Set `1` for one spaced attempt per minute or `0` to disable the Gmail cap. The brand and shared SES limits apply to all campaign recipients.
 
-Saving takes effect for active campaigns after any in-flight requests finish. Paused campaigns stay paused and use the current cap when resumed. The setting and the last Gmail attempt survive restarts. Test sends and transactional notifications use their existing limits.
+Saving takes effect for active campaigns after any in-flight requests finish. Paused campaigns stay paused and use the current cap when resumed. The setting and the last Gmail attempt survive restarts.
 
 ## Rate limits and proxy parsing
 

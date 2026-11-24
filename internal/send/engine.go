@@ -63,6 +63,7 @@ type Engine struct {
 	metricsOrigin                                                                 time.Time
 	db                                                                            *store.DB
 	scopes                                                                        map[string]*accountPacer
+	brandPacing                                                                   sync.Map
 	sender                                                                        Sender
 	cfg                                                                           Config
 	mu                                                                            sync.Mutex
@@ -658,12 +659,27 @@ func (e *Engine) Estimate(ctx context.Context, id int64) (Estimate, error) {
 	if err != nil {
 		return Estimate{}, err
 	}
-	gmailRate, err := e.GmailSendsPerMinute(ctx)
+	duration, err := e.estimateSendDuration(ctx, c.brand, n, gmail, q.MaxSendRate)
 	if err != nil {
 		return Estimate{}, err
 	}
-	duration := max(float64(n)/q.MaxSendRate, float64(gmail)*gmailInterval(gmailRate).Seconds())
 	return Estimate{n, int64(len(raw)), int64(len(raw)) * n, duration, q, float64(n) <= q.Max24HourSend-q.SentLast24Hours}, nil
+}
+
+func (e *Engine) estimateSendDuration(ctx context.Context, brandID, recipients, gmail int64, sesRate float64) (float64, error) {
+	brandRate, err := e.brandSendsPerMinute(ctx, brandID)
+	if err != nil {
+		return 0, err
+	}
+	gmailRate, err := e.GmailSendsPerMinute(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return max(
+		float64(recipients)/sesRate,
+		float64(recipients)*sendInterval(brandRate).Seconds(),
+		float64(gmail)*sendInterval(gmailRate).Seconds(),
+	), nil
 }
 
 // waitToken serializes reservations so stalled goroutines cannot accumulate overdue tokens.

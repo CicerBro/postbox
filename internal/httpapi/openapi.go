@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"postbox/internal/send"
 )
 
 func (a *API) documentRoute(pattern string) {
@@ -75,7 +77,7 @@ func (a *API) documentRoute(pattern string) {
 		op["responses"].(map[string]any)["200"] = map[string]any{"description": "Safe deployment configuration", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": properties}}}}
 	}
 	if method == "GET" && (path == "/api/v1/brands" || path == "/api/v1/brands/{brand}") {
-		op["description"] = "Returns brand records with permissions as a JSON array for the current caller. Administrator sessions receive read, write and send; brand users receive their actual brand grants; API keys receive their scopes."
+		op["description"] = "Returns brand records with permissions as a JSON array for the current caller. Administrator sessions receive read, write and send; brand users receive their actual brand grants; API keys receive their scopes. The sends_per_minute field is the optional brand cap, with zero indicating no additional cap."
 	}
 	if method != "GET" && method != "DELETE" {
 		op["requestBody"] = map[string]any{"required": true, "content": map[string]any{"application/json": map[string]any{"schema": requestSchema(path)}}}
@@ -235,6 +237,9 @@ func requestSchema(path string) map[string]any {
 	case strings.Contains(path, "brands"):
 		for _, s := range []string{"name", "from_name", "from_email", "reply_to", "configuration_set", "tracking_domain"} {
 			add(s, "string")
+		}
+		if path == "/api/v1/brands" || path == "/api/v1/brands/{brand}" {
+			props["sends_per_minute"] = map[string]any{"type": "integer", "minimum": 0, "maximum": send.MaxBrandSendsPerMinute, "description": "Caps campaign, test and transactional sends for this brand. Zero disables the brand cap."}
 		}
 		required = []string{"name", "from_email"}
 	case strings.Contains(path, "lists"):

@@ -92,7 +92,8 @@ func (e *Engine) Checklist(ctx context.Context, id int64, opts PreflightOptions)
 		addError("audience", err.Error())
 		return out, nil
 	}
-	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) `+audience, args...).Scan(&out.Recipients); err != nil {
+	var gmail int64
+	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*),count(*) FILTER (WHERE `+gmailRecipientSQL("s.email")+`) `+audience, args...).Scan(&out.Recipients, &gmail); err != nil {
 		return out, err
 	}
 	// Build the same selected targets without eligibility filters for counts.
@@ -154,7 +155,10 @@ func (e *Engine) Checklist(ctx context.Context, id int64, opts PreflightOptions)
 		if q.MaxSendRate <= 0 || math.IsNaN(q.MaxSendRate) || math.IsInf(q.MaxSendRate, 0) {
 			addError("account_quota", "Invalid SES sending rate")
 		} else {
-			out.DurationSeconds = float64(out.Recipients) / q.MaxSendRate
+			out.DurationSeconds, err = e.estimateSendDuration(ctx, c.brand, out.Recipients, gmail, q.MaxSendRate)
+			if err != nil {
+				return out, err
+			}
 		}
 		if !out.FitsDailyQuota {
 			addError("daily_quota", "Campaign exceeds the remaining SES daily quota")

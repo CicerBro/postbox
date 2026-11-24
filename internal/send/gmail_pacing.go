@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	GmailSendsPerMinuteKey = "gmail_sends_per_minute"
-	MaxGmailSendsPerMinute = int(time.Minute / time.Millisecond)
-	gmailLastAttemptKey    = "gmail_last_campaign_attempt_ms"
+	GmailSendsPerMinuteKey              = "gmail_sends_per_minute"
+	MaxGmailSendsPerMinute              = sendsPerMinuteAtMillisecondInterval
+	sendsPerMinuteAtMillisecondInterval = int(time.Minute / time.Millisecond)
+	gmailLastAttemptKey                 = "gmail_last_campaign_attempt_ms"
 )
 
 var errGmailPaced = errors.New("Gmail send interval has not elapsed")
@@ -27,12 +28,12 @@ func isGmailRecipient(email string) bool {
 	return strings.HasSuffix(email, "@gmail.com") || strings.HasSuffix(email, "@googlemail.com")
 }
 
-func gmailInterval(rate int) time.Duration {
+func sendInterval(rate int) time.Duration {
 	if rate == 0 {
 		return 0
 	}
 	// Round up so the timestamps stored by SQLite never permit a higher rate.
-	return time.Duration(1+(MaxGmailSendsPerMinute-1)/rate) * time.Millisecond
+	return time.Duration(1+(sendsPerMinuteAtMillisecondInterval-1)/rate) * time.Millisecond
 }
 
 func (e *Engine) GmailSendsPerMinute(ctx context.Context) (int, error) {

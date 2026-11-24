@@ -1,5 +1,5 @@
 import { InputField } from "../ui/field";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useApp, type Brand } from "../../lib/app-context";
@@ -20,6 +20,7 @@ type Identity = {
   reply_to: string | null;
   configuration_set: string | null;
   tracking_domain: string | null;
+  sends_per_minute?: number;
 };
 const blank: Identity = {
   name: "",
@@ -39,6 +40,8 @@ export function BrandIdentity({
   const { session } = useApp();
   const qc = useQueryClient();
   const [form, setForm] = useState(blank);
+  const [sendRate, setSendRate] = useState<string>();
+  const sendRateHelpID = useId();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const a = useAction();
@@ -69,7 +72,7 @@ export function BrandIdentity({
           }
           description={
             section === "sending"
-              ? "Amazon SES configuration set and tracking hostname for this brand."
+              ? "Amazon SES configuration set, tracking hostname, and send rate for this brand."
               : "Brand name and default sender details."
           }
         >
@@ -116,12 +119,16 @@ export function BrandIdentity({
                           )
                           .map(([k, v]) => [k, v ?? ""]),
                       ),
+                      ...(section === "sending" && sendRate !== undefined
+                        ? { sends_per_minute: Number(sendRate) }
+                        : {}),
                     },
                   });
                   await qc.invalidateQueries({
                     queryKey: ["brand-settings", brandId],
                   });
                   await qc.invalidateQueries({ queryKey: ["brands"] });
+                  setSendRate(undefined);
                 });
               }}
             >
@@ -160,6 +167,27 @@ export function BrandIdentity({
                     />
                   ))}
               </div>
+              {section === "sending" && (
+                <div className="max-w-lg space-y-2">
+                  <InputField
+                    label="Brand sends per minute"
+                    type="number"
+                    min={0}
+                    max={60000}
+                    step={1}
+                    required
+                    value={sendRate ?? q.data[0].sends_per_minute ?? 0}
+                    disabled={!session.admin || a.busy}
+                    aria-describedby={sendRateHelpID}
+                    onChange={(e) => setSendRate(e.target.value)}
+                  />
+                  <p id={sendRateHelpID} className="text-sm text-muted-foreground">
+                    Applies to this brand’s campaigns, test emails, and
+                    notifications. Set 0 to disable the brand cap. The shared
+                    SES limit and Gmail campaign cap still apply.
+                  </p>
+                </div>
+              )}
               {session.admin ? (
                 <Button disabled={a.busy}>
                   {section === "sending"

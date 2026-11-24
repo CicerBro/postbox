@@ -41,7 +41,7 @@ func documentSendingSettings(method, path string, op map[string]any) {
 	property := map[string]any{"type": "integer", "minimum": 0, "maximum": send.MaxGmailSendsPerMinute, "default": 0}
 	schema := map[string]any{"type": "object", "required": []string{key}, "additionalProperties": false, "properties": map[string]any{key: property}}
 	content := map[string]any{"application/json": map[string]any{"schema": schema}}
-	op["description"] = "Administrator session required. Read or change the campaign-wide Gmail send cap across brands. Zero uses the regular SES sending rate. Changes apply to active campaigns without restarting Postbox. Paused campaigns use the current cap on resume."
+	op["description"] = "Administrator session required. Read or change the campaign-wide Gmail send cap across brands. Zero disables the Gmail cap. Changes apply to active campaigns without restarting Postbox. Paused campaigns use the current cap on resume."
 	op["responses"].(map[string]any)["200"] = map[string]any{"description": "Current sending settings", "content": content}
 	if method == http.MethodPatch {
 		op["requestBody"] = map[string]any{"required": true, "content": content}

@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"postbox/internal/render"
+	"postbox/internal/send"
 	"strconv"
 	"time"
 )
@@ -103,8 +105,13 @@ func (a *API) saveBrand(w http.ResponseWriter, r *http.Request, id int64) {
 		ReplyTo          string `json:"reply_to"`
 		ConfigurationSet string `json:"configuration_set"`
 		TrackingDomain   string `json:"tracking_domain"`
+		SendsPerMinute   *int   `json:"sends_per_minute"`
 	}
 	if !decode(w, r, &in) {
+		return
+	}
+	if rate := in.SendsPerMinute; rate != nil && (*rate < 0 || *rate > send.MaxBrandSendsPerMinute) {
+		fail(w, http.StatusBadRequest, fmt.Errorf("sends_per_minute must be an integer from 0 to %d", send.MaxBrandSendsPerMinute))
 		return
 	}
 	email, e := render.NormalizeEmail(in.FromEmail)
@@ -113,13 +120,13 @@ func (a *API) saveBrand(w http.ResponseWriter, r *http.Request, id int64) {
 		return
 	}
 	if id == 0 {
-		res, e := a.db.Writer.ExecContext(r.Context(), "INSERT INTO brands(name,from_name,from_email,reply_to,configuration_set,tracking_domain,created_at) VALUES(?,?,?,?,?,NULLIF(?,''),?)", in.Name, in.FromName, email, in.ReplyTo, in.ConfigurationSet, in.TrackingDomain, time.Now().UnixMilli())
+		res, e := a.db.Writer.ExecContext(r.Context(), "INSERT INTO brands(name,from_name,from_email,reply_to,configuration_set,tracking_domain,created_at,sends_per_minute) VALUES(?,?,?,?,?,NULLIF(?,''),?,coalesce(?,0))", in.Name, in.FromName, email, in.ReplyTo, in.ConfigurationSet, in.TrackingDomain, time.Now().UnixMilli(), in.SendsPerMinute)
 		if e == nil {
 			id, e = res.LastInsertId()
 		}
 		result(w, map[string]int64{"id": id}, e)
 	} else {
-		res, e := a.db.Writer.ExecContext(r.Context(), "UPDATE brands SET name=?,from_name=?,from_email=?,reply_to=?,configuration_set=?,tracking_domain=NULLIF(?,'') WHERE id=?", in.Name, in.FromName, email, in.ReplyTo, in.ConfigurationSet, in.TrackingDomain, id)
+		res, e := a.db.Writer.ExecContext(r.Context(), "UPDATE brands SET name=?,from_name=?,from_email=?,reply_to=?,configuration_set=?,tracking_domain=NULLIF(?,''),sends_per_minute=coalesce(?,sends_per_minute) WHERE id=?", in.Name, in.FromName, email, in.ReplyTo, in.ConfigurationSet, in.TrackingDomain, in.SendsPerMinute, id)
 		result(w, map[string]int64{"id": id}, requireChanged(res, e))
 	}
 }
