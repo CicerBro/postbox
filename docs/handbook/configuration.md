@@ -94,6 +94,12 @@ The Go default transport also reads `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`. 
 
 The image defaults to `POSTBOX_DB=/var/lib/postbox/postbox.db`, `POSTBOX_SECRET_FILE=/var/lib/postbox/tracking.secret`, `POSTBOX_BACKUP_DIR=/var/lib/postbox/backups` and `POSTBOX_LISTEN=0.0.0.0:8080`. Its working directory is `/var/lib/postbox`. Compose supplies a 75-second stop grace period.
 
+## Gmail campaign pacing
+
+Set **Gmail sends per minute** in **System Settings > Operations**. The cap covers campaign sends to `gmail.com` and `googlemail.com` across the deployment. Set `1` for one spaced attempt per minute or `0` to let Gmail use the standard SES rate. Other recipients continue under their regular SES limits.
+
+Saving takes effect for active campaigns after any in-flight requests finish. Paused campaigns stay paused and use the current cap when resumed. The setting and the last Gmail attempt survive restarts. Test sends and transactional notifications use their existing limits.
+
 ## Rate limits and proxy parsing
 
 Limits use fixed one-minute windows in each process:

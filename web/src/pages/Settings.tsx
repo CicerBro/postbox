@@ -15,6 +15,7 @@ import { ProfilePreferences } from "../components/settings/ProfilePreferences";
 import { TimezonePreferences } from "../components/settings/TimezonePreferences";
 import {
   DeploymentSettings,
+  GmailSendingLimit,
   SendingControl,
 } from "../components/settings/Administration";
 import { DomainsSettings } from "./Domains";
@@ -169,6 +170,7 @@ export function SettingsPage({
           {area === "admin" && section === "operations" && (
             <>
               <SendingControl />
+                <GmailSendingLimit />
               <Jobs />
             </>
           )}

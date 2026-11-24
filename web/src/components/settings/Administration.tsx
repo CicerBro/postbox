@@ -1,8 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useId } from "react";
+import { useId, useState } from "react";
 import { api } from "../../lib/api";
 import { useApp } from "../../lib/app-context";
 import { Button } from "../ui/button";
+import { InputField } from "../ui/field";
 import { Switch } from "../ui/switch";
 import { Section, Message, useAction } from "./Common";
 
@@ -57,6 +58,78 @@ export function SendingControl() {
     </Section>
   );
 }
+
+export function GmailSendingLimit() {
+  const helpID = useId();
+  const [value, setValue] = useState<string>();
+  const qc = useQueryClient();
+  const action = useAction();
+  const queryKey = ["sending-settings"];
+  type SendingSettings = { gmail_sends_per_minute: number };
+  const settings = useQuery({
+    queryKey,
+    queryFn: () => api<SendingSettings>("/sending-settings"),
+  });
+  const saved = settings.data?.gmail_sends_per_minute;
+  return (
+    <Section title="Gmail campaign pacing">
+      <form
+        className="max-w-lg space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (value === undefined) return;
+          void action.run(async () => {
+            const updated = await api<SendingSettings>("/sending-settings", {
+              method: "PATCH",
+              body: { gmail_sends_per_minute: Number(value) },
+            });
+            qc.setQueryData(queryKey, updated);
+            setValue(undefined);
+          }, "Gmail send limit saved.");
+        }}
+      >
+        <InputField
+          label="Gmail sends per minute"
+          type="number"
+          min={0}
+          max={60000}
+          step={1}
+          required
+          value={value ?? saved ?? ""}
+          onChange={(event) => setValue(event.target.value)}
+          disabled={saved === undefined || action.busy}
+          aria-describedby={helpID}
+        />
+        <p id={helpID} className="text-sm text-muted-foreground">
+          Applies to campaign sends to gmail.com and googlemail.com across all
+          brands. Set 0 to use the regular SES rate. Changes apply to active
+          campaigns now and to paused campaigns when they resume.
+        </p>
+        <Button
+          disabled={
+            saved === undefined ||
+            value === undefined ||
+            value === String(saved) ||
+            action.busy
+          }
+        >
+          {action.busy ? "Saving…" : "Save Gmail limit"}
+        </Button>
+        {settings.isError && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => settings.refetch()}
+          >
+            Retry
+          </Button>
+        )}
+        <Message error={settings.error ?? action.error} message={action.message} />
+      </form>
+    </Section>
+  );
+}
+
 type Deployment = {
   base_url: string;
   secure_cookies: boolean;

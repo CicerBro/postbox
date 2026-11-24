@@ -87,6 +87,8 @@ func (a *API) Register(m *http.ServeMux) {
 	a.route(m, "DELETE /api/v1/brands/{brand}", a.brand)
 	a.route(m, "GET /api/v1/overview", a.overview)
 	a.route(m, "GET /api/v1/deployment-settings", a.deploymentSettings)
+	a.route(m, "GET /api/v1/sending-settings", a.sendingSettings)
+	a.route(m, "PATCH /api/v1/sending-settings", a.sendingSettings)
 	a.route(m, "GET /api/v1/tagline-settings", a.taglineSettings)
 	a.route(m, "PATCH /api/v1/tagline-settings", a.taglineSettings)
 	a.route(m, "GET /api/v1/api-keys", a.keys)

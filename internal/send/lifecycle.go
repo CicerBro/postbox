@@ -68,7 +68,7 @@ func (e *Engine) cancelCampaign(ctx context.Context, id int64) error {
 	if err == nil {
 		e.mu.Lock()
 		if stop := e.running[id]; stop != nil {
-			stop()
+			stop(nil)
 		}
 		e.mu.Unlock()
 	}

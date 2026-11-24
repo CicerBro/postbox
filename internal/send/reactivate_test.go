@@ -109,7 +109,7 @@ func TestReactivateRejectsActiveRunAndNonCancelledCampaign(t *testing.T) {
 	if err := e.Cancel(ctx, 1); err != nil {
 		t.Fatal(err)
 	}
-	e.running[1] = func() {}
+	e.running[1] = func(error) {}
 	if allowed, err := e.CanReactivate(ctx, 1); err != nil || allowed {
 		t.Fatalf("active run can reactivate=%v err=%v", allowed, err)
 	}

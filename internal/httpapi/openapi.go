@@ -157,6 +157,7 @@ func (a *API) documentRoute(pattern string) {
 	documentSubscriptionSettings(method, path, op)
 	documentTaglineSettings(method, path, op)
 	documentJobSettings(method, path, op)
+	documentSendingSettings(method, path, op)
 	documentPreferences(method, path, op)
 	methods[strings.ToLower(method)] = op
 }

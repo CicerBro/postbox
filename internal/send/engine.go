@@ -66,7 +66,7 @@ type Engine struct {
 	sender                                                                        Sender
 	cfg                                                                           Config
 	mu                                                                            sync.Mutex
-	running                                                                       map[int64]context.CancelFunc
+	running                                                                       map[int64]context.CancelCauseFunc
 	limiter                                                                       *rate.Limiter
 	configured, effective                                                         float64
 	latencies, writerLatencies                                                    []float64
@@ -101,7 +101,7 @@ func New(db *store.DB, sender Sender, cfg Config) *Engine {
 	if cfg.RecoveryPolicy == "" {
 		cfg.RecoveryPolicy = "unknown"
 	}
-	e := &Engine{scopes: map[string]*accountPacer{}, db: db, sender: sender, cfg: cfg, running: map[int64]context.CancelFunc{}, limiter: rate.NewLimiter(1, 1), errorCounts: map[string]int64{}, metricsOrigin: time.Now()}
+	e := &Engine{scopes: map[string]*accountPacer{}, db: db, sender: sender, cfg: cfg, running: map[int64]context.CancelCauseFunc{}, limiter: rate.NewLimiter(1, 1), errorCounts: map[string]int64{}, metricsOrigin: time.Now()}
 	e.enabled.Store(true)
 	return e
 }
@@ -293,7 +293,7 @@ func (e *Engine) control(ctx context.Context, id int64, state string) error {
 	}
 	e.mu.Lock()
 	if stop := e.running[id]; stop != nil {
-		stop()
+		stop(nil)
 	}
 	e.mu.Unlock()
 	return nil
@@ -336,7 +336,7 @@ func (e *Engine) SetEnabled(ctx context.Context, on bool) error {
 		e.enabled.Store(false)
 		e.mu.Lock()
 		for _, cancel := range e.running {
-			cancel()
+			cancel(nil)
 		}
 		e.mu.Unlock()
 	}
@@ -351,7 +351,7 @@ func (e *Engine) SetEnabled(ctx context.Context, on bool) error {
 	if !on {
 		e.mu.Lock()
 		for _, cancel := range e.running {
-			cancel()
+			cancel(nil)
 		}
 		e.mu.Unlock()
 		_, err := e.db.Writer.ExecContext(ctx, `UPDATE campaigns SET status='paused',updated_at=? WHERE status IN ('sending','preparing')`, time.Now().UnixMilli())
@@ -370,6 +370,7 @@ type campaign struct {
 	fields                                                                                                    []string
 	prepared                                                                                                  *render.Prepared
 	date                                                                                                      time.Time
+	gmailInterval                                                                                             time.Duration
 }
 
 func (e *Engine) prepare(ctx context.Context, id int64, persist bool) (campaign, error) {
@@ -638,8 +639,8 @@ func (e *Engine) Estimate(ctx context.Context, id int64) (Estimate, error) {
 	if err != nil {
 		return Estimate{}, err
 	}
-	var n int64
-	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*) `+qsql, args...).Scan(&n); err != nil {
+	var n, gmail int64
+	if err = e.db.Reader.QueryRowContext(ctx, `SELECT count(*),count(*) FILTER (WHERE `+gmailRecipientSQL("s.email")+`) `+qsql, args...).Scan(&n, &gmail); err != nil {
 		return Estimate{}, err
 	}
 	delivery, err := e.resolveBrand(ctx, c.brand)
@@ -657,7 +658,12 @@ func (e *Engine) Estimate(ctx context.Context, id int64) (Estimate, error) {
 	if err != nil {
 		return Estimate{}, err
 	}
-	return Estimate{n, int64(len(raw)), int64(len(raw)) * n, float64(n) / q.MaxSendRate, q, float64(n) <= q.Max24HourSend-q.SentLast24Hours}, nil
+	gmailRate, err := e.GmailSendsPerMinute(ctx)
+	if err != nil {
+		return Estimate{}, err
+	}
+	duration := max(float64(n)/q.MaxSendRate, float64(gmail)*gmailInterval(gmailRate).Seconds())
+	return Estimate{n, int64(len(raw)), int64(len(raw)) * n, duration, q, float64(n) <= q.Max24HourSend-q.SentLast24Hours}, nil
 }
 
 // waitToken serializes reservations so stalled goroutines cannot accumulate overdue tokens.

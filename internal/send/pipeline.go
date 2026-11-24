@@ -58,9 +58,13 @@ func (e *Engine) renderWithSubjectPrefix(c campaign, r recipient, prefix string)
 	return render.BuildMIME(render.Message{FromName: c.fromName, FromEmail: c.fromEmail, ReplyTo: c.replyTo, ToName: r.Name, ToEmail: r.Email, Subject: prefix + subject, HTML: html, Text: text, UnsubscribeURL: unsubscribe, Date: c.date})
 }
 func (e *Engine) claim(ctx context.Context, id, last int64) ([]recipient, error) {
+	return e.claimRecipients(ctx, id, last, e.cfg.ClaimBatch, "")
+}
+
+func (e *Engine) claimRecipients(ctx context.Context, id, last int64, limit int, providerFilter string) ([]recipient, error) {
 	var items []recipient
 	err := e.db.Immediate(ctx, func(c *sql.Conn) error {
-		rows, err := c.QueryContext(ctx, `SELECT r.subscriber_id,coalesce(r.snapshot_email,s.email),coalesce(r.snapshot_name,s.name),coalesce(r.snapshot_fields,s.fields),r.attempts,s.tracking_identity FROM campaign_recipients r JOIN subscribers s ON s.id=r.subscriber_id WHERE r.campaign_id=? AND r.status='pending' AND r.subscriber_id>? ORDER BY r.subscriber_id LIMIT ?`, id, last, e.cfg.ClaimBatch)
+		rows, err := c.QueryContext(ctx, `SELECT r.subscriber_id,coalesce(r.snapshot_email,s.email),coalesce(r.snapshot_name,s.name),coalesce(r.snapshot_fields,s.fields),r.attempts,s.tracking_identity FROM campaign_recipients r JOIN subscribers s ON s.id=r.subscriber_id WHERE r.campaign_id=? AND r.status='pending' AND r.subscriber_id>?`+providerFilter+` ORDER BY r.subscriber_id LIMIT ?`, id, last, limit)
 		if err != nil {
 			return err
 		}
@@ -138,7 +142,13 @@ func (e *Engine) beginAttempt(ctx context.Context, c campaign, r recipient, atte
 		if n != 1 {
 			return errUnsafeAttempt
 		}
-		if _, err = conn.ExecContext(ctx, `INSERT INTO send_attempts(campaign_id,subscriber_id,attempt,started_at,outcome) VALUES(?,?,?,?,'started')`, c.id, r.ID, attempt, time.Now().UnixMilli()); err != nil {
+		now := time.Now().UnixMilli()
+		if isGmailRecipient(r.Email) {
+			if err = reserveGmailAttempt(ctx, conn, now); err != nil {
+				return err
+			}
+		}
+		if _, err = conn.ExecContext(ctx, `INSERT INTO send_attempts(campaign_id,subscriber_id,attempt,started_at,outcome) VALUES(?,?,?,?,'started')`, c.id, r.ID, attempt, now); err != nil {
 			return err
 		}
 		started, err = e.beginDispatchTx(ctx, conn, c.id, r.ID, attempt, r.Email)
@@ -188,7 +198,7 @@ func waitBackoff(ctx context.Context, attempt int) error {
 		return nil
 	}
 }
-func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out result) {
+func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient, workers *campaignWorkers) (out result) {
 	out = result{id: r.ID, at: time.Now().UnixMilli(), campaignIdentity: c.trackingIdentity, subscriberIdentity: r.TrackingIdentity}
 	if claimCtx.Err() != nil || !e.enabled.Load() {
 		out.status = "pending"
@@ -201,56 +211,30 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out
 		return out
 	}
 	from := (&mail.Address{Name: c.fromName, Address: c.fromEmail}).String()
-	for try := 0; try < 6; try++ {
+	gmailInterval := time.Duration(0)
+	if isGmailRecipient(r.Email) {
+		gmailInterval = c.gmailInterval
+	}
+	for try := 0; try < 6; {
 		attempt := r.Attempts + try + 1
-		if err = c.delivery.wait(claimCtx); err != nil || claimCtx.Err() != nil || !e.enabled.Load() {
+		if gmailInterval > 0 && e.waitForGmailAttempt(claimCtx, gmailInterval) != nil {
 			out.status = "pending"
 			return out
 		}
-		var currentStatus string
-		if err = e.db.Reader.QueryRowContext(claimCtx, `SELECT status FROM campaigns WHERE id=?`, c.id).Scan(&currentStatus); err != nil || currentStatus != "sending" {
-			out.status = "pending"
-			return out
-		}
-		args := append([]any{}, c.audienceArgs...)
-		args = append(args, r.ID)
-		var eligible int
-		if err = e.db.Reader.QueryRowContext(claimCtx, `SELECT EXISTS(SELECT 1 `+c.audience+` AND s.id=?)`, args...).Scan(&eligible); err != nil {
-			out.status = "pending"
-			return out
-		}
-		if eligible == 0 {
-			out.status = "skipped"
-			return out
-		}
-		ok, err := e.beginAttempt(claimCtx, c, r, attempt)
-		if err != nil {
-			if claimCtx.Err() != nil || errors.Is(err, errNotSending) {
+		req := Request{From: from, To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: c.id, CampaignIdentity: c.trackingIdentity, SubscriberIdentity: r.TrackingIdentity, Attempt: attempt}
+		sendErr, dispatched := e.dispatchAttempt(claimCtx, c, r, req, workers, &out)
+		if errors.Is(sendErr, errGmailPaced) {
+			if gmailInterval == 0 {
 				out.status = "pending"
-			} else {
-				out.status = "unknown"
-				out.err = err.Error()
+				return out
 			}
+			continue
+		}
+		if !dispatched {
 			return out
 		}
-		if !ok {
-			out.status = "skipped"
-			return out
-		}
-		out.attempt = attempt
-		e.inflight.Add(1)
-		start := time.Now()
-		requestCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		e.markRequest()
-		messageID, sendErr := c.delivery.sender.Send(requestCtx, Request{From: from, To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: c.id, CampaignIdentity: c.trackingIdentity, SubscriberIdentity: r.TrackingIdentity, Attempt: attempt})
-		cancel()
-		e.inflight.Add(-1)
-		e.requests.Add(1)
-		e.observe(time.Since(start), false)
-		out.at = time.Now().UnixMilli()
 		if sendErr == nil {
 			out.status = "sent"
-			out.messageID = messageID
 			return out
 		}
 		class := Classify(sendErr)
@@ -299,8 +283,69 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient) (out
 			out.status = "pending"
 			return out
 		}
+		try++
 	}
 	return out
+}
+
+func (e *Engine) dispatchAttempt(ctx context.Context, c campaign, r recipient, req Request, workers *campaignWorkers, out *result) (error, bool) {
+	if !workers.acquire(ctx, e) {
+		out.status = "pending"
+		return nil, false
+	}
+	defer workers.release()
+	if err := c.delivery.wait(ctx); err != nil || ctx.Err() != nil || !e.enabled.Load() {
+		out.status = "pending"
+		return nil, false
+	}
+	var currentStatus string
+	if err := e.db.Reader.QueryRowContext(ctx, `SELECT status FROM campaigns WHERE id=?`, c.id).Scan(&currentStatus); err != nil || currentStatus != "sending" {
+		out.status = "pending"
+		return nil, false
+	}
+	args := append([]any{}, c.audienceArgs...)
+	args = append(args, r.ID)
+	var eligible int
+	if err := e.db.Reader.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 `+c.audience+` AND s.id=?)`, args...).Scan(&eligible); err != nil {
+		out.status = "pending"
+		return nil, false
+	}
+	if eligible == 0 {
+		out.status = "skipped"
+		return nil, false
+	}
+	ok, err := e.beginAttempt(ctx, c, r, req.Attempt)
+	if errors.Is(err, errGmailPaced) {
+		return err, false
+	}
+	if err != nil {
+		if ctx.Err() != nil || errors.Is(err, errNotSending) {
+			out.status = "pending"
+		} else {
+			out.status = "unknown"
+			out.err = err.Error()
+		}
+		return nil, false
+	}
+	if !ok {
+		out.status = "skipped"
+		return nil, false
+	}
+	out.attempt = req.Attempt
+	e.inflight.Add(1)
+	start := time.Now()
+	requestCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	e.markRequest()
+	messageID, sendErr := c.delivery.sender.Send(requestCtx, req)
+	cancel()
+	e.inflight.Add(-1)
+	e.requests.Add(1)
+	e.observe(time.Since(start), false)
+	out.at = time.Now().UnixMilli()
+	if sendErr == nil {
+		out.messageID = messageID
+	}
+	return sendErr, true
 }
 func (e *Engine) writeResults(ctx context.Context, id int64, batch []result) error {
 	start := time.Now()
@@ -383,62 +428,111 @@ func (e *Engine) writeResults(ctx context.Context, id int64, batch []result) err
 	}
 	return err
 }
+
+type campaignWorkers struct {
+	busy    atomic.Int64
+	changed chan struct{}
+}
+
+func (w *campaignWorkers) acquire(ctx context.Context, e *Engine) bool {
+	for ctx.Err() == nil {
+		current := w.busy.Load()
+		if current < int64(e.workerTarget()) && w.busy.CompareAndSwap(current, current+1) {
+			return true
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+		case <-timer.C:
+		case <-w.changed:
+		}
+		timer.Stop()
+	}
+	return false
+}
+
+func (w *campaignWorkers) release() {
+	w.busy.Add(-1)
+	select {
+	case w.changed <- struct{}{}:
+	default:
+	}
+}
+
+func (e *Engine) sendGmailRecipients(ctx context.Context, c campaign, workers *campaignWorkers, results chan<- result, providerFilter string) error {
+	var last int64
+	for ctx.Err() == nil {
+		items, err := e.claimRecipients(ctx, c.id, last, 1, providerFilter)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		if len(items) == 0 {
+			return nil
+		}
+		last = items[0].ID
+		results <- e.sendOne(ctx, c, items[0], workers)
+	}
+	return nil
+}
+
 func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 	if err := e.ensureDispatchLedger(ctx); err != nil {
 		return err
 	}
 	e.runMu.Lock()
 	defer e.runMu.Unlock()
-	claimCtx, stop := context.WithCancel(ctx)
+	claimCtx, cancel := context.WithCancelCause(ctx)
+	stop := func() { cancel(nil) }
 	defer stop()
 	e.mu.Lock()
-	e.running[id] = stop
+	e.running[id] = cancel
 	e.mu.Unlock()
 	defer func() { e.mu.Lock(); delete(e.running, id); e.mu.Unlock() }()
 	c, err := e.prepareCampaignRun(claimCtx, id)
 	if err != nil {
+		if errors.Is(context.Cause(claimCtx), errGmailRateChanged) {
+			return nil
+		}
 		return err
 	}
 	if err := e.activateCampaignRun(claimCtx, id); err != nil {
+		if errors.Is(context.Cause(claimCtx), errGmailRateChanged) {
+			return nil
+		}
 		return err
 	}
 
 	jobs := make(chan recipient, e.cfg.ClaimBatch)
 	results := make(chan result, e.cfg.ResultBatch)
 	writerDone := e.startResultWriter(id, results, stop)
-	var workers sync.WaitGroup
-	var busy atomic.Int64
-	capacityChanged := make(chan struct{}, 1)
+	var senders sync.WaitGroup
+	workers := &campaignWorkers{changed: make(chan struct{}, 1)}
 	for i := 0; i < e.cfg.MaxWorkers; i++ {
-		workers.Add(1)
+		senders.Add(1)
 		go func() {
-			defer workers.Done()
+			defer senders.Done()
 			for r := range jobs {
 				e.backlog.Add(-1)
-				for claimCtx.Err() == nil {
-					current := busy.Load()
-					if current < int64(e.workerTarget()) && busy.CompareAndSwap(current, current+1) {
-						break
-					}
-					t := time.NewTimer(50 * time.Millisecond)
-					select {
-					case <-claimCtx.Done():
-						t.Stop()
-					case <-t.C:
-					case <-capacityChanged:
-						t.Stop()
-					}
-				}
-				if claimCtx.Err() != nil {
-					results <- result{id: r.ID, status: "pending", campaignIdentity: c.trackingIdentity, subscriberIdentity: r.TrackingIdentity}
-					continue
-				}
-				results <- e.sendOne(claimCtx, c, r)
-				busy.Add(-1)
-				select {
-				case capacityChanged <- struct{}{}:
-				default:
-				}
+				results <- e.sendOne(claimCtx, c, r, workers)
+			}
+		}()
+	}
+	claim := e.claim
+	var gmailErr error
+	if c.gmailInterval > 0 {
+		predicate := gmailRecipientSQL("coalesce(r.snapshot_email,s.email)")
+		claim = func(ctx context.Context, id, last int64) ([]recipient, error) {
+			return e.claimRecipients(ctx, id, last, e.cfg.ClaimBatch, " AND NOT "+predicate)
+		}
+		senders.Add(1)
+		go func() {
+			defer senders.Done()
+			gmailErr = e.sendGmailRecipients(claimCtx, c, workers, results, " AND "+predicate)
+			if gmailErr != nil {
+				stop()
 			}
 		}()
 	}
@@ -467,7 +561,9 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 				}
 				var remaining int64
 				if err = e.db.Reader.QueryRowContext(claimCtx, `SELECT count(*) FROM campaign_recipients WHERE campaign_id=? AND status IN ('pending','claimed')`, id).Scan(&remaining); err != nil || float64(remaining) > q.Max24HourSend-q.SentLast24Hours {
-					_ = e.Pause(context.Background(), id)
+					if claimCtx.Err() == nil {
+						_ = e.Pause(context.Background(), id)
+					}
 					return
 				}
 				if err = c.delivery.setQuota(q); err == nil {
@@ -484,7 +580,7 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 	var claimErr error
 claimLoop:
 	for claimCtx.Err() == nil {
-		items, err := e.claim(claimCtx, id, last)
+		items, err := claim(claimCtx, id, last)
 		if err != nil {
 			if claimCtx.Err() == nil {
 				claimErr = err
@@ -509,13 +605,16 @@ claimLoop:
 		}
 	}
 	close(jobs)
-	workers.Wait()
+	if claimErr != nil {
+		stop()
+	}
+	senders.Wait()
 	stop()
 	<-refreshDone
 	close(results)
 	writerErr := <-writerDone
-	if claimErr != nil || writerErr != nil {
-		return errors.Join(claimErr, writerErr)
+	if claimErr != nil || gmailErr != nil || writerErr != nil {
+		return errors.Join(claimErr, gmailErr, writerErr)
 	}
 	if ctx.Err() != nil {
 		return nil
@@ -542,6 +641,11 @@ func (e *Engine) prepareCampaignRun(ctx context.Context, id int64) (campaign, er
 	if c.status == "sent" || c.status == "cancelled" || c.status == "paused" {
 		return campaign{}, fmt.Errorf("campaign is %s", c.status)
 	}
+	gmailRate, err := e.GmailSendsPerMinute(ctx)
+	if err != nil {
+		return campaign{}, err
+	}
+	c.gmailInterval = gmailInterval(gmailRate)
 	c.delivery, err = e.resolveBrand(ctx, c.brand)
 	if err != nil {
 		return campaign{}, err

@@ -2,6 +2,7 @@ import { expect, test, type BrowserContext } from "@playwright/test";
 
 async function fixture(context: BrowserContext, admin = false, empty = false) {
   const requests: string[] = [];
+  let gmailSendsPerMinute = 0;
   await context.route("**/api/v1/**", async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace("/api/v1", "");
@@ -13,6 +14,12 @@ async function fixture(context: BrowserContext, admin = false, empty = false) {
     else if (path === "/subscription-settings") body = { public_subscriptions_enabled: true, application_enabled: false, enabled: false };
     else if (path === "/application-settings") body = { public_subscriptions_enabled: true };
     else if (path === "/job-settings") body = { failed_job_retention_days: 30 };
+    else if (path === "/sending-settings") {
+      if (request.method() === "PATCH") {
+        gmailSendsPerMinute = request.postDataJSON().gmail_sends_per_minute;
+      }
+      body = { gmail_sends_per_minute: gmailSendsPerMinute };
+    }
     else if (path === "/sending") body = { enabled: false };
     else if (path === "/settings") body = {};
     else if (path === "/webhooks") body = [{ id: 1, url: "https://example.org/events", events: ["subscribe"], enabled: true }];
@@ -20,6 +27,20 @@ async function fixture(context: BrowserContext, admin = false, empty = false) {
   });
   return requests;
 }
+
+test("administrators can update Gmail pacing from operations", async ({ page, context }) => {
+  const requests = await fixture(context, true);
+  await page.goto("/admin/operations");
+  const limit = page.getByRole("spinbutton", { name: "Gmail sends per minute" });
+  await expect(limit).toHaveValue("0");
+  await limit.fill("1");
+  await page.getByRole("button", { name: "Save Gmail limit" }).click();
+  await expect(page.getByText("Gmail send limit saved.")).toBeVisible();
+  await page.reload();
+  await expect(limit).toHaveValue("1");
+  expect(requests).toContain("PATCH /sending-settings");
+  expect(requests).not.toContain("POST /sending");
+});
 
 test("brand readers can inspect preferences and integrations without mutation controls", async ({ page, context }) => {
   const requests = await fixture(context);
