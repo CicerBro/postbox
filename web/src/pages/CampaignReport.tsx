@@ -114,7 +114,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     queryKey: ["campaign-report", brandId, id],
     queryFn: () => api<Report>(`/campaigns/${id}/report`, { brandId }),
     enabled: valid,
-    refetchInterval: 15000,
+    refetchInterval: query => query.state.data?.recovery?.stats && params.get("send") !== "original" ? 5000 : 15000,
   });
   const recovery = report.data?.recovery;
   const combined = Boolean(recovery?.stats && params.get("send") !== "original");
