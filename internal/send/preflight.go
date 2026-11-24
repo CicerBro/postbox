@@ -142,6 +142,7 @@ func (e *Engine) Checklist(ctx context.Context, id int64, opts PreflightOptions)
 	delivery, err := e.resolveBrand(ctx, c.brand)
 	var q Quota
 	if err == nil {
+		out.Checks.Errors = append(out.Checks.Errors, checkCampaignSender(ctx, delivery.sender, c.fromEmail, net.DefaultResolver)...)
 		q, err = delivery.sender.GetAccount(ctx)
 	}
 	if err != nil {

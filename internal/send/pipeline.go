@@ -542,14 +542,17 @@ func (e *Engine) prepareCampaignRun(ctx context.Context, id int64) (campaign, er
 	if c.status == "sent" || c.status == "cancelled" || c.status == "paused" {
 		return campaign{}, fmt.Errorf("campaign is %s", c.status)
 	}
+	c.delivery, err = e.resolveBrand(ctx, c.brand)
+	if err != nil {
+		return campaign{}, err
+	}
+	if err = campaignSenderError(ctx, c.delivery.sender, c.fromEmail); err != nil {
+		return campaign{}, err
+	}
 	if err = e.snapshot(ctx, c); err != nil {
 		return campaign{}, err
 	}
 	c.audience, c.audienceArgs, err = e.audienceSQL(ctx, c)
-	if err != nil {
-		return campaign{}, err
-	}
-	c.delivery, err = e.resolveBrand(ctx, c.brand)
 	if err != nil {
 		return campaign{}, err
 	}

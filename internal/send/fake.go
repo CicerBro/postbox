@@ -114,6 +114,10 @@ func (f *Fake) Handler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"EmailIdentities":[]}`))
 	})
+	mux.HandleFunc("GET /v2/email/identities/{identity}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"IdentityType":"EMAIL_ADDRESS","VerifiedForSendingStatus":true,"VerificationStatus":"SUCCESS"}`))
+	})
 	mux.HandleFunc("GET /v2/email/suppression/addresses", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"SuppressedDestinationSummaries":[]}`))

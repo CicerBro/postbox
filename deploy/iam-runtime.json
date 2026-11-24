@@ -26,12 +26,16 @@
       ]
     },
     {
-      "Sid": "ReadDomainVerification",
+      "Sid": "ReadSenderIdentity",
       "Effect": "Allow",
       "Action": [
         "ses:GetEmailIdentity"
       ],
-      "Resource": "arn:aws:ses:REGION:ACCOUNT:identity/example.com"
+      "Resource": [
+        "arn:aws:ses:REGION:ACCOUNT:identity/example.com",
+        "arn:aws:ses:REGION:ACCOUNT:identity/*.example.com",
+        "arn:aws:ses:REGION:ACCOUNT:identity/*@example.com"
+      ]
     },
     {
       "Sid": "AccountQuotaAndSuppressions",

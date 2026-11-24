@@ -4,9 +4,16 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sesv2"
+
+	"postbox/internal/send"
 	"postbox/internal/subscribers"
 )
 
@@ -59,6 +66,41 @@ func TestCampaignScheduleCanBeUpdatedBeforePreparation(t *testing.T) {
 			t.Fatalf("reschedule %s: %d %s", status, w.Code, w.Body.String())
 		}
 		assertSchedule(status, savedAt)
+	}
+}
+
+func TestCampaignActionsBlockInvalidMailFrom(t *testing.T) {
+	a, mux, db, cookie, csrf := setup(t)
+	streamCampaignFixture(t, db)
+	ses := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/v2/email/identities/") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"VerifiedForSendingStatus":true,"VerificationStatus":"SUCCESS","MailFromAttributes":{"MailFromDomain":"broken domain.example.org"}}`))
+	}))
+	t.Cleanup(ses.Close)
+	client := sesv2.NewFromConfig(aws.Config{
+		Region: "eu-west-1", Credentials: credentials.NewStaticCredentialsProvider("fake", "fake", ""), HTTPClient: ses.Client(),
+	}, func(o *sesv2.Options) { o.BaseEndpoint = aws.String(ses.URL) })
+	a.engine = send.New(db, &send.AWS{Client: client}, send.Config{})
+	for _, tc := range []struct{ action, status, body string }{
+		{"start", "draft", `{}`},
+		{"schedule", "draft", fmt.Sprintf(`{"scheduled_at":%d}`, time.Now().Add(time.Hour).UnixMilli())},
+		{"resume", "paused", `{}`},
+	} {
+		t.Run(tc.action, func(t *testing.T) {
+			execStreamSQL(t, db, `UPDATE campaigns SET status=? WHERE id=1`, tc.status)
+			w := request(mux, "POST", "/api/v1/campaigns/1/"+tc.action+"?brand_id=1", tc.body, &cookie, csrf)
+			if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "SPF TXT record") || !strings.Contains(w.Body.String(), "MX record") {
+				t.Fatalf("%s response: %d %s", tc.action, w.Code, w.Body.String())
+			}
+			var status string
+			if err := db.Reader.QueryRow(`SELECT status FROM campaigns WHERE id=1`).Scan(&status); err != nil || status != tc.status {
+				t.Fatalf("status=%q want %q err=%v", status, tc.status, err)
+			}
+		})
 	}
 }
 

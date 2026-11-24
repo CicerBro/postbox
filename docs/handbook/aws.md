@@ -60,11 +60,13 @@ The [runtime policy](../../deploy/iam-runtime.json) covers sending, connection c
 
 The sending grant covers both `identity/example.com` and `identity/*@example.com`. SES can authorize a send against an email address identity, so allowing only the domain ARN can produce `AccessDeniedException` for an address such as `noreply@example.com`. Keep both entries when replacing the sender domain; for a single permitted sender, replace `*@example.com` with its exact email address. Apply this change to existing IAM policies in AWS too. Successful domain or event setup does not check email-sending permissions.
 
+Campaign preflight uses `ses:GetEmailIdentity` on the From address and, when needed, its subdomain and parent domain identities. Update existing runtime policies to grant that action on the applicable addresses and domains. For a sender on a subdomain, include the actual sender address and its parent domains through the registered domain. Preflight blocks sending when the selected identity's custom MAIL FROM domain has missing or invalid SPF or MX records.
+
 | App action | IAM actions | Resource scope |
 | --- | --- | --- |
 | Send email | `ses:SendEmail`, `ses:SendRawEmail` | Verified identity and selected configuration set |
 | Check account and quota | `ses:GetAccount`, `ses:ListEmailIdentities` | `*` because these APIs do not support resource scoping |
-| Read domain status and DNS records | `ses:GetEmailIdentity` | Each sender domain identity |
+| Read sender identity status and DNS records | `ses:GetEmailIdentity` | Each sender email address and its candidate domain identities |
 | Verify a missing domain | `ses:CreateEmailIdentity` | Each sender domain identity |
 | Set or clear custom MAIL FROM | `ses:PutEmailIdentityMailFromAttributes` | Each sender domain identity |
 | Read event destination | `ses:GetConfigurationSetEventDestinations` | Selected configuration set |

@@ -189,7 +189,10 @@ func (a *API) campaignAction(w http.ResponseWriter, r *http.Request) {
 	case has(action, "pause"):
 		err = a.engine.Pause(r.Context(), id)
 	case has(action, "resume"):
-		err = a.engine.Resume(r.Context(), id)
+		err = a.engine.CheckCampaignSender(r.Context(), id)
+		if err == nil {
+			err = a.engine.Resume(r.Context(), id)
+		}
 	case has(action, "cancel"):
 		err = a.engine.Cancel(r.Context(), id)
 	case has(action, "reactivate"):
@@ -227,6 +230,9 @@ func (a *API) campaignAction(w http.ResponseWriter, r *http.Request) {
 				fail(w, 400, errors.New("scheduled_at must be in the future"))
 				return
 			}
+		}
+		if err = a.engine.CheckCampaignSender(r.Context(), id); err != nil {
+			break
 		}
 		res, e := a.db.Writer.ExecContext(r.Context(), "UPDATE campaigns SET status='scheduled',scheduled_at=?,updated_at=? WHERE brand_id=? AND id=? AND (status='draft' OR (? AND status='scheduled'))", at, time.Now().UnixMilli(), brand, id, has(action, "schedule"))
 		if e == nil {
