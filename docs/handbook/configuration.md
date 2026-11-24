@@ -104,7 +104,7 @@ The brand cap and last attempt survive restarts. Changes apply while a campaign 
 
 Set **Gmail sends per minute** in **System Settings > Operations**. The cap covers campaign sends to `gmail.com` and `googlemail.com` across the deployment. Set `1` for one spaced attempt per minute or `0` to disable the Gmail cap. The brand and shared SES limits apply to all campaign recipients.
 
-Saving takes effect for active campaigns after any in-flight requests finish. Paused campaigns stay paused and use the current cap when resumed. The setting and the last Gmail attempt survive restarts.
+Changing an enabled cap updates pacing during active campaigns while in-flight requests continue. Turning the cap on or off automatically reloads campaign queues. Paused campaigns use the current cap when resumed. The setting and the last Gmail attempt survive restarts.
 
 ## Rate limits and proxy parsing
 

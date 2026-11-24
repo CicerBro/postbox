@@ -371,7 +371,7 @@ type campaign struct {
 	fields                                                                                                    []string
 	prepared                                                                                                  *render.Prepared
 	date                                                                                                      time.Time
-	gmailInterval                                                                                             time.Duration
+	paceGmail                                                                                                 bool
 }
 
 func (e *Engine) prepare(ctx context.Context, id int64, persist bool) (campaign, error) {

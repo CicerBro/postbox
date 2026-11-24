@@ -213,7 +213,7 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient, work
 		return out
 	}
 	from := (&mail.Address{Name: c.fromName, Address: c.fromEmail}).String()
-	pacedGmail := c.gmailInterval > 0 && isGmailRecipient(r.Email)
+	pacedGmail := c.paceGmail && isGmailRecipient(r.Email)
 	for try := 0; try < 6; {
 		attempt := r.Attempts + try + 1
 		req := Request{From: from, To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: c.id, CampaignIdentity: c.trackingIdentity, SubscriberIdentity: r.TrackingIdentity, Attempt: attempt}
@@ -299,7 +299,7 @@ func (e *Engine) dispatchAttempt(ctx context.Context, c campaign, r recipient, r
 		}
 		releaseGmail = sync.OnceFunc(func() { <-workers.gmailTurn })
 		defer releaseGmail()
-		if e.waitForGmailAttempt(ctx, c.gmailInterval) != nil {
+		if e.waitForGmailAttempt(ctx) != nil {
 			out.status = "pending"
 			return nil, false
 		}
@@ -521,25 +521,26 @@ func (w *campaignWorkers) wakeWaiters() {
 func (e *Engine) sendGmailRecipients(ctx context.Context, c campaign, workers *campaignWorkers, results chan<- result, providerFilter string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	jobs := make(chan recipient)
-	var senders sync.WaitGroup
-	const gmailWorkers = 4
-	for range min(gmailWorkers, e.cfg.MaxWorkers) {
-		senders.Add(1)
-		go func() {
-			defer senders.Done()
-			for r := range jobs {
-				results <- e.sendOne(ctx, c, r, workers)
-			}
-		}()
-	}
+	finished := make(chan struct{}, e.cfg.MaxWorkers)
+	active := 0
 	defer func() {
-		close(jobs)
-		senders.Wait()
+		for range active {
+			<-finished
+		}
 	}()
 
 	var last int64
 	for ctx.Err() == nil {
+		// Use the same adaptive concurrency budget as regular sends, with a
+		// few recipients ready while a request finishes or a retry backs off.
+		for active >= min(e.cfg.MaxWorkers, max(4, e.workerTarget()+1)) {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-finished:
+				active--
+			}
+		}
 		items, err := e.claimRecipients(ctx, c.id, last, 1, providerFilter)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -553,12 +554,11 @@ func (e *Engine) sendGmailRecipients(ctx context.Context, c campaign, workers *c
 		}
 		r := items[0]
 		last = r.ID
-		select {
-		case jobs <- r:
-		case <-ctx.Done():
-			results <- result{id: r.ID, status: "pending", campaignIdentity: c.trackingIdentity, subscriberIdentity: r.TrackingIdentity}
-			return nil
-		}
+		active++
+		go func() {
+			results <- e.sendOne(ctx, c, r, workers)
+			finished <- struct{}{}
+		}()
 	}
 	return nil
 }
@@ -610,7 +610,7 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 	}
 	claim := e.claim
 	var gmailErr error
-	if c.gmailInterval > 0 {
+	if c.paceGmail {
 		predicate := gmailRecipientSQL("coalesce(r.snapshot_email,s.email)")
 		claim = func(ctx context.Context, id, last int64) ([]recipient, error) {
 			return e.claimRecipients(ctx, id, last, e.cfg.ClaimBatch, " AND NOT "+predicate)
@@ -733,7 +733,7 @@ func (e *Engine) prepareCampaignRun(ctx context.Context, id int64) (campaign, er
 	if err != nil {
 		return campaign{}, err
 	}
-	c.gmailInterval = sendInterval(gmailRate)
+	c.paceGmail = gmailRate > 0
 	c.delivery, err = e.resolveBrand(ctx, c.brand)
 	if err != nil {
 		return campaign{}, err

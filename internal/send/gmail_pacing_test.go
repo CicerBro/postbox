@@ -155,6 +155,68 @@ func TestCampaignWorkersAlternateWhenBothLanesWait(t *testing.T) {
 	})
 }
 
+func TestGmailCampaignSpeedsUpFrom600To1800WithoutRestart(t *testing.T) {
+	db, e, fake := fixture(t, 16)
+	fake.Config.Latency = 500 * time.Millisecond
+	if _, err := db.Writer.Exec(`UPDATE subscribers SET email='reader'||id||'@gmail.com'`); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if err := e.SetGmailSendsPerMinute(ctx, 600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	var runErr error
+	go func() {
+		defer close(done)
+		runErr = e.RunCampaign(ctx, 1)
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for fake.Calls.Load() < 2 {
+		select {
+		case <-ctx.Done():
+			t.Fatal("campaign did not start sending")
+		case <-done:
+			t.Fatalf("campaign stopped before sending: %v", runErr)
+		case <-tick.C:
+		}
+	}
+	var initialSpacing int64
+	if err := db.Reader.QueryRowContext(ctx, `SELECT max(started_at)-min(started_at) FROM (
+		SELECT started_at FROM send_attempts WHERE campaign_id=1 ORDER BY started_at LIMIT 2)`).Scan(&initialSpacing); err != nil {
+		t.Fatal(err)
+	}
+	if initialSpacing < 100 {
+		t.Fatalf("initial Gmail requests were only %d ms apart", initialSpacing)
+	}
+	if err := e.SetGmailSendsPerMinute(ctx, 1800); err != nil {
+		t.Fatal(err)
+	}
+	changedAt := time.Now().UnixMilli()
+	<-done
+	if runErr != nil || fake.Accepted.Load() != 16 {
+		t.Fatalf("campaign did not continue in the same run: accepted=%d, err=%v", fake.Accepted.Load(), runErr)
+	}
+	var count int
+	var elapsed sql.NullInt64
+	if err := db.Reader.QueryRow(`SELECT count(*), max(started_at)-min(started_at) FROM (
+		SELECT started_at FROM send_attempts WHERE campaign_id=1 AND started_at>? ORDER BY started_at LIMIT 6)`,
+		changedAt).Scan(&count, &elapsed); err != nil {
+		t.Fatal(err)
+	}
+	// At 600/min, six requests need at least 500 ms. Four workers also
+	// can't make six starts within 500 ms when each request takes 500 ms.
+	if count != 6 || !elapsed.Valid || elapsed.Int64 < 170 || elapsed.Int64 >= 500 {
+		t.Fatalf("after raising Gmail cap: %d starts over %v ms", count, elapsed)
+	}
+}
+
 func TestGmailPacingChangesWhileCampaignIsSending(t *testing.T) {
 	db, e, fake := fixture(t, 3)
 	if _, err := db.Writer.Exec(`UPDATE subscribers SET email=CASE id

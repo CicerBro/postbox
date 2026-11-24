@@ -55,17 +55,20 @@ func (e *Engine) SetGmailSendsPerMinute(ctx context.Context, rate int) error {
 	if rate < 0 || rate > MaxGmailSendsPerMinute {
 		return errors.New("invalid Gmail campaign send rate")
 	}
-	res, err := e.db.Writer.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?)
-		ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value<>excluded.value`, GmailSendsPerMinuteKey, strconv.Itoa(rate))
-	if err != nil {
+	var previous int
+	err := e.db.Immediate(ctx, func(conn *sql.Conn) error {
+		if err := conn.QueryRowContext(ctx, `SELECT coalesce((SELECT cast(value AS INTEGER) FROM settings WHERE key=?), 0)`,
+			GmailSendsPerMinuteKey).Scan(&previous); err != nil {
+			return err
+		}
+		_, err := conn.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?)
+			ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value<>excluded.value`, GmailSendsPerMinuteKey, strconv.Itoa(rate))
+		return err
+	})
+	if err != nil || (previous == 0) == (rate == 0) {
 		return err
 	}
-	n, err := res.RowsAffected()
-	if err != nil || n == 0 {
-		return err
-	}
-	// Wake the scheduler so it can rebuild recipient queues with the saved
-	// rate. In-flight attempts finish and campaign statuses stay in place.
+	// Only enabling or disabling the cap changes how recipients are queued.
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for _, stop := range e.running {
@@ -74,22 +77,29 @@ func (e *Engine) SetGmailSendsPerMinute(ctx context.Context, rate int) error {
 	return nil
 }
 
-func (e *Engine) waitForGmailAttempt(ctx context.Context, interval time.Duration) error {
-	var last int64
-	if err := e.db.Reader.QueryRowContext(ctx, `SELECT coalesce((SELECT cast(value AS INTEGER) FROM settings WHERE key=?), 0)`, gmailLastAttemptKey).Scan(&last); err != nil {
-		return err
-	}
-	remaining := time.Until(time.UnixMilli(last).Add(interval))
-	if remaining <= 0 {
-		return ctx.Err()
-	}
-	timer := time.NewTimer(remaining)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
+func (e *Engine) waitForGmailAttempt(ctx context.Context) error {
+	for {
+		var rate int
+		var last int64
+		if err := e.db.Reader.QueryRowContext(ctx, `SELECT
+			coalesce((SELECT cast(value AS INTEGER) FROM settings WHERE key=?), 0),
+			coalesce((SELECT cast(value AS INTEGER) FROM settings WHERE key=?), 0)`,
+			GmailSendsPerMinuteKey, gmailLastAttemptKey).Scan(&rate, &last); err != nil {
+			return err
+		}
+		remaining := time.Until(time.UnixMilli(last).Add(sendInterval(rate)))
+		if rate == 0 || remaining <= 0 {
+			return ctx.Err()
+		}
+		// Check for a higher cap while waiting. The dispatch transaction also
+		// checks the current cap before reserving an attempt.
+		timer := time.NewTimer(min(remaining, 100*time.Millisecond))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 }
 
