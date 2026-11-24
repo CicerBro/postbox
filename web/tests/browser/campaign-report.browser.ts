@@ -54,3 +54,55 @@ for (const mobile of [false, true]) {
     await page.screenshot({ path: testInfo.outputPath("campaign-report.png"), fullPage: true });
   });
 }
+
+test("links a recovery send and navigates between combined and individual reports", async ({ page, context }) => {
+  let linked = false;
+  const original = { id: 1, subject: "Black Friday", status: "sent", created_at: 1700000000000 };
+  const recovery = { ...original, id: 21, subject: "Authentication recovery" };
+  await context.route("**/api/v1/**", async route => {
+    const path = new URL(route.request().url()).pathname.replace("/api/v1", "");
+    let body: unknown = [];
+    if (path === "/auth/session") body = { user_id: 1, admin: true, csrf_token: "report-token" };
+    else if (path === "/brands") body = [{ id: 1, name: "Acme", from_email: "sender@example.org" }];
+    else if (path === "/sending") body = { enabled: true };
+    else if (path === "/campaigns") body = linked ? [{ ...original, recovery_count: 1 }] : [original, recovery];
+    else if (path === "/campaigns/1") body = [original];
+    else if (path === "/campaigns/21") body = [recovery];
+    else if (path === "/campaigns/21/recovery") {
+      expect(route.request().method()).toBe("PUT");
+      expect(route.request().postDataJSON()).toEqual({ original_campaign_id: 1 });
+      linked = true;
+      body = { original_campaign_id: 1 };
+    } else if (path === "/campaigns/1/report" || path === "/campaigns/21/report") {
+      body = {
+        stats: [{ recipients: 1, sent: 1, delivered: 1 }],
+        links: [], countries: [], hourly: [],
+        recovery: linked ? {
+          original_campaign_id: 1,
+          ...(path === "/campaigns/1/report" ? {
+            sends: [{ ...original, sent: 1, delivered: 0 }, { ...recovery, sent: 1, delivered: 1 }],
+            stats: { recipients: 1, sent: 1, delivered: 1, bounced: 0, recovered: 1, awaiting_outcome: 0, opens_unique: 0, clicks_unique: 0, unsubscribed: 0, complained: 0 },
+          } : {}),
+        } : null,
+      };
+    } else if (path.endsWith("/events")) {
+      await route.fulfill({ contentType: "text/event-stream", body: "" });
+      return;
+    }
+    await route.fulfill({ json: body });
+  });
+
+  await page.goto("/campaigns/21/report");
+  await page.getByText("Link as a recovery send", { exact: true }).click();
+  await page.getByLabel("Original campaign ID").fill("1");
+  await page.getByRole("button", { name: "Link campaigns" }).click();
+  await expect(page.getByText("Combined report · 2 sends")).toBeVisible();
+  await page.getByRole("link", { name: "Original send" }).click();
+  await expect(page.getByRole("heading", { name: "Newsletter preview" })).toBeVisible();
+  await page.getByRole("link", { name: "Combined report" }).click();
+  await page.getByRole("link", { name: "Recovery send #21" }).click();
+  await expect(page.getByRole("heading", { name: "Authentication recovery" })).toBeVisible();
+  await page.getByRole("link", { name: "All campaigns" }).click();
+  await expect(page.getByRole("row").filter({ hasText: "Black Friday" })).toContainText("2 sends");
+  await expect(page.getByRole("link", { name: "Authentication recovery" })).toHaveCount(0);
+});

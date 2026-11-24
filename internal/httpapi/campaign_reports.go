@@ -121,7 +121,11 @@ func (a *API) campaignReportData(ctx context.Context, brand, id int64) (map[stri
 		LEFT JOIN lists l ON t.target_type='list' AND l.id=t.target_id AND l.brand_id=?
 		LEFT JOIN segments s ON t.target_type='segment' AND s.id=t.target_id AND s.brand_id=?
 		WHERE t.campaign_id=? ORDER BY t.mode,t.target_type,t.target_id`, brand, brand, id)
-	return map[string]any{"can_reactivate": canReactivate, "stats": stats, "links": links, "countries": countries, "hourly": hourly, "recent": recent, "targets": targets,
+	if e != nil {
+		return nil, e
+	}
+	recovery, e := a.campaignRecoveryData(ctx, brand, id)
+	return map[string]any{"recovery": recovery, "can_reactivate": canReactivate, "stats": stats, "links": links, "countries": countries, "hourly": hourly, "recent": recent, "targets": targets,
 		"delivery": map[string]any{"first_sent_at": firstAt, "last_sent_at": lastAt, "from_name": fromName, "from_email": fromEmail, "sender_snapshotted": snapshotted, "historical": historical, "delivered_estimated": deliveryEstimated}}, e
 }
 

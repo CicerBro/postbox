@@ -14,13 +14,16 @@ func (a *API) campaignRows(r *http.Request, brand, id int64) ([]map[string]any, 
 	summary := id == 0 && r.URL.Query().Get("summary") == "true"
 	projection := "c.*"
 	from := "campaigns c"
+	filter := "c.brand_id=?"
 	if summary {
-		// Durable counters use a primary-key lookup, never a recipient scan.
-		projection = "c.id,c.subject,c.status,c.created_at,c.scheduled_at,c.finished_at,c.html,s.recipients,s.sent,s.failed,s.skipped,s.unknown,s.opens_unique,s.clicks_unique"
+		// Ordinary campaigns use their durable counters. Only grouped rows
+		// need recipient-level aggregation, after pagination.
+		projection = "c.id,c.subject,c.status,c.created_at,c.scheduled_at,c.finished_at,c.html,s.recipients,s.sent,s.failed,s.skipped,s.unknown,s.opens_unique,s.clicks_unique,(SELECT count(*) FROM campaigns child WHERE child.recovery_of_campaign_id=c.id) AS recovery_count"
+		filter += " AND c.recovery_of_campaign_id IS NULL"
 		from += " LEFT JOIN campaign_stats s ON s.campaign_id=c.id"
 	}
 	after, limit := page(r)
-	q := "SELECT " + projection + " FROM " + from + " WHERE c.brand_id=? AND c.id>? ORDER BY c.id LIMIT ?"
+	q := "SELECT " + projection + " FROM " + from + " WHERE " + filter + " AND c.id>? ORDER BY c.id LIMIT ?"
 	args := []any{brand, after, limit}
 	// Offset pagination supports globally sorted and filtered table views.
 	// Keep the existing ID cursor contract for integrations using after.
@@ -43,7 +46,7 @@ func (a *API) campaignRows(r *http.Request, brand, id int64) ([]map[string]any, 
 			}
 			order = column + " " + direction + ", c.id " + direction
 		}
-		q = "SELECT " + projection + " FROM " + from + " WHERE c.brand_id=?"
+		q = "SELECT " + projection + " FROM " + from + " WHERE " + filter
 		args = []any{brand}
 		if status := r.URL.Query().Get("status"); status != "" && status != "all" {
 			q += " AND c.status=?"
@@ -86,11 +89,11 @@ func (a *API) queryCampaignSummaries(ctx context.Context, query string, args ...
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, created int64
+		var id, created, recoveryCount int64
 		var scheduled, finished sql.NullInt64
 		var subject, status, content string
 		var recipients, sent, failed, skipped, unknown, opensUnique, clicksUnique sql.NullInt64
-		if err := rows.Scan(&id, &subject, &status, &created, &scheduled, &finished, &content, &recipients, &sent, &failed, &skipped, &unknown, &opensUnique, &clicksUnique); err != nil {
+		if err := rows.Scan(&id, &subject, &status, &created, &scheduled, &finished, &content, &recipients, &sent, &failed, &skipped, &unknown, &opensUnique, &clicksUnique, &recoveryCount); err != nil {
 			return nil, err
 		}
 		var scheduledAt any
@@ -109,9 +112,25 @@ func (a *API) queryCampaignSummaries(ctx context.Context, query string, args ...
 		if recipients.Valid {
 			stats = map[string]int64{"recipients": recipients.Int64, "sent": sent.Int64, "opens_unique": opensUnique.Int64, "clicks_unique": clicksUnique.Int64}
 		}
-		out = append(out, map[string]any{"id": id, "subject": subject, "status": status, "created_at": created, "scheduled_at": scheduledAt, "finished_at": finishedAt, "excerpt": campaignExcerpt(content), "progress": progress, "stats": stats})
+		out = append(out, map[string]any{"id": id, "subject": subject, "status": status, "created_at": created, "scheduled_at": scheduledAt, "finished_at": finishedAt, "recovery_count": recoveryCount, "excerpt": campaignExcerpt(content), "progress": progress, "stats": stats})
 	}
-	return out, rows.Err()
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, row := range out {
+		if row["recovery_count"].(int64) == 0 {
+			continue
+		}
+		stats, err := a.combinedCampaignStats(ctx, row["id"].(int64))
+		if err != nil {
+			return nil, err
+		}
+		row["stats"] = stats
+	}
+	return out, nil
 }
 
 func campaignExcerpt(content string) string {

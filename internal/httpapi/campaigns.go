@@ -24,6 +24,7 @@ func (a *API) registerCampaigns(m *http.ServeMux) {
 	m.HandleFunc("POST /preview/unsubscribe/{token}", a.unsubscribePreview)
 	a.route(m, "POST /api/v1/email-preview", a.editorPreview)
 	a.route(m, "GET /api/v1/campaigns/options", a.campaignOptions)
+	a.route(m, "PUT /api/v1/campaigns/{id}/recovery", a.linkCampaignRecovery)
 	a.route(m, "POST /api/v1/email-preview/recipients", a.editorRecipients)
 	for _, p := range []string{"GET /api/v1/campaigns", "POST /api/v1/campaigns", "GET /api/v1/campaigns/{id}", "PATCH /api/v1/campaigns/{id}", "DELETE /api/v1/campaigns/{id}"} {
 		a.route(m, p, a.campaigns)

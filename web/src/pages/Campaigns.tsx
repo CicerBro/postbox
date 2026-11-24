@@ -29,6 +29,7 @@ type CampaignSummary = Pick<
 > & {
   excerpt: string;
   finished_at: number | null;
+  recovery_count?: number;
   progress?: CampaignCounters | null;
   stats?: { recipients: number; sent: number; opens_unique: number; clicks_unique: number } | null;
 };
@@ -240,6 +241,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                       >
                         {c.subject}
                       </Link>
+                      {Boolean(c.recovery_count) && <span className="ml-2 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">{1 + (c.recovery_count ?? 0)} sends</span>}
                       {c.status === "scheduled" && c.scheduled_at != null && (
                         <p className="row-subtitle">Scheduled {formatDateTime(c.scheduled_at)}</p>
                       )}

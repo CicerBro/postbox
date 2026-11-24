@@ -87,6 +87,10 @@ func (a *API) documentRoute(pattern string) {
 		op["description"] = "Copy the saved subject, HTML, text version, CSS setting, and audience targets of any campaign into a new draft. The new draft has its own ID and does not inherit schedule or delivery history."
 		op["responses"].(map[string]any)["200"] = map[string]any{"description": "New draft campaign", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"id"}, "properties": map[string]any{"id": map[string]any{"type": "integer"}}}}}}
 	}
+	if method == "PUT" && path == "/api/v1/campaigns/{id}/recovery" {
+		op["description"] = "Link this sent campaign to an original sent campaign in the same brand. Both require recipient snapshots. The campaign list groups the two sends and the combined report deduplicates recipients. Individual send reports and tracking stay available."
+		op["responses"].(map[string]any)["409"] = map[string]any{"description": "Ineligible campaign or conflicting recovery link"}
+	}
 	if method == "POST" && path == "/api/v1/campaigns/{id}/reactivate" {
 		delete(op, "requestBody")
 		op["description"] = "Return a cancelled campaign to draft only when no emails were sent and no uncertain or active sends exist. Clears the schedule and prepared delivery data while preserving the campaign ID, saved content, owner, and audience targets."
@@ -168,6 +172,9 @@ func requestSchema(path string) map[string]any {
 	required := []string{}
 	add := func(name, typ string) { props[name] = map[string]any{"type": typ} }
 	switch {
+	case path == "/api/v1/campaigns/{id}/recovery":
+		props["original_campaign_id"] = map[string]any{"type": "integer", "minimum": 1}
+		required = []string{"original_campaign_id"}
 	case path == "/api/v1/email-preview/recipients":
 		props["after"] = map[string]any{"type": "integer", "minimum": 0}
 		props["targets"] = requestSchema("/api/v1/campaigns/{id}/targets")

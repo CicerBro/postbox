@@ -2,12 +2,13 @@ import { useBrandPermission } from "../lib/use-brand-permission";
 import { useDateTime } from "../lib/date-time";
 import { onSessionExpired } from "../lib/session-lifecycle";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, download } from "../lib/api";
 import { SortableTableHead } from "../components/SortableTableHead";
 import { useTableSort } from "../lib/use-table-sort";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { CampaignProgress } from "../components/CampaignProgress";
 import { useApp } from "../lib/app-context";
 import {
@@ -64,6 +65,11 @@ type Hour = { hour: number; opens: number; clicks: number; deliveries: number };
 type Report = {
   can_reactivate?: boolean;
   stats: Stats[];
+  recovery?: {
+    original_campaign_id: number;
+    sends?: { id: number; subject: string; finished_at: number | null; sent: number; delivered: number }[];
+    stats?: Record<string, number>;
+  } | null;
   links: LinkStats[];
   countries: { country: string; opens: number; clicks: number }[];
   hourly: Hour[];
@@ -84,6 +90,8 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
   const { session } = useApp();
   const canWrite = useBrandPermission(brandId, "write");
   const canSend = useBrandPermission(brandId, "send");
+  const [params] = useSearchParams();
+  const [originalID, setOriginalID] = useState("");
   const countrySort = useTableSort<"country" | "opens" | "clicks">("opens", "desc");
   const client = useQueryClient(),
     [stream, setStream] = useState("Connecting live updates"),
@@ -108,6 +116,20 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     enabled: valid,
     refetchInterval: 15000,
   });
+  const recovery = report.data?.recovery;
+  const combined = Boolean(recovery?.stats && params.get("send") !== "original");
+  const linkRecovery = useMutation({
+    mutationFn: (originalCampaignID: number) => api(`/campaigns/${id}/recovery`, {
+      method: "PUT", brandId, body: { original_campaign_id: originalCampaignID },
+    }),
+    onSuccess: async (_, originalCampaignID) => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["campaigns", brandId] }),
+        client.invalidateQueries({ queryKey: ["campaign-report", brandId] }),
+      ]);
+      navigate(`/campaigns/${originalCampaignID}/report`);
+    },
+  });
   const deliveryAction = useMutation({
     mutationFn: (action: "pause" | "resume") => api(`/campaigns/${id}/${action}`, { method: "POST", brandId }),
     onSuccess: async () => {
@@ -125,7 +147,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
   });
   const previewHTML = useMemo(() => inertPreview(preview.data?.html ?? ""), [preview.data?.html]);
   useEffect(() => {
-    if (!valid) return;
+    if (!valid || combined) return;
     const source = new EventSource(
       `/api/v1/campaigns/${id}/events?brand_id=${brandId}`,
     );
@@ -156,7 +178,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     };
     const stop = onSessionExpired(() => source.close());
     return () => { stop(); source.close(); };
-  }, [brandId, id, client, valid]);
+  }, [brandId, id, client, valid, combined]);
   async function exportCSV() {
     setExporting(true);
     setExportError(null);
@@ -208,6 +230,52 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     }
   }
   if (!valid) return <ErrorMessage error={new Error("Invalid campaign ID")} />;
+  if (combined && recovery?.stats && recovery.sends) {
+    const totals = [
+      ["Recipients", recovery.stats.recipients],
+      ["Sent", recovery.stats.sent],
+      ["Delivered", recovery.stats.delivered],
+      ["Bounced", recovery.stats.bounced],
+      ["Awaiting outcome", recovery.stats.awaiting_outcome],
+      ["Recovered after bounce", recovery.stats.recovered],
+      ["Unique opens", recovery.stats.opens_unique],
+      ["Unique clicks", recovery.stats.clicks_unique],
+      ["Unsubscribed", recovery.stats.unsubscribed],
+      ["Spam complaints", recovery.stats.complained],
+    ] as const;
+    return <div className="space-y-6">
+      <Link className="inline-flex items-center gap-1 text-sm text-muted-foreground" to="/campaigns"><ArrowLeft size={14} /> All campaigns</Link>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">{recovery.sends[0].subject}</h1>
+        <p className="row-subtitle">Combined report · {recovery.sends.length} sends</p>
+      </div>
+      <ErrorMessage error={report.error} />
+      <dl className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        {totals.map(([label, count]) => <div className="rounded-md border p-4" key={label}>
+          <dt className="row-subtitle">{label}</dt>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">{number(count)}</dd>
+        </div>)}
+      </dl>
+      <p className="text-xs text-muted-foreground">Each recipient is counted once. A delivery after a bounce counts as recovered.</p>
+      <Card>
+        <CardHeader><CardTitle>Sends</CardTitle></CardHeader>
+        <CardContent>
+          <div className="overflow-auto">
+            <table className={tableClass}>
+              <thead><tr><th>Send</th><th>Finished</th><th>Sent</th><th>Delivered</th></tr></thead>
+              <tbody>{recovery.sends.map(send => <tr key={send.id}>
+                <td><Link className="font-medium hover:underline" to={`/campaigns/${send.id}/report${send.id === id ? "?send=original" : ""}`}>
+                  {send.id === id ? "Original send" : `Recovery send #${send.id}`}
+                </Link></td>
+                <td>{send.finished_at != null ? formatDateTime(send.finished_at) : "—"}</td>
+                <td>{number(send.sent)}</td><td>{number(send.delivered)}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>;
+  }
   const stats = report.data?.stats?.[0];
   const campaignStatus = campaign.data?.[0]?.status;
   const live = isLiveCampaign(campaignStatus);
@@ -260,6 +328,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           {campaign.data?.[0] && (
             <StatusBadge status={campaign.data[0].status} />
           )}
+          {recovery && <Link className="ml-2 text-sm font-medium hover:underline" to={`/campaigns/${recovery.original_campaign_id}/report`}>Combined report</Link>}
           {!live && <p
             role="status"
             className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"
@@ -279,6 +348,22 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
         </div>
       </div>
       <ErrorMessage error={campaign.error ?? report.error ?? exportError ?? duplicateError ?? reactivateError ?? deliveryAction.error} />
+      {canWrite && report.isSuccess && campaignStatus === "sent" && !recovery && !report.data?.delivery?.historical &&
+        <details className="rounded-md border p-4">
+          <summary className="cursor-pointer text-sm font-medium">Link as a recovery send</summary>
+          <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={event => {
+            event.preventDefault();
+            linkRecovery.mutate(Number(originalID));
+          }}>
+            <label className="text-sm">Original campaign ID
+              <Input className="mt-1" type="number" min={1} step={1} required value={originalID} onChange={event => setOriginalID(event.target.value)} />
+            </label>
+            <Button type="submit" variant="outline" disabled={!Number.isSafeInteger(Number(originalID)) || Number(originalID) < 1 || Number(originalID) === id || linkRecovery.isPending}>
+              {linkRecovery.isPending ? "Linking…" : "Link campaigns"}
+            </Button>
+          </form>
+          <ErrorMessage error={linkRecovery.error} />
+        </details>}
       {live && <Card aria-label="Live delivery progress"><CardContent className="pt-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <StatusBadge status={campaignStatus!} />

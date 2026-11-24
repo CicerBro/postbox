@@ -23,6 +23,11 @@ func documentCampaignReport(method, path string, op map[string]any) {
 		recent[event.name] = map[string]any{"type": "array", "maxItems": 10, "items": recentItem}
 	}
 	properties := map[string]any{}
+	properties["recovery"] = map[string]any{"type": "object", "nullable": true, "description": "Recovery group metadata. The original report includes its individual sends and combined recipient-level stats. A recovery send contains its original campaign ID.", "properties": map[string]any{
+		"original_campaign_id": integer,
+		"sends":                map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+		"stats":                map[string]any{"type": "object", "additionalProperties": integer},
+	}}
 	properties["can_reactivate"] = map[string]any{"type": "boolean", "description": "Whether this cancelled campaign has no sent, uncertain, or active sends and can return to draft."}
 	for _, key := range []string{"stats", "links", "countries", "hourly"} {
 		properties[key] = map[string]any{"type": "array", "items": map[string]any{"type": "object"}}
