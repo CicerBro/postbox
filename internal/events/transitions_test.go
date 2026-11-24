@@ -296,3 +296,48 @@ func eventPayload(typ, messageID string) []byte {
 		return []byte(`{"eventType":"Bounce",` + mail + fmt.Sprintf(`,"bounce":{"bounceType":%q,"bouncedRecipients":[{"emailAddress":"user@example.com"}]}}`, typ))
 	}
 }
+
+func TestCampaignBounceOutcomeUsesReceiptTime(t *testing.T) {
+	type receipt struct {
+		kind   string
+		second int
+	}
+	for _, tc := range []struct {
+		name       string
+		receipts   []receipt
+		hard, soft int
+	}{
+		{"soft bounce cleared by delivery", []receipt{{"Transient", 1}, {"Delivery", 2}}, 0, 0},
+		{"hard bounce cleared by delivery", []receipt{{"Permanent", 1}, {"Delivery", 2}}, 0, 0},
+		{"older bounce arrives after delivery", []receipt{{"Delivery", 2}, {"Transient", 1}}, 0, 0},
+		{"later bounce arrives before delivery", []receipt{{"Permanent", 2}, {"Delivery", 1}}, 1, 0},
+		{"later bounce and duplicate count once", []receipt{{"Delivery", 1}, {"Transient", 2}, {"Transient", 2}}, 0, 1},
+		{"new delivery clears subsequent bounce", []receipt{{"Delivery", 1}, {"Transient", 2}, {"Delivery", 3}}, 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := eventDB(t)
+			s := New(db, &Config{BrandID: 1})
+			for i, event := range tc.receipts {
+				field := "bounce"
+				if event.kind == "Delivery" {
+					field = "delivery"
+				}
+				payload := strings.Replace(string(eventPayload(event.kind, "ses-id")), `"`+field+`":{`,
+					fmt.Sprintf(`"%s":{"timestamp":"2026-11-24T19:00:%02dZ",`, field, event.second), 1)
+				if err := s.Process(context.Background(), fmt.Sprintf("receipt-%d", i), []byte(payload)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var delivered, hard, soft, bounced, history int
+			if err := db.Reader.QueryRow(`SELECT delivered,bounces_hard,bounces_soft,
+				(SELECT bounced_at IS NOT NULL FROM campaign_recipients WHERE campaign_id=1 AND subscriber_id=1),
+				(SELECT count(*) FROM ses_events)
+				FROM campaign_stats WHERE campaign_id=1`).Scan(&delivered, &hard, &soft, &bounced, &history); err != nil {
+				t.Fatal(err)
+			}
+			if delivered != 1 || hard != tc.hard || soft != tc.soft || bounced != tc.hard+tc.soft || history != len(tc.receipts) {
+				t.Fatalf("delivered=%d hard=%d soft=%d bounced=%d events=%d", delivered, hard, soft, bounced, history)
+			}
+		})
+	}
+}

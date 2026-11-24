@@ -135,39 +135,73 @@ func recordRecipientEventTx(ctx context.Context, c *sql.Conn, m recipientMatch, 
 	if _, err := c.ExecContext(ctx, `INSERT INTO subscriber_activity(brand_id,subscriber_id,kind,at,detail) VALUES(?,?,?,?,json_object('campaign_id',?,'ses_message_id',?,'subtype',?))`, m.brand, m.subscriber, strings.ToLower(typ), at, m.campaign, ev.Mail.MessageID, ev.Bounce.BounceType); err != nil {
 		return err
 	}
-	var res sql.Result
-	var err error
-	column := ""
 	switch typ {
-	case "Delivery":
-		column = "delivered"
-		res, err = c.ExecContext(ctx, `UPDATE campaign_recipients SET delivered_at=? WHERE campaign_id=? AND subscriber_id=? AND delivered_at IS NULL`, at, m.campaign, m.subscriber)
+	case "Delivery", "Bounce":
+		return recordDeliveryOutcomeTx(ctx, c, m, typ, ev.Bounce.BounceType, at)
 	case "Complaint":
-		column = "complaints"
-		res, err = c.ExecContext(ctx, `UPDATE campaign_recipients SET complained_at=? WHERE campaign_id=? AND subscriber_id=? AND complained_at IS NULL`, at, m.campaign, m.subscriber)
-	case "Bounce":
-		column = "bounces_soft"
-		if ev.Bounce.BounceType == "Permanent" {
-			column = "bounces_hard"
+		res, err := c.ExecContext(ctx, `UPDATE campaign_recipients SET complained_at=? WHERE campaign_id=? AND subscriber_id=? AND complained_at IS NULL`, at, m.campaign, m.subscriber)
+		if err != nil {
+			return err
 		}
-		res, err = c.ExecContext(ctx, `UPDATE campaign_recipients SET bounced_at=coalesce(bounced_at,?) WHERE campaign_id=? AND subscriber_id=?`, at, m.campaign, m.subscriber)
+		n, err := res.RowsAffected()
+		if err != nil || n == 0 {
+			return err
+		}
+		_, err = c.ExecContext(ctx, `UPDATE campaign_stats SET complaints=complaints+1 WHERE campaign_id=?`, m.campaign)
+		return err
 	default:
 		return nil
 	}
-	if err != nil {
+}
+
+func recordDeliveryOutcomeTx(ctx context.Context, c *sql.Conn, m recipientMatch, typ, bounceType string, at int64) error {
+	var deliveredAt, bouncedAt sql.NullInt64
+	var oldBounceKind string
+	if err := c.QueryRowContext(ctx, `SELECT delivered_at,bounced_at,bounce_kind FROM campaign_recipients WHERE campaign_id=? AND subscriber_id=?`, m.campaign, m.subscriber).Scan(&deliveredAt, &bouncedAt, &oldBounceKind); err != nil {
 		return err
 	}
-	n, err := res.RowsAffected()
-	if err != nil || n == 0 {
-		return err
-	}
-	if _, err = c.ExecContext(ctx, `UPDATE campaign_stats SET `+column+`=`+column+`+1 WHERE campaign_id=?`, m.campaign); err != nil {
-		return err
-	}
+
+	// Old rows without matching activity cannot be assigned to a bounce counter.
+	legacyBounce := bouncedAt.Valid && oldBounceKind == ""
+	bounceKind := oldBounceKind
+	firstDelivery := false
 	if typ == "Delivery" {
-		_, err = c.ExecContext(ctx, `INSERT INTO engagement_hourly(campaign_id,hour,deliveries) VALUES(?,?,1) ON CONFLICT(campaign_id,hour) DO UPDATE SET deliveries=deliveries+1`, m.campaign, at/3600000*3600000)
+		if deliveredAt.Valid && at <= deliveredAt.Int64 {
+			return nil
+		}
+		firstDelivery = !deliveredAt.Valid
+		deliveredAt = sql.NullInt64{Int64: at, Valid: true}
+		if bouncedAt.Valid && !legacyBounce && at > bouncedAt.Int64 {
+			bouncedAt = sql.NullInt64{}
+			bounceKind = ""
+		}
+	} else {
+		if legacyBounce || (deliveredAt.Valid && at < deliveredAt.Int64) {
+			return nil
+		}
+		if bouncedAt.Valid && (at < bouncedAt.Int64 || (at == bouncedAt.Int64 && (oldBounceKind == "hard" || bounceType != "Permanent"))) {
+			return nil
+		}
+		bouncedAt = sql.NullInt64{Int64: at, Valid: true}
+		bounceKind = "soft"
+		if bounceType == "Permanent" {
+			bounceKind = "hard"
+		}
 	}
-	return err
+
+	if _, err := c.ExecContext(ctx, `UPDATE campaign_recipients SET delivered_at=?,bounced_at=?,bounce_kind=? WHERE campaign_id=? AND subscriber_id=?`, deliveredAt, bouncedAt, bounceKind, m.campaign, m.subscriber); err != nil {
+		return err
+	}
+	hardDelta := boolInt(bounceKind == "hard") - boolInt(oldBounceKind == "hard")
+	softDelta := boolInt(bounceKind == "soft") - boolInt(oldBounceKind == "soft")
+	if _, err := c.ExecContext(ctx, `UPDATE campaign_stats SET delivered=delivered+?,bounces_hard=max(0,bounces_hard+?),bounces_soft=max(0,bounces_soft+?) WHERE campaign_id=?`, boolInt(firstDelivery), hardDelta, softDelta, m.campaign); err != nil {
+		return err
+	}
+	if firstDelivery {
+		_, err := c.ExecContext(ctx, `INSERT INTO engagement_hourly(campaign_id,hour,deliveries) VALUES(?,?,1) ON CONFLICT(campaign_id,hour) DO UPDATE SET deliveries=deliveries+1`, m.campaign, at/3600000*3600000)
+		return err
+	}
+	return nil
 }
 
 func (s *Service) applySuppressionTx(ctx context.Context, c *sql.Conn, brand int64, m recipientMatch, email string, ev sesEvent, typ string, at int64) error {
