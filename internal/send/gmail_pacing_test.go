@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strconv"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -96,6 +97,7 @@ func TestGmailPacingDoesNotHoldOtherRecipientsAndPauses(t *testing.T) {
 
 func TestGmailAndGooglemailSharePacing(t *testing.T) {
 	db, e, fake := fixture(t, 2)
+	fake.Config.Latency = 500 * time.Millisecond
 	if _, err := db.Writer.Exec(`UPDATE subscribers SET email=CASE id WHEN 1 THEN 'first@gmail.com' ELSE 'second@GOOGLEMAIL.COM' END`); err != nil {
 		t.Fatal(err)
 	}
@@ -107,17 +109,50 @@ func TestGmailAndGooglemailSharePacing(t *testing.T) {
 	if err := e.RunCampaign(ctx, 1); err != nil {
 		t.Fatal(err)
 	}
-	var spacing, last int64
-	if err := db.Reader.QueryRow(`SELECT max(started_at)-min(started_at),max(started_at) FROM send_attempts WHERE campaign_id=1`).Scan(&spacing, &last); err != nil {
+	var spacing, last, firstFinish int64
+	if err := db.Reader.QueryRow(`SELECT max(started_at)-min(started_at),max(started_at),min(finished_at) FROM send_attempts WHERE campaign_id=1`).Scan(&spacing, &last, &firstFinish); err != nil {
 		t.Fatal(err)
 	}
 	if fake.Accepted.Load() != 2 || spacing < 250 {
 		t.Fatalf("accepted=%d, spacing=%dms", fake.Accepted.Load(), spacing)
 	}
+	if last >= firstFinish {
+		t.Fatal("the second paced request did not start while the first was in flight")
+	}
 	var persisted string
 	if err := db.Reader.QueryRow(`SELECT value FROM settings WHERE key=?`, gmailLastAttemptKey).Scan(&persisted); err != nil || persisted != strconv.FormatInt(last, 10) {
 		t.Fatalf("last Gmail attempt was not persisted: %q, %v", persisted, err)
 	}
+}
+
+func TestCampaignWorkersAlternateWhenBothLanesWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		e := &Engine{}
+		workers := &campaignWorkers{changed: [2]chan struct{}{make(chan struct{}, 1), make(chan struct{}, 1)}}
+		if !workers.acquire(ctx, e, false) {
+			t.Fatal("initial non-Gmail sender could not acquire the only worker")
+		}
+		admitted := make(chan bool, 2)
+		for _, gmail := range []bool{false, true} {
+			go func() {
+				if workers.acquire(ctx, e, gmail) {
+					admitted <- gmail
+				}
+			}()
+			synctest.Wait()
+		}
+		workers.release()
+		if gmail := <-admitted; !gmail {
+			t.Fatal("another non-Gmail sender took the Gmail lane's turn")
+		}
+		workers.release()
+		if gmail := <-admitted; gmail {
+			t.Fatal("the non-Gmail sender did not get the next turn")
+		}
+		workers.release()
+	})
 }
 
 func TestGmailPacingChangesWhileCampaignIsSending(t *testing.T) {

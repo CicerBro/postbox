@@ -10,7 +10,6 @@ import (
 	"net/mail"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"postbox/internal/render"
@@ -214,23 +213,16 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient, work
 		return out
 	}
 	from := (&mail.Address{Name: c.fromName, Address: c.fromEmail}).String()
-	gmailInterval := time.Duration(0)
-	if isGmailRecipient(r.Email) {
-		gmailInterval = c.gmailInterval
-	}
+	pacedGmail := c.gmailInterval > 0 && isGmailRecipient(r.Email)
 	for try := 0; try < 6; {
 		attempt := r.Attempts + try + 1
-		if gmailInterval > 0 && e.waitForGmailAttempt(claimCtx, gmailInterval) != nil {
-			out.status = "pending"
-			return out
-		}
 		req := Request{From: from, To: r.Email, Raw: raw, ConfigurationSet: c.configSet, BrandID: c.brand, CampaignID: c.id, CampaignIdentity: c.trackingIdentity, SubscriberIdentity: r.TrackingIdentity, Attempt: attempt}
-		sendErr, dispatched := e.dispatchAttempt(claimCtx, c, r, req, workers, &out)
+		sendErr, dispatched := e.dispatchAttempt(claimCtx, c, r, req, workers, pacedGmail, &out)
 		if errors.Is(sendErr, errBrandPaced) {
 			continue
 		}
 		if errors.Is(sendErr, errGmailPaced) {
-			if gmailInterval == 0 {
+			if !pacedGmail {
 				out.status = "pending"
 				return out
 			}
@@ -294,8 +286,25 @@ func (e *Engine) sendOne(claimCtx context.Context, c campaign, r recipient, work
 	return out
 }
 
-func (e *Engine) dispatchAttempt(ctx context.Context, c campaign, r recipient, req Request, workers *campaignWorkers, out *result) (error, bool) {
-	if !workers.acquire(ctx, e) {
+func (e *Engine) dispatchAttempt(ctx context.Context, c campaign, r recipient, req Request, workers *campaignWorkers, pacedGmail bool, out *result) (error, bool) {
+	var releaseGmail func()
+	if pacedGmail {
+		// Serialize Gmail starts through the persisted reservation. Release the
+		// turn before calling SES so paced requests can overlap in flight.
+		select {
+		case workers.gmailTurn <- struct{}{}:
+		case <-ctx.Done():
+			out.status = "pending"
+			return nil, false
+		}
+		releaseGmail = sync.OnceFunc(func() { <-workers.gmailTurn })
+		defer releaseGmail()
+		if e.waitForGmailAttempt(ctx, c.gmailInterval) != nil {
+			out.status = "pending"
+			return nil, false
+		}
+	}
+	if !workers.acquire(ctx, e, pacedGmail) {
 		out.status = "pending"
 		return nil, false
 	}
@@ -344,6 +353,9 @@ func (e *Engine) dispatchAttempt(ctx context.Context, c campaign, r recipient, r
 		return nil, false
 	}
 	releaseBrand()
+	if releaseGmail != nil {
+		releaseGmail()
+	}
 	out.attempt = req.Attempt
 	e.inflight.Add(1)
 	start := time.Now()
@@ -443,36 +455,89 @@ func (e *Engine) writeResults(ctx context.Context, id int64, batch []result) err
 }
 
 type campaignWorkers struct {
-	busy    atomic.Int64
-	changed chan struct{}
+	mu        sync.Mutex
+	busy      int
+	waiting   [2]int
+	nextLane  int
+	changed   [2]chan struct{}
+	gmailTurn chan struct{}
 }
 
-func (w *campaignWorkers) acquire(ctx context.Context, e *Engine) bool {
+func (w *campaignWorkers) acquire(ctx context.Context, e *Engine, gmail bool) bool {
+	lane := 0
+	if gmail {
+		lane = 1
+	}
+	other := 1 - lane
+	w.mu.Lock()
+	w.waiting[lane]++
 	for ctx.Err() == nil {
-		current := w.busy.Load()
-		if current < int64(e.workerTarget()) && w.busy.CompareAndSwap(current, current+1) {
+		// Alternate admission while both lanes have a sender ready. Either
+		// lane can use the full worker budget when the other is idle.
+		if w.busy < e.workerTarget() && (w.waiting[other] == 0 || w.nextLane == lane) {
+			w.busy++
+			w.waiting[lane]--
+			w.nextLane = other
+			if w.busy < e.workerTarget() {
+				w.wakeWaiters()
+			}
+			w.mu.Unlock()
 			return true
 		}
+		w.mu.Unlock()
 		timer := time.NewTimer(50 * time.Millisecond)
 		select {
 		case <-ctx.Done():
 		case <-timer.C:
-		case <-w.changed:
+		case <-w.changed[lane]:
 		}
 		timer.Stop()
+		w.mu.Lock()
 	}
+	w.waiting[lane]--
+	w.wakeWaiters()
+	w.mu.Unlock()
 	return false
 }
 
 func (w *campaignWorkers) release() {
-	w.busy.Add(-1)
-	select {
-	case w.changed <- struct{}{}:
-	default:
+	w.mu.Lock()
+	w.busy--
+	w.wakeWaiters()
+	w.mu.Unlock()
+}
+
+func (w *campaignWorkers) wakeWaiters() {
+	for lane, changed := range w.changed {
+		if w.waiting[lane] > 0 {
+			select {
+			case changed <- struct{}{}:
+			default:
+			}
+		}
 	}
 }
 
 func (e *Engine) sendGmailRecipients(ctx context.Context, c campaign, workers *campaignWorkers, results chan<- result, providerFilter string) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	jobs := make(chan recipient)
+	var senders sync.WaitGroup
+	const gmailWorkers = 4
+	for range min(gmailWorkers, e.cfg.MaxWorkers) {
+		senders.Add(1)
+		go func() {
+			defer senders.Done()
+			for r := range jobs {
+				results <- e.sendOne(ctx, c, r, workers)
+			}
+		}()
+	}
+	defer func() {
+		close(jobs)
+		senders.Wait()
+	}()
+
 	var last int64
 	for ctx.Err() == nil {
 		items, err := e.claimRecipients(ctx, c.id, last, 1, providerFilter)
@@ -480,13 +545,20 @@ func (e *Engine) sendGmailRecipients(ctx context.Context, c campaign, workers *c
 			if ctx.Err() != nil {
 				return nil
 			}
+			cancel()
 			return err
 		}
 		if len(items) == 0 {
 			return nil
 		}
-		last = items[0].ID
-		results <- e.sendOne(ctx, c, items[0], workers)
+		r := items[0]
+		last = r.ID
+		select {
+		case jobs <- r:
+		case <-ctx.Done():
+			results <- result{id: r.ID, status: "pending", campaignIdentity: c.trackingIdentity, subscriberIdentity: r.TrackingIdentity}
+			return nil
+		}
 	}
 	return nil
 }
@@ -522,7 +594,10 @@ func (e *Engine) RunCampaign(ctx context.Context, id int64) error {
 	results := make(chan result, e.cfg.ResultBatch)
 	writerDone := e.startResultWriter(id, results, stop)
 	var senders sync.WaitGroup
-	workers := &campaignWorkers{changed: make(chan struct{}, 1)}
+	workers := &campaignWorkers{
+		changed:   [2]chan struct{}{make(chan struct{}, 1), make(chan struct{}, 1)},
+		gmailTurn: make(chan struct{}, 1),
+	}
 	for i := 0; i < e.cfg.MaxWorkers; i++ {
 		senders.Add(1)
 		go func() {
