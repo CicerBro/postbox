@@ -26,6 +26,8 @@ import {
   Eye,
   MousePointerClick,
   CircleAlert,
+  CircleCheck,
+  Clock3,
   ArrowLeft,
   Activity,
   Copy,
@@ -47,6 +49,55 @@ import {
 } from "./campaign-shared";
 
 type Stats = Record<string, number>;
+type Metric = {
+  label: string;
+  count: number | undefined;
+  denominator: number;
+  basis: string;
+  icon: typeof Eye;
+};
+
+function CampaignMetricCard({ label, count, denominator, basis, icon: Icon }: Metric) {
+  const hasDenominator = denominator > 0;
+  return (
+    <Card className="metric-card">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <span className="metric-icon"><Icon size={16} /></span>
+        </div>
+        <p className="mt-3 text-2xl font-semibold tracking-tight">
+          {count !== undefined && hasDenominator ? `${((count / denominator) * 100).toFixed(2)}%` : "Unavailable"}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {count === undefined ? "No counter recorded" : `${number(count)} recorded`} {hasDenominator ? basis : "· No denominator available"}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CampaignHighlights({ stats }: { stats: Stats }) {
+  const sent = stats.sent ?? 0;
+  const bounces = stats.bounced ?? (
+    stats.bounces_hard !== undefined && stats.bounces_soft !== undefined
+      ? stats.bounces_hard + stats.bounces_soft : undefined
+  );
+  const metrics: Metric[] = [
+    { label: "Unique opens", count: stats.opens_unique, denominator: sent, basis: "of sent", icon: Eye },
+    { label: "Unique clicks", count: stats.clicks_unique, denominator: sent, basis: "of sent", icon: MousePointerClick },
+    { label: "Click-to-open rate", count: stats.clicks_unique, denominator: stats.opens_unique ?? 0, basis: "of unique opens", icon: Activity },
+    { label: "Unsubscribed", count: stats.unsubscribes ?? stats.unsubscribed, denominator: sent, basis: "of sent", icon: UserMinus },
+    { label: "Bounced", count: bounces, denominator: sent, basis: "of sent", icon: CircleAlert },
+    { label: "Spam complaints", count: stats.complaints ?? stats.complained, denominator: sent, basis: "of sent", icon: ShieldAlert },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      {metrics.map(metric => <CampaignMetricCard key={metric.label} {...metric} />)}
+    </div>
+  );
+}
+
 const countryNames = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
 function countryName(country: string) {
   const code = country.trim().toUpperCase();
@@ -231,18 +282,12 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
   }
   if (!valid) return <ErrorMessage error={new Error("Invalid campaign ID")} />;
   if (combined && recovery?.stats && recovery.sends) {
-    const totals = [
-      ["Recipients", recovery.stats.recipients],
-      ["Sent", recovery.stats.sent],
-      ["Delivered", recovery.stats.delivered],
-      ["Bounced", recovery.stats.bounced],
-      ["Awaiting outcome", recovery.stats.awaiting_outcome],
-      ["Recovered after bounce", recovery.stats.recovered],
-      ["Unique opens", recovery.stats.opens_unique],
-      ["Unique clicks", recovery.stats.clicks_unique],
-      ["Unsubscribed", recovery.stats.unsubscribed],
-      ["Spam complaints", recovery.stats.complained],
-    ] as const;
+    const { stats } = recovery;
+    const deliveryMetrics: Metric[] = [
+      { label: "Delivered", count: stats.delivered, denominator: stats.sent, basis: "of sent", icon: Mail },
+      { label: "Awaiting outcome", count: stats.awaiting_outcome, denominator: stats.sent, basis: "of sent", icon: Clock3 },
+      { label: "Recovered after bounce", count: stats.recovered, denominator: stats.sent, basis: "of sent", icon: CircleCheck },
+    ];
     return <div className="space-y-6">
       <Link className="inline-flex items-center gap-1 text-sm text-muted-foreground" to="/campaigns"><ArrowLeft size={14} /> All campaigns</Link>
       <div>
@@ -250,12 +295,16 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
         <p className="row-subtitle">Combined report · {recovery.sends.length} sends</p>
       </div>
       <ErrorMessage error={report.error} />
-      <dl className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        {totals.map(([label, count]) => <div className="rounded-md border p-4" key={label}>
-          <dt className="row-subtitle">{label}</dt>
-          <dd className="mt-1 text-2xl font-semibold tabular-nums">{number(count)}</dd>
-        </div>)}
-      </dl>
+      <Card><CardContent className="pt-5">
+        <dl className="grid grid-cols-2 gap-5">
+          <div><dt className="row-subtitle">Recipients</dt><dd className="mt-1 text-sm font-medium">{number(stats.recipients)}</dd></div>
+          <div><dt className="row-subtitle">Sent</dt><dd className="mt-1 text-sm font-medium">{number(stats.sent)}</dd></div>
+        </dl>
+      </CardContent></Card>
+      <CampaignHighlights stats={stats} />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {deliveryMetrics.map(metric => <CampaignMetricCard key={metric.label} {...metric} />)}
+      </div>
       <p className="text-xs text-muted-foreground">Each recipient is counted once. A delivery after a bounce counts as recovered.</p>
       <Card>
         <CardHeader><CardTitle>Sends</CardTitle></CardHeader>
@@ -301,16 +350,6 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
     ["unsubscribes", "Unsubscribes"],
   ];
   const sent = stats?.sent ?? 0;
-  const bounces = stats && stats.bounces_hard !== undefined && stats.bounces_soft !== undefined
-    ? stats.bounces_hard + stats.bounces_soft : undefined;
-  const highlights = [
-    { label: "Unique opens", count: stats?.opens_unique, denominator: sent, basis: "of sent", icon: Eye },
-    { label: "Unique clicks", count: stats?.clicks_unique, denominator: sent, basis: "of sent", icon: MousePointerClick },
-    { label: "Click-to-open rate", count: stats?.clicks_unique, denominator: stats?.opens_unique ?? 0, basis: "of unique opens", icon: Activity },
-    { label: "Unsubscribed", count: stats?.unsubscribes, denominator: sent, basis: "of sent", icon: UserMinus },
-    { label: "Bounced", count: bounces, denominator: sent, basis: "of sent", icon: CircleAlert },
-    { label: "Spam complaints", count: stats?.complaints, denominator: sent, basis: "of sent", icon: ShieldAlert },
-  ];
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -394,20 +433,7 @@ function ReportView({ brandId, id }: { brandId: number; id: number }) {
           prepared.
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          {highlights.map(({ label, count, denominator, basis, icon: Icon }) => (
-            <Card key={label} className="metric-card">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs font-medium text-muted-foreground">{label}</p>
-                  <span className="metric-icon"><Icon size={16} /></span>
-                </div>
-                <p className="mt-3 text-2xl font-semibold tracking-tight">{count === undefined ? "Unavailable" : denominator > 0 ? `${((count / denominator) * 100).toFixed(2)}%` : "Unavailable"}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{count === undefined ? "No counter recorded" : `${number(count)} recorded`} {denominator > 0 ? basis : "· No denominator available"}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <CampaignHighlights stats={stats} />
       )}
       {report.data?.delivery?.historical && <p className="text-xs text-muted-foreground">Imported Sendy report. Delivery is estimated as sent minus hard bounces when no delivery counter was supplied. Unsubscribes, bounces and complaints reflect the archived subscriber statuses attributed to this campaign; later Sendy campaigns may have reassigned older statuses. Recipient delivery events and human engagement classifications are unavailable.</p>}
       <p className="text-xs text-muted-foreground">Open and click rates include all recorded activity. Human engagement counters are available below.</p>

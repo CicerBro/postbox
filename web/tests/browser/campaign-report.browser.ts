@@ -81,7 +81,7 @@ test("links a recovery send and navigates between combined and individual report
           original_campaign_id: 1,
           ...(path === "/campaigns/1/report" ? {
             sends: [{ ...original, sent: 1, delivered: 0 }, { ...recovery, sent: 1, delivered: 1 }],
-            stats: { recipients: 1, sent: 1, delivered: 1, bounced: 0, recovered: 1, awaiting_outcome: 0, opens_unique: 0, clicks_unique: 0, unsubscribed: 0, complained: 0 },
+            stats: { recipients: 85, sent: 80, delivered: 70, bounced: 6, recovered: 10, awaiting_outcome: 4, opens_unique: 20, clicks_unique: 4, unsubscribed: 2, complained: 1 },
           } : {}),
         } : null,
       };
@@ -97,6 +97,21 @@ test("links a recovery send and navigates between combined and individual report
   await page.getByLabel("Original campaign ID").fill("1");
   await page.getByRole("button", { name: "Link campaigns" }).click();
   await expect(page.getByText("Combined report · 2 sends")).toBeVisible();
+  for (const [label, rate, detail] of [
+    ["Unique opens", "25.00%", "20 recorded of sent"],
+    ["Unique clicks", "5.00%", "4 recorded of sent"],
+    ["Click-to-open rate", "20.00%", "4 recorded of unique opens"],
+    ["Unsubscribed", "2.50%", "2 recorded of sent"],
+    ["Bounced", "7.50%", "6 recorded of sent"],
+    ["Spam complaints", "1.25%", "1 recorded of sent"],
+    ["Delivered", "87.50%", "70 recorded of sent"],
+    ["Awaiting outcome", "5.00%", "4 recorded of sent"],
+    ["Recovered after bounce", "12.50%", "10 recorded of sent"],
+  ]) {
+    const card = page.locator(".metric-card").filter({ has: page.getByText(label, { exact: true }) });
+    await expect(card.getByText(rate, { exact: true })).toBeVisible();
+    await expect(card.getByText(detail, { exact: true })).toBeVisible();
+  }
   await page.getByRole("link", { name: "Original send" }).click();
   await expect(page.getByRole("heading", { name: "Newsletter preview" })).toBeVisible();
   await page.getByRole("link", { name: "Combined report" }).click();
