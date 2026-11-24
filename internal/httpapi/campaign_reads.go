@@ -29,7 +29,12 @@ func (a *API) campaignRows(r *http.Request, brand, id int64) ([]map[string]any, 
 		if offset < 0 {
 			offset = 0
 		}
-		order := "CASE c.status WHEN 'sending' THEN 0 WHEN 'draft' THEN 1 WHEN 'scheduled' THEN 2 ELSE 3 END, CASE WHEN c.status='scheduled' THEN c.scheduled_at END ASC, c.created_at DESC, c.id DESC"
+		order := `CASE
+			WHEN c.status IN ('preparing','sending','paused') THEN 0
+			WHEN c.status='draft' THEN 1
+			WHEN c.status='scheduled' THEN 2
+			ELSE 3
+		END, CASE WHEN c.status='scheduled' THEN c.scheduled_at END ASC, c.created_at DESC, c.id DESC`
 		columns := map[string]string{"subject": "c.subject COLLATE NOCASE", "status": "c.status", "created_at": "c.created_at", "scheduled_at": "c.scheduled_at"}
 		if column, ok := columns[r.URL.Query().Get("sort")]; ok {
 			direction := "ASC"

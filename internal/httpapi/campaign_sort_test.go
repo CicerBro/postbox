@@ -90,12 +90,14 @@ func TestCampaignTableSortingAndPagination(t *testing.T) {
 		t.Fatalf("summary scheduled and sent order: %v", summary)
 	}
 
-	if _, err := db.Writer.Exec("UPDATE campaigns SET status='sending' WHERE brand_id=? AND subject='Epsilon scheduled'", brand.ID); err != nil {
-		t.Fatal(err)
-	}
-	summary = read("offset=0&limit=2&sort=priority&summary=true")
-	if len(summary) != 2 || summary[0].Subject != "Epsilon scheduled" || summary[1].Subject != "Delta draft" {
-		t.Fatalf("sending campaign should lead the first page: %v", summary)
+	for _, status := range []string{"preparing", "sending", "paused"} {
+		if _, err := db.Writer.Exec("UPDATE campaigns SET status=? WHERE brand_id=? AND subject='Epsilon scheduled'", status, brand.ID); err != nil {
+			t.Fatal(err)
+		}
+		summary = read("offset=0&limit=2&sort=priority&summary=true")
+		if len(summary) != 2 || summary[0].Subject != "Epsilon scheduled" || summary[1].Subject != "Delta draft" {
+			t.Fatalf("%s campaign should lead the first page: %v", status, summary)
+		}
 	}
 }
 
