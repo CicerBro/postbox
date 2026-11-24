@@ -89,6 +89,14 @@ func TestCampaignTableSortingAndPagination(t *testing.T) {
 	if len(summary) != 3 || summary[0].Subject != "Epsilon scheduled" || summary[1].Subject != "Beta scheduled" || summary[2].Subject != "Alpha sent" {
 		t.Fatalf("summary scheduled and sent order: %v", summary)
 	}
+
+	if _, err := db.Writer.Exec("UPDATE campaigns SET status='sending' WHERE brand_id=? AND subject='Epsilon scheduled'", brand.ID); err != nil {
+		t.Fatal(err)
+	}
+	summary = read("offset=0&limit=2&sort=priority&summary=true")
+	if len(summary) != 2 || summary[0].Subject != "Epsilon scheduled" || summary[1].Subject != "Delta draft" {
+		t.Fatalf("sending campaign should lead the first page: %v", summary)
+	}
 }
 
 func TestCampaignSummaryIncludesFinishedDeliveryMetrics(t *testing.T) {
