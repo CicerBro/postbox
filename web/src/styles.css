@@ -870,12 +870,7 @@
   .header-navigation a.active {
     color: var(--ink);
   }
-  .theme-control {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }
-  .theme-option {
+  .theme-toggle {
     display: grid;
     place-items: center;
     width: 32px;
@@ -883,10 +878,9 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--secondary);
-    color: var(--muted);
+    color: var(--ink);
   }
-  .theme-option:hover,
-  .theme-option[aria-pressed="true"] {
+  .theme-toggle:hover {
     background: var(--soft);
     color: var(--ink);
     box-shadow: none;
@@ -1783,7 +1777,7 @@
       gap: 16px;
       flex-wrap: wrap;
     }
-    .theme-option {
+    .theme-toggle {
       width: 28px;
     }
     .table-card {
@@ -1960,12 +1954,11 @@ select,
   :root:not(.dark) .button.desktop-toggle:hover {
     background: var(--accent);
   }
-  :root:not(.dark) .theme-option {
+  :root:not(.dark) .theme-toggle {
     background: transparent;
     border: 0;
   }
-  :root:not(.dark) .theme-option:hover,
-  :root:not(.dark) .theme-option[aria-pressed="true"] {
+  :root:not(.dark) .theme-toggle:hover {
     background: var(--accent);
   }
 }

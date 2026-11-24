@@ -155,6 +155,10 @@ export default function App() {
     setMobile(false);
   }
   const [theme, setTheme] = useThemePreference();
+  const ThemeIcon = { system: Monitor, light: Sun, dark: Moon }[theme];
+  const themeLabel = { system: "System", light: "Light", dark: "Dark" };
+  const nextTheme = { system: "light", light: "dark", dark: "system" } as const;
+  const themeButtonLabel = `Theme: ${themeLabel[theme]}. Switch to ${themeLabel[nextTheme[theme]]}`;
   const session = useQuery({
     queryKey: ["session"],
     queryFn: async () => {
@@ -763,27 +767,15 @@ export default function App() {
                   <span className="page-search-label">Search</span>
                   <kbd>⌘ K</kbd>
                 </Button>
-                <div className="theme-control" role="group" aria-label="Theme">
-                  {(
-                    [
-                      ["system", "System theme", Monitor],
-                      ["light", "Light theme", Sun],
-                      ["dark", "Dark theme", Moon],
-                    ] as const
-                  ).map(([preference, label, Icon]) => (
-                    <button
-                      key={preference}
-                      type="button"
-                      className="theme-option"
-                      aria-label={label}
-                      title={label}
-                      aria-pressed={theme === preference}
-                      onClick={() => setTheme(preference)}
-                    >
-                      <Icon size={16} aria-hidden="true" />
-                    </button>
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  className="theme-toggle"
+                  aria-label={themeButtonLabel}
+                  title={themeButtonLabel}
+                  onClick={() => setTheme((current) => nextTheme[current])}
+                >
+                  <ThemeIcon size={16} aria-hidden="true" />
+                </button>
                 {(canWrite || session.data.admin) && (
                   <DropdownMenu.Root>
                     <DropdownMenu.Trigger asChild>

@@ -118,7 +118,8 @@ test("shared fields use one gap and mobile filters fill their column", async ({ 
 test("subscriber status colors share the same danger tone in dark mode", async ({ page, context }) => {
   await fixture(context);
   await page.goto("/subscribers");
-  await page.getByRole("button", { name: "Dark theme", exact: true }).click();
+  await page.getByRole("button", { name: "Theme: System. Switch to Light" }).click();
+  await page.getByRole("button", { name: "Theme: Light. Switch to Dark" }).click();
   await page.getByRole("button", { name: "Edit ada@example.org", exact: true }).click();
   const badges = page.getByRole("dialog").locator(".status-badge");
   await expect(badges.filter({ hasText: "Complained" })).toBeVisible();
