@@ -225,7 +225,7 @@ export function CampaignsPage({ brandId }: { brandId: number }) {
                   <th>Recipients</th>
                   <th>Opens</th>
                   <th>Clicks</th>
-                  <th>Sent</th>
+                  {sortHeader("Sent", "finished_at")}
                   <th>
                     <span className="sr-only">Actions</span>
                   </th>

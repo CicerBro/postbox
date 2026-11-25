@@ -8,6 +8,53 @@ import (
 	"testing"
 )
 
+func TestCampaignSentDateOrdering(t *testing.T) {
+	_, mux, db, cookie, _ := setup(t)
+	brand, err := subscribers.New(db).CreateBrand(context.Background(), subscribers.Brand{Name: "Brand", FromEmail: "sender@example.org"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct {
+		subject  string
+		created  int
+		finished any
+	}{
+		{"Older send", 30, 100},
+		{"Newer send", 10, 200},
+		{"Unknown send", 40, nil},
+	} {
+		if _, err := db.Writer.Exec("INSERT INTO campaigns(brand_id,uuid,status,subject,html,created_at,updated_at,finished_at) VALUES(?,?,?,?,?,?,?,?)", brand.ID, row.subject, "sent", row.subject, "", row.created, row.created, row.finished); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		params string
+		want   []string
+	}{
+		{"offset=0&limit=2&summary=true", []string{"Newer send", "Older send"}},
+		{"offset=1&limit=2&summary=true", []string{"Older send", "Unknown send"}},
+		{"offset=0&sort=finished_at&direction=asc", []string{"Unknown send", "Older send", "Newer send"}},
+		{"offset=0&sort=finished_at&direction=desc", []string{"Newer send", "Older send", "Unknown send"}},
+	} {
+		w := request(mux, "GET", fmt.Sprintf("/api/v1/campaigns?brand_id=%d&%s", brand.ID, tc.params), "", &cookie, "")
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var rows []struct{ Subject string }
+		if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != len(tc.want) {
+			t.Fatalf("%s: got %v, want %v", tc.params, rows, tc.want)
+		}
+		for i, want := range tc.want {
+			if rows[i].Subject != want {
+				t.Fatalf("%s: got %v, want %v", tc.params, rows, tc.want)
+			}
+		}
+	}
+}
+
 func TestCampaignTableSortingAndPagination(t *testing.T) {
 	_, mux, db, cookie, _ := setup(t)
 	brand, err := subscribers.New(db).CreateBrand(context.Background(), subscribers.Brand{Name: "Brand", FromEmail: "sender@example.org"})

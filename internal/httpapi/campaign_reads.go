@@ -37,8 +37,9 @@ func (a *API) campaignRows(r *http.Request, brand, id int64) ([]map[string]any, 
 			WHEN c.status='draft' THEN 1
 			WHEN c.status='scheduled' THEN 2
 			ELSE 3
-		END, CASE WHEN c.status='scheduled' THEN c.scheduled_at END ASC, c.created_at DESC, c.id DESC`
-		columns := map[string]string{"subject": "c.subject COLLATE NOCASE", "status": "c.status", "created_at": "c.created_at", "scheduled_at": "c.scheduled_at"}
+		END, CASE WHEN c.status='scheduled' THEN c.scheduled_at END ASC,
+			CASE WHEN c.status='sent' THEN c.finished_at END DESC, c.created_at DESC, c.id DESC`
+		columns := map[string]string{"subject": "c.subject COLLATE NOCASE", "status": "c.status", "created_at": "c.created_at", "scheduled_at": "c.scheduled_at", "finished_at": "CASE WHEN c.status='sent' THEN c.finished_at END"}
 		if column, ok := columns[r.URL.Query().Get("sort")]; ok {
 			direction := "ASC"
 			if r.URL.Query().Get("direction") == "desc" {
