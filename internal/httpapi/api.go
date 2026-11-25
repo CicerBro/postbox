@@ -45,6 +45,7 @@ type API struct {
 	limits           map[string]*bucket
 	nextLimitCleanup time.Time
 	paths            map[string]any
+	recoveryStats    campaignRecoveryStatsCache
 }
 type bucket struct {
 	n     int

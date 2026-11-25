@@ -16,9 +16,12 @@ func (a *API) campaignRows(r *http.Request, brand, id int64) ([]map[string]any, 
 	from := "campaigns c"
 	filter := "c.brand_id=?"
 	if summary {
-		// Ordinary campaigns use their durable counters. Only grouped rows
-		// need recipient-level aggregation, after pagination.
-		projection = "c.id,c.subject,c.status,c.created_at,c.scheduled_at,c.finished_at,c.html,s.recipients,s.sent,s.failed,s.skipped,s.unknown,s.opens_unique,s.clicks_unique,(SELECT count(*) FROM campaigns child WHERE child.recovery_of_campaign_id=c.id) AS recovery_count"
+		// Ordinary campaigns use durable counters. The recovery IDs identify
+		// which sends the group's cached stats represent.
+		projection = `c.id,c.uuid,c.subject,c.status,c.created_at,c.scheduled_at,c.finished_at,c.html,
+			s.recipients,s.sent,s.failed,s.skipped,s.unknown,s.opens_unique,s.clicks_unique,
+			(SELECT group_concat(hex(child.uuid) ORDER BY child.id) FROM campaigns child
+			 WHERE child.recovery_of_campaign_id=c.id AND child.brand_id=c.brand_id)`
 		filter += " AND c.recovery_of_campaign_id IS NULL"
 		from += " LEFT JOIN campaign_stats s ON s.campaign_id=c.id"
 	}
@@ -65,7 +68,7 @@ func (a *API) campaignRows(r *http.Request, brand, id int64) ([]map[string]any, 
 		args = []any{brand, id}
 	}
 	if summary {
-		return a.queryCampaignSummaries(r.Context(), q, args...)
+		return a.queryCampaignSummaries(r.Context(), brand, q, args...)
 	}
 	return queryRows(r.Context(), a.db.Reader, q, args...)
 }
@@ -82,19 +85,26 @@ func (a *API) campaignOptions(w http.ResponseWriter, r *http.Request) {
 
 // Read one message at a time, retaining only the bounded text excerpt for the
 // table. Integrations requesting the default representation keep full content.
-func (a *API) queryCampaignSummaries(ctx context.Context, query string, args ...any) ([]map[string]any, error) {
+func (a *API) queryCampaignSummaries(ctx context.Context, brand int64, query string, args ...any) ([]map[string]any, error) {
 	rows, err := a.db.Reader.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []map[string]any{}
+	type groupedCampaign struct {
+		id  int64
+		row map[string]any
+		key campaignRecoveryStatsKey
+	}
+	var grouped []groupedCampaign
 	for rows.Next() {
-		var id, created, recoveryCount int64
+		var id, created int64
 		var scheduled, finished sql.NullInt64
-		var subject, status, content string
+		var uuid, subject, status, content string
+		var recoveryUUIDs sql.NullString
 		var recipients, sent, failed, skipped, unknown, opensUnique, clicksUnique sql.NullInt64
-		if err := rows.Scan(&id, &subject, &status, &created, &scheduled, &finished, &content, &recipients, &sent, &failed, &skipped, &unknown, &opensUnique, &clicksUnique, &recoveryCount); err != nil {
+		if err := rows.Scan(&id, &uuid, &subject, &status, &created, &scheduled, &finished, &content, &recipients, &sent, &failed, &skipped, &unknown, &opensUnique, &clicksUnique, &recoveryUUIDs); err != nil {
 			return nil, err
 		}
 		var scheduledAt any
@@ -113,7 +123,16 @@ func (a *API) queryCampaignSummaries(ctx context.Context, query string, args ...
 		if recipients.Valid {
 			stats = map[string]int64{"recipients": recipients.Int64, "sent": sent.Int64, "opens_unique": opensUnique.Int64, "clicks_unique": clicksUnique.Int64}
 		}
-		out = append(out, map[string]any{"id": id, "subject": subject, "status": status, "created_at": created, "scheduled_at": scheduledAt, "finished_at": finishedAt, "recovery_count": recoveryCount, "excerpt": campaignExcerpt(content), "progress": progress, "stats": stats})
+		row := map[string]any{"id": id, "subject": subject, "status": status, "created_at": created, "scheduled_at": scheduledAt, "finished_at": finishedAt, "recovery_count": 0, "excerpt": campaignExcerpt(content), "progress": progress, "stats": stats}
+		if recoveryUUIDs.Valid {
+			row["recovery_count"] = 1 + strings.Count(recoveryUUIDs.String, ",")
+			grouped = append(grouped, groupedCampaign{
+				id:  id,
+				row: row,
+				key: campaignRecoveryStatsKey{originalUUID: uuid, recoveryUUIDs: recoveryUUIDs.String},
+			})
+		}
+		out = append(out, row)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -121,15 +140,14 @@ func (a *API) queryCampaignSummaries(ctx context.Context, query string, args ...
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	for _, row := range out {
-		if row["recovery_count"].(int64) == 0 {
-			continue
-		}
-		stats, err := a.combinedCampaignStats(ctx, row["id"].(int64))
+	for _, group := range grouped {
+		stats, err := a.recoveryStats.get(ctx, group.key, func(ctx context.Context) (campaignRecoveryStats, error) {
+			return a.combinedCampaignStats(ctx, brand, group.id)
+		})
 		if err != nil {
 			return nil, err
 		}
-		row["stats"] = stats
+		group.row["stats"] = stats
 	}
 	return out, nil
 }

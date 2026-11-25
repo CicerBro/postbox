@@ -65,11 +65,11 @@ type campaignRecoveryStats struct {
 	Complained      int64 `json:"complained"`
 }
 
-func (a *API) combinedCampaignStats(ctx context.Context, id int64) (campaignRecoveryStats, error) {
+func (a *API) combinedCampaignStats(ctx context.Context, brand, id int64) (campaignRecoveryStats, error) {
 	var s campaignRecoveryStats
 	// Summarize recipient snapshots, leaving the per-send counters and SES
 	// receipts intact. A delivery after a bounce supersedes that bounce.
-	err := a.db.Reader.QueryRowContext(ctx, `WITH original AS (SELECT id,brand_id FROM campaigns WHERE id=?), recipients AS (
+	err := a.db.Reader.QueryRowContext(ctx, `WITH original AS (SELECT id,brand_id FROM campaigns WHERE id=? AND brand_id=?), recipients AS (
 		SELECT r.subscriber_id, max(r.sent_at IS NOT NULL OR r.status='sent') AS sent,
 			max(r.delivered_at) AS delivered_at, max(r.bounced_at) AS bounced_at,
 			max(CASE WHEN r.campaign_id=(SELECT id FROM original) THEN r.bounced_at END) AS original_bounce_at,
@@ -90,7 +90,7 @@ func (a *API) combinedCampaignStats(ctx context.Context, id int64) (campaignReco
 		count(*) FILTER (WHERE recovery_delivered_at>original_bounce_at AND delivered_at>bounced_at),
 		count(*) FILTER (WHERE opened),count(*) FILTER (WHERE clicked),
 		count(*) FILTER (WHERE unsubscribed),count(*) FILTER (WHERE complained)
-	FROM recipients`, id).Scan(&s.Recipients, &s.Sent, &s.Delivered, &s.Bounced, &s.AwaitingOutcome,
+	FROM recipients`, id, brand).Scan(&s.Recipients, &s.Sent, &s.Delivered, &s.Bounced, &s.AwaitingOutcome,
 		&s.Recovered, &s.OpensUnique, &s.ClicksUnique, &s.Unsubscribed, &s.Complained)
 	return s, err
 }
@@ -111,6 +111,6 @@ func (a *API) campaignRecoveryData(ctx context.Context, brand, id int64) (map[st
 	if err != nil || len(sends) < 2 {
 		return nil, err
 	}
-	stats, err := a.combinedCampaignStats(ctx, id)
+	stats, err := a.combinedCampaignStats(ctx, brand, id)
 	return map[string]any{"original_campaign_id": id, "sends": sends, "stats": stats}, err
 }
