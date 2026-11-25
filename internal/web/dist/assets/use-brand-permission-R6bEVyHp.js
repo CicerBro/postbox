@@ -1,0 +1,1 @@
+import{w as e}from"./index-B6V2spD7.js";function t(t,n){let{session:r,brands:i}=e();return r.admin||!!i.find(e=>e.id===t)?.permissions?.includes(n)}export{t};
